@@ -1,0 +1,1374 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>표창키우기 — 합체 (v2)</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; user-select: none; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #0a0a12; font-family: -apple-system, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif; color: #e8e8f0; }
+
+  #wrap { display: flex; height: 100vh; gap: 0; justify-content: center; }
+  #stage {
+    width: 420px; max-width: 100vw; height: 100vh;
+    background: linear-gradient(180deg, #1a1530 0%, #0a0a14 100%);
+    display: flex; flex-direction: column;
+    border-left: 1px solid #2a2a3e; border-right: 1px solid #2a2a3e; flex-shrink: 0;
+  }
+  #panel {
+    width: 320px; height: 100vh; background: #11111c; padding: 10px; overflow-y: auto;
+    border-left: 1px solid #2a2a3e; display: flex; flex-direction: column; gap: 6px;
+  }
+  @media (max-width: 800px) {
+    #wrap { flex-direction: column; }
+    #stage { width: 100%; height: auto; flex: 1; }
+    #panel { width: 100%; height: 38vh; }
+  }
+
+  /* HUD */
+  #hud {
+    padding: 8px 12px; display: flex; justify-content: space-between; align-items: center;
+    background: rgba(10,10,20,0.6); font-size: 13px; font-weight: 700;
+  }
+  #hud .stage-name { color: #ffd966; font-size: 15px; }
+  #hud .gold { color: #ffd966; }
+  #hud .gem  { color: #a8e6ff; }
+
+  /* Stage progress */
+  #wave-bar {
+    height: 4px; background: rgba(255,255,255,0.08);
+    position: relative;
+  }
+  #wave-fill {
+    height: 100%; background: linear-gradient(90deg,#4af,#fa4); width: 0%;
+    transition: width 0.15s;
+  }
+
+  /* combat removed in v2.5 — gold is passive based on grid */
+
+  /* Merge animation — multi-layered choreography */
+  .merge-ghost {
+    position: fixed; pointer-events: none; z-index: 50;
+    display: flex; align-items: center; justify-content: center;
+    transition: transform 0.30s cubic-bezier(0.55, 0, 0.7, 0.05),
+                opacity 0.30s ease-out, filter 0.30s ease-out;
+  }
+  .merge-ghost canvas {
+    width: 75% !important; height: 75% !important;
+    filter: drop-shadow(0 0 8px currentColor);
+  }
+  /* expanding ring on arrival */
+  .merge-burst {
+    position: fixed; pointer-events: none; z-index: 49;
+    border-radius: 50%;
+    transform: scale(0.15);
+    opacity: 1;
+    transition: transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1),
+                opacity 0.35s ease-out;
+  }
+  .merge-burst.expand { transform: scale(2.4); opacity: 0; }
+  /* trail dots that drop behind the ghost */
+  .merge-trail {
+    position: fixed; pointer-events: none; z-index: 48;
+    border-radius: 50%; opacity: 0.9;
+    transition: opacity 0.55s ease-out, transform 0.55s ease-out;
+  }
+  .merge-trail.fade { opacity: 0; transform: scale(0.25); }
+  /* sparkle particles that explode outward */
+  .merge-sparkle {
+    position: fixed; pointer-events: none; z-index: 51;
+    width: 7px; height: 7px; border-radius: 50%; opacity: 1;
+    transition: transform 0.55s cubic-bezier(0.22, 0.61, 0.36, 1),
+                opacity 0.55s ease-out;
+  }
+  .merge-sparkle.go { opacity: 0; }
+  /* full-screen color tint flash */
+  .merge-flash {
+    position: fixed; inset: 0; pointer-events: none; z-index: 47;
+    opacity: 0; transition: opacity 0.32s ease-out;
+    mix-blend-mode: screen;
+  }
+  .merge-flash.show { opacity: 0.18; }
+  /* secondary ring for big merges */
+  .merge-ring2 {
+    position: fixed; pointer-events: none; z-index: 49;
+    border-radius: 50%; border: 2px solid currentColor;
+    box-shadow: 0 0 12px currentColor;
+    transform: scale(0.2); opacity: 1;
+    transition: transform 0.5s ease-out, opacity 0.5s ease-out;
+  }
+  .merge-ring2.expand { transform: scale(2.0); opacity: 0; }
+
+  /* Grid — main game focus */
+  #grid-wrap {
+    background: linear-gradient(180deg, #11111e 0%, #0a0a16 100%);
+    padding: 12px; flex: 1.5; display: flex; flex-direction: column; gap: 8px;
+    align-items: center; justify-content: center;
+    border-top: 1px solid #2a2a3e;
+  }
+  #grid {
+    display: grid; gap: 6px;
+    grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(3, 1fr);
+    width: 100%; max-width: 320px; aspect-ratio: 1;
+  }
+  .cell {
+    background: rgba(30,30,46,0.5); border: 1.5px solid #2a2a3e; border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    position: relative; cursor: pointer; transition: transform 0.1s, border-color 0.1s;
+    overflow: hidden;
+  }
+  .cell.empty { background: rgba(20,20,32,0.3); border-style: dashed; border-color: #2a2a3e; }
+  .cell.selected { border-color: #ffd966; box-shadow: 0 0 12px #ffd96666; transform: scale(1.05); }
+  .cell:active { transform: scale(0.97); }
+  .cell .lv-label {
+    position: absolute; top: 2px; left: 4px; font-size: 10px; font-weight: 800;
+    color: rgba(255,255,255,0.85); text-shadow: 0 1px 2px rgba(0,0,0,0.9);
+    z-index: 2;
+  }
+  .cell .shuriken {
+    width: 70%; height: 70%; display: flex; align-items: center; justify-content: center;
+  }
+
+  /* Spawn bar — time-based generator */
+  #spawn-bar {
+    display: flex; gap: 6px; padding: 8px 12px;
+    background: rgba(10,10,20,0.6);
+    border-top: 1px solid #2a2a3e;
+    align-items: stretch;
+  }
+  #spawn-progress-wrap {
+    flex: 1.8; display: flex; flex-direction: column; gap: 4px; justify-content: center;
+    cursor: pointer; user-select: none; padding: 4px 6px; border-radius: 8px;
+    transition: background 0.08s;
+  }
+  #spawn-progress-wrap:active { background: rgba(255,255,255,0.05); }
+  #spawn-progress-label {
+    font-size: 10px; color: #aaa; font-weight: 600; text-align: center;
+  }
+  #spawn-progress-bar {
+    height: 14px; background: rgba(0,0,0,0.5); border-radius: 7px; border: 1px solid #2a2a3e;
+    overflow: hidden;
+  }
+  #spawn-progress-fill {
+    height: 100%; width: 0%; background: linear-gradient(90deg, #2a4a8e, #4a8eef);
+    transition: width 0.08s linear;
+  }
+  #spawn-progress-bar.full #spawn-progress-fill {
+    background: linear-gradient(90deg, #aa6644, #ffaa33);
+  }
+  #instant-spawn-btn {
+    flex: 0.8; padding: 8px 10px;
+    background: linear-gradient(180deg, #6a2a8e, #4a1a6e);
+    border: 1px solid #8a4aae; border-radius: 8px; color: #fff;
+    font-family: inherit; font-size: 12px; font-weight: 700; cursor: pointer;
+  }
+  #instant-spawn-btn:active { transform: scale(0.96); }
+  #instant-spawn-btn:disabled { background: #2a2a3a; border-color: #3a3a4a; color: #666; cursor: not-allowed; }
+  .auto-btn {
+    flex: 1; padding: 8px; background: rgba(30,30,50,0.7);
+    border: 1px solid #444; border-radius: 8px; color: #aaa;
+    font-family: inherit; font-size: 11px; font-weight: 600; cursor: pointer;
+  }
+  .auto-btn.on { background: rgba(74,142,74,0.4); border-color: #6a8e6a; color: #afe; }
+
+  /* Panel */
+  #panel .section-title {
+    font-size: 11px; color: #888; font-weight: 700; letter-spacing: 1px;
+    text-transform: uppercase; padding: 0 4px; margin-top: 4px;
+  }
+  .upgrade-card {
+    background: #1a1a28; border: 1px solid #2a2a3e; border-radius: 8px;
+    padding: 8px 10px; display: flex; justify-content: space-between; align-items: center;
+    gap: 8px;
+  }
+  .upgrade-info { flex: 1; min-width: 0; }
+  .upgrade-title { font-size: 13px; font-weight: 700; }
+  .upgrade-sub { font-size: 10px; color: #888; margin-top: 1px; }
+  .upgrade-lv { color: #ffd966; font-size: 10px; font-weight: 700; }
+  .upgrade-btn {
+    background: #2a4a8e; border: 1px solid #4a6aae; border-radius: 6px;
+    padding: 6px 10px; color: #fff; font-weight: 700; font-size: 11px;
+    font-family: inherit; cursor: pointer; min-width: 70px; text-align: center;
+  }
+  .upgrade-btn:active { transform: scale(0.96); }
+  .upgrade-btn:disabled { background: #2a2a3a; border-color: #3a3a4a; color: #555; cursor: not-allowed; }
+  .upgrade-btn.gem { background: #4a2a8e; border-color: #6a4aae; }
+  .upgrade-btn.prestige { background: #8e4a2a; border-color: #ae6a4a; }
+
+  /* Footer */
+  .footer-row { display: flex; gap: 6px; margin-top: auto; }
+  .footer-btn {
+    flex: 1; padding: 8px; background: #1a1a28; border: 1px solid #2a2a3e;
+    border-radius: 6px; color: #aaa; font-size: 11px; cursor: pointer; font-family: inherit;
+  }
+  .footer-btn:active { background: #2a2a3e; }
+  .footer-btn.danger { color: #ff6b6b; border-color: #4a2a2a; }
+
+  /* Toast */
+  #toast {
+    position: fixed; left: 50%; transform: translateX(-50%); bottom: 30px;
+    background: rgba(20,20,40,0.95); border: 1px solid #ffd966;
+    padding: 8px 16px; border-radius: 8px; color: #ffd966; font-size: 13px;
+    opacity: 0; transition: opacity 0.3s; pointer-events: none; z-index: 200; font-weight: 600;
+  }
+  #toast.show { opacity: 1; }
+
+  /* Max-level reached banner */
+  #max-banner {
+    position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+    font-size: 48px; font-weight: 900; color: #ffd966;
+    text-shadow: 0 0 20px #ff8800, 0 0 4px #000;
+    opacity: 0; pointer-events: none;
+  }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <div id="stage">
+    <div id="hud">
+      <div class="stage-name" id="stage-name">최고 Lv 1</div>
+      <div>
+        <span class="gold">💰 <span id="gold">0</span></span>
+        &nbsp; <span class="gem">💎 <span id="gem">0</span></span>
+      </div>
+    </div>
+    <div id="grid-wrap">
+      <div id="grid-header" style="display:flex;justify-content:space-between;width:100%;max-width:320px;font-size:11px;font-weight:700;">
+        <span style="color:#aaa;">표창 보유 <span id="shuriken-count" style="color:#ffd966;">0</span> / <span id="shuriken-max">6</span></span>
+        <span style="color:#aaa;">제작 <span id="batch-info" style="color:#a8e6ff;">×1</span></span>
+      </div>
+      <div id="grid"></div>
+      <div style="font-size:10px;color:#888;text-align:center;">
+        같은 레벨 표창 탭→탭 = 합체 · 다른 레벨 = swap · 빈 칸 = 이동<br>
+        <span style="color:#aaa;">전투는 자동 진행 · ⚔ 버튼으로 별도 화면에서 확인</span>
+      </div>
+    </div>
+    <div id="spawn-bar">
+      <div id="spawn-progress-wrap">
+        <div id="spawn-progress-label">생성중 · <span id="spawn-time-label">5.0s</span></div>
+        <div id="spawn-progress-bar"><div id="spawn-progress-fill"></div></div>
+      </div>
+      <button id="instant-spawn-btn" title="💎 1로 즉시 소환">💎 즉시</button>
+      <button class="auto-btn" id="auto-merge-btn">⚙ 자동합치기 OFF</button>
+    </div>
+  </div>
+
+  <div id="panel">
+    <div class="section-title">강화</div>
+    <div id="upgrade-list"></div>
+    <div class="section-title">정보</div>
+    <div class="upgrade-card">
+      <div class="upgrade-info">
+        <div class="upgrade-title">패시브 골드</div>
+        <div class="upgrade-sub" id="dps-info">계산중</div>
+      </div>
+    </div>
+    <div class="upgrade-card">
+      <div class="upgrade-info">
+        <div class="upgrade-title">최고 레벨</div>
+        <div class="upgrade-sub" id="best-info">—</div>
+      </div>
+    </div>
+    <div class="section-title">환생</div>
+    <div class="upgrade-card">
+      <div class="upgrade-info">
+        <div class="upgrade-title">윤회 (輪廻)</div>
+        <div class="upgrade-sub" id="prestige-info">조건 미달성</div>
+      </div>
+      <button class="upgrade-btn prestige" id="prestige-btn" disabled>잠김</button>
+    </div>
+    <div class="footer-row">
+      <button class="footer-btn" id="save-btn">저장</button>
+      <button class="footer-btn" id="mute-btn">🔊</button>
+      <button class="footer-btn danger" id="reset-btn">초기화</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+'use strict';
+// =============================================================
+// 표창키우기 v2 — 합체 게임
+// Concept: 3×3+ grid, drop shuriken (Lv 1), merge same-level → Lv+1
+//          shurikens auto-fire from grid toward enemies above
+// =============================================================
+
+const SAVE_KEY = 'shuriken_merge_v2';
+
+// ---------- Utility ----------
+function rand(a, b) { return a + Math.random() * (b - a); }
+function randI(a, b) { return Math.floor(rand(a, b + 1)); }
+function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
+function fmt(n) {
+  if (n < 1000) return Math.floor(n).toString();
+  const units = ['', 'K', 'M', 'B', 'T', 'aa', 'bb', 'cc', 'dd', 'ee'];
+  let i = 0;
+  while (n >= 1000 && i < units.length - 1) { n /= 1000; i++; }
+  return n.toFixed(n < 10 ? 2 : n < 100 ? 1 : 0) + units[i];
+}
+
+// ---------- Shuriken Level Definitions ----------
+const LEVEL_COLORS = [
+  null, // index 0 unused
+  '#888888', // Lv 1 — iron gray
+  '#66cc66', // Lv 2 — green
+  '#66aaff', // Lv 3 — blue
+  '#cc88ff', // Lv 4 — purple
+  '#ff8844', // Lv 5 — orange
+  '#ff4466', // Lv 6 — red
+  '#ffd966', // Lv 7 — gold
+  '#88e0ff', // Lv 8 — cyan
+  '#ffffff', // Lv 9 — white
+  '#ff66ff', // Lv 10 — magenta
+  '#33ffaa', // Lv 11 — mint
+  '#ffaaff', // Lv 12 — pink
+];
+function levelColor(lv) { return LEVEL_COLORS[lv] || `hsl(${(lv * 47) % 360}, 80%, 65%)`; }
+function levelPoints(lv) { return Math.min(12, 3 + Math.floor((lv - 1) / 1.5)); }
+function levelGlow(lv) { return lv >= 5 ? Math.min(20, (lv - 4) * 3) : 0; }
+
+// ---------- Upgrade Definitions ----------
+// Based on original 표창키우기: "최대 개수 증가", "제작시간 감소", "제작 최대치 증가"
+const UPGRADES = [
+  { id: 'maxShuriken', name: '최대 표창 수',  base: 6,    costBase: 80,  costMul: 1.45, effect: 'maxshuriken',
+    desc: '필드 동시 보유 +1 / Lv (시작 6, 최대 30)' },
+  { id: 'spawnRate', name: '제작시간 감소',   base: 12.0, costBase: 30,  costMul: 1.15, effect: 'spawnrate',
+    desc: '생성 주기 −5% / Lv (기본 12초)' },
+  { id: 'spawnBatch', name: '제작 최대치',    base: 1,    costBase: 200, costMul: 2.20, effect: 'spawnbatch',
+    desc: '한번에 동시 생성 +1 / Lv (최대 6)' },
+  { id: 'firerate',  name: '발사속도',       base: 2.0,  costBase: 50,  costMul: 1.18, effect: 'firerate',
+    desc: '전투 발사 간격 −5% / Lv (서브)' },
+  { id: 'baseDmg',   name: 'Lv1 데미지',     base: 5,    costBase: 40,  costMul: 1.16, effect: 'dmg',
+    desc: '기본 +2 / Lv (지수 곱 영향)' },
+  { id: 'goldMul',   name: '골드 획득',      base: 1,    costBase: 80,  costMul: 1.16, effect: 'gold',
+    desc: '+10% / Lv' },
+  { id: 'spawnLevel',name: '시작 레벨',      base: 1,    costBase: 1500,costMul: 3.00, effect: 'spawnlv',
+    desc: '생성 표창 시작 Lv +1' },
+];
+
+const MAX_SHURIKEN_CAP = 30;          // hard cap on field shurikens
+const SPAWN_BATCH_CAP = 6;            // hard cap on per-tick spawn count
+
+// ---------- State ----------
+function defaultState() {
+  return {
+    stage: 1,
+    enemiesInStage: 0,    // 0~9, 10th is boss
+    enemiesPerStage: 10,
+    bossActive: false,
+    gold: 0,
+    gem: 0,
+    prestigeCount: 0,
+    bestLevel: 1,
+    runBestLevel: 1,
+    grid: new Array(6).fill(null), // size = 6 default; expandable via maxShuriken upgrade up to 30
+    nextShurikenId: 1,
+    upgrades: { maxShuriken:0, spawnRate:0, spawnBatch:0, firerate:0, baseDmg:0, goldMul:0, spawnLevel:0 },
+    spawnProgress: 0,
+    autoMerge: false,
+    lastSave: Date.now(),
+    muted: localStorage.getItem('shuriken_v2_muted') === '1',
+  };
+}
+let state = defaultState();
+
+// ---------- Save / Load ----------
+function save() {
+  state.lastSave = Date.now();
+  try { localStorage.setItem(SAVE_KEY, JSON.stringify(state)); } catch(e) {}
+}
+function load() {
+  try {
+    const raw = localStorage.getItem(SAVE_KEY);
+    if (!raw) return false;
+    const s = JSON.parse(raw);
+    state = Object.assign(defaultState(), s);
+    state.upgrades = Object.assign(defaultState().upgrades, s.upgrades || {});
+    state.grid = Array.isArray(s.grid) ? s.grid : defaultState().grid;
+    // resize grid to upgraded size if needed
+    const targetSize = getGridSize();
+    while (state.grid.length < targetSize) state.grid.push(null);
+    while (state.grid.length > targetSize) state.grid.pop();
+    return true;
+  } catch (e) { return false; }
+}
+
+// ---------- Computed ----------
+function getGridSize() {
+  // base 6 + 1 per upgrade level, capped at MAX_SHURIKEN_CAP
+  return Math.min(MAX_SHURIKEN_CAP, 6 + state.upgrades.maxShuriken);
+}
+function getGridCols() {
+  const s = getGridSize();
+  if (s <= 6) return 3;
+  if (s <= 12) return 4;
+  if (s <= 20) return 5;
+  return 6;
+}
+function getSpawnBatch() {
+  return Math.min(SPAWN_BATCH_CAP, 1 + state.upgrades.spawnBatch);
+}
+function getFireInterval() {
+  const base = 2.0;
+  return Math.max(0.25, base * Math.pow(0.95, state.upgrades.firerate));
+}
+function getSpawnInterval() {
+  const base = 12.0; // slower default — merge focus
+  return Math.max(1.0, base * Math.pow(0.95, state.upgrades.spawnRate));
+}
+function getBaseDmg() {
+  return 5 + state.upgrades.baseDmg * 2;
+}
+function getSpawnStartLevel() {
+  return 1 + state.upgrades.spawnLevel;
+}
+function getGoldMul() {
+  const u = 1 + state.upgrades.goldMul * 0.1;
+  const prestige = 1 + state.prestigeCount * 0.5;
+  return u * prestige;
+}
+function shurikenDmg(level) {
+  return getBaseDmg() * Math.pow(2, level - 1) * (1 + state.prestigeCount * 0.5);
+}
+function getTotalDPS() {
+  const interval = getFireInterval();
+  let sum = 0;
+  for (const c of state.grid) if (c) sum += shurikenDmg(c.level);
+  return sum / interval;
+}
+function getPrestigeGain() {
+  if (state.bestLevel < 8) return 0;
+  return Math.floor(Math.pow(state.bestLevel - 7, 1.3));
+}
+function getUpgradeCost(u) {
+  const lvl = state.upgrades[u.id];
+  return Math.ceil(u.costBase * Math.pow(u.costMul, lvl));
+}
+
+// ---------- Grid Operations ----------
+function emptySlots() {
+  const out = [];
+  for (let i = 0; i < state.grid.length; i++) if (!state.grid[i]) out.push(i);
+  return out;
+}
+function spawnShuriken() {
+  const empties = emptySlots();
+  if (empties.length === 0) return false;
+  const idx = empties[Math.floor(Math.random() * empties.length)];
+  state.grid[idx] = { id: state.nextShurikenId++, level: getSpawnStartLevel(), fireTimer: rand(0, getFireInterval()) };
+  sfx('spawn');
+  renderGrid();
+  return true;
+}
+// Instant spawn (gem-paid premium). Skips waiting.
+function instantSpawn() {
+  if (state.gem < 1) { toast('💎 부족'); return false; }
+  const empties = emptySlots();
+  if (empties.length === 0) { toast('⚠ 그리드 가득참'); return false; }
+  state.gem -= 1;
+  spawnShuriken();
+  refreshUI();
+  save();
+  return true;
+}
+function tryMerge(fromIdx, toIdx) {
+  if (fromIdx === toIdx) return 'none';
+  const a = state.grid[fromIdx];
+  const b = state.grid[toIdx];
+  if (!a) return 'none';
+  if (!b) {
+    // move
+    state.grid[toIdx] = a;
+    state.grid[fromIdx] = null;
+    sfx('move');
+    return 'move';
+  }
+  if (a.level === b.level) {
+    state.grid[toIdx] = { id: state.nextShurikenId++, level: a.level + 1, fireTimer: rand(0, getFireInterval()) };
+    state.grid[fromIdx] = null;
+    const newLv = a.level + 1;
+    // Merge bonus gold: exponential reward
+    const mergeGold = Math.floor(Math.pow(2, newLv) * getGoldMul());
+    state.gold += mergeGold;
+    if (newLv > state.bestLevel) {
+      const wasNew = newLv > state.bestLevel;
+      state.bestLevel = newLv;
+      // gem reward for new max-level milestone
+      if (wasNew && newLv % 2 === 0) { state.gem += 1; toast(`💎 +1 (Lv ${newLv} 달성)`); }
+    }
+    if (newLv > state.runBestLevel) state.runBestLevel = newLv;
+    flashCell(toIdx);
+    sfx('merge');
+    return 'merge';
+  } else {
+    // swap
+    state.grid[toIdx] = a;
+    state.grid[fromIdx] = b;
+    sfx('move');
+    return 'swap';
+  }
+}
+function autoMergeStep() {
+  // find any same-level pair and merge once
+  const seen = new Map(); // level -> first idx
+  for (let i = 0; i < state.grid.length; i++) {
+    const c = state.grid[i];
+    if (!c) continue;
+    if (seen.has(c.level)) {
+      tryMerge(i, seen.get(c.level));
+      renderGrid();
+      return true;
+    }
+    seen.set(c.level, i);
+  }
+  return false;
+}
+
+// ---------- Enemy (DEAD — kept defined for legacy, never instantiated) ----------
+function enemyHpForStage(stage, isBoss = false) { return 1; }
+function enemyGoldForStage(stage, isBoss = false) { return 1; }
+class Enemy {
+  constructor(stage, isBoss = false) {
+    this.isBoss = isBoss;
+    // Position: centered in combat zone, stays still (original style)
+    this.x = W * 0.65;
+    this.y = H_combat / 2;
+    this.r = isBoss ? 38 : 22;
+    this.maxHp = enemyHpForStage(stage, isBoss);
+    this.hp = this.maxHp;
+    this.speed = 0; // does not move (idle target)
+    this.dead = false;
+    this.gold = enemyGoldForStage(stage, isBoss);
+    this.hitFlash = 0;
+    this.spinPhase = Math.random() * Math.PI * 2;
+    this.bobPhase = Math.random() * Math.PI * 2;
+    this.entryAnim = 1.0; // slide-in animation 0~1
+  }
+  takeDamage(dmg) {
+    this.hp -= dmg;
+    this.hitFlash = 0.12;
+    spawnDamageNumber(this.x, this.y - this.r, dmg);
+    if (this.hp <= 0) this.die();
+  }
+  die() {
+    if (this.dead) return;
+    this.dead = true;
+    const gold = Math.floor(this.gold * getGoldMul());
+    state.gold += gold;
+    spawnGoldBurst(this.x, this.y, this.isBoss ? 12 : 4);
+    spawnExplosion(this.x, this.y, this.r, this.isBoss ? '#ff4444' : '#ff9944');
+    if (this.isBoss) { shakeScreen(15); sfx('bossDie'); }
+    else { shakeScreen(2); sfx('kill'); }
+    onEnemyDefeated(this.isBoss);
+  }
+  update(dt) {
+    if (this.dead) return;
+    this.spinPhase += dt * 2;
+    this.bobPhase += dt * 3;
+    if (this.entryAnim > 0) this.entryAnim = Math.max(0, this.entryAnim - dt * 3);
+    if (this.hitFlash > 0) this.hitFlash -= dt;
+  }
+  draw(ctx) {
+    if (this.dead) return;
+    ctx.save();
+    // entry slide-in from right
+    const entryOffset = this.entryAnim * 80;
+    const bob = Math.sin(this.bobPhase) * 2;
+    ctx.translate(this.x + entryOffset, this.y + bob);
+    const flash = this.hitFlash > 0;
+    const color = flash ? '#fff' : (this.isBoss ? '#aa2222' : '#664444');
+    // shadow
+    ctx.fillStyle = 'rgba(0,0,0,0.4)';
+    ctx.beginPath();
+    ctx.ellipse(0, this.r + 4, this.r * 0.8, 3, 0, 0, Math.PI*2);
+    ctx.fill();
+    // body
+    ctx.fillStyle = color;
+    ctx.strokeStyle = '#000';
+    ctx.lineWidth = 2;
+    if (this.isBoss) {
+      ctx.beginPath();
+      const points = 8;
+      for (let i = 0; i < points * 2; i++) {
+        const r = i % 2 === 0 ? this.r : this.r * 0.7;
+        const a = (i / (points * 2)) * Math.PI * 2 + this.spinPhase * 0.3;
+        ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r);
+      }
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+    } else {
+      ctx.beginPath();
+      ctx.arc(0, 0, this.r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+    }
+    // eye
+    ctx.fillStyle = '#fff';
+    ctx.beginPath();
+    ctx.arc(-this.r * 0.25, -this.r * 0.15, this.r * 0.25, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#000';
+    ctx.beginPath();
+    ctx.arc(-this.r * 0.3, -this.r * 0.15, this.r * 0.12, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+    // HP bar
+    const hpRatio = this.hp / this.maxHp;
+    const barW = this.r * 2;
+    ctx.fillStyle = 'rgba(0,0,0,0.6)';
+    ctx.fillRect(this.x - barW/2, this.y - this.r - 8, barW, 4);
+    ctx.fillStyle = this.isBoss ? '#ff4444' : '#44ff44';
+    ctx.fillRect(this.x - barW/2, this.y - this.r - 8, barW * hpRatio, 4);
+  }
+}
+
+// ---------- Shuriken Projectile ----------
+class Projectile {
+  constructor(x, y, vx, vy, dmg, level) {
+    this.x = x; this.y = y; this.vx = vx; this.vy = vy;
+    this.dmg = dmg; this.level = level;
+    this.life = 2.5; this.age = 0;
+    this.spin = 0;
+    this.dead = false;
+    this.size = 6 + Math.min(12, level * 0.6);
+  }
+  update(dt) {
+    this.age += dt;
+    if (this.age > this.life) { this.dead = true; return; }
+    this.x += this.vx * dt;
+    this.y += this.vy * dt;
+    this.spin += dt * 30;
+    if (this.x < -40 || this.x > W + 40 || this.y < -40 || this.y > H_combat + 40) this.dead = true;
+    // hit detection
+    for (const e of enemies) {
+      if (e.dead) continue;
+      const dx = e.x - this.x;
+      const dy = e.y - this.y;
+      if (dx*dx + dy*dy < (e.r + this.size * 0.7) ** 2) {
+        e.takeDamage(this.dmg);
+        this.dead = true;
+        break;
+      }
+    }
+  }
+  draw(ctx) {
+    if (this.dead) return;
+    ctx.save();
+    ctx.translate(this.x, this.y);
+    ctx.rotate(this.spin);
+    const col = levelColor(this.level);
+    const glow = levelGlow(this.level);
+    if (glow > 0) { ctx.shadowColor = col; ctx.shadowBlur = glow; }
+    ctx.fillStyle = col;
+    ctx.strokeStyle = '#000';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    const pts = levelPoints(this.level) * 2;
+    for (let i = 0; i < pts; i++) {
+      const r = i % 2 === 0 ? this.size : this.size * 0.4;
+      const a = (i / pts) * Math.PI * 2;
+      ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r);
+    }
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+    ctx.restore();
+  }
+}
+
+// ---------- FX ----------
+const particles = [];
+const damageNumbers = [];
+
+function spawnGoldBurst(x, y, count) {
+  for (let i = 0; i < count; i++) {
+    particles.push({
+      x, y, vx: rand(-100, 100), vy: rand(-200, -50),
+      life: 0.7, maxLife: 0.7, color: '#ffd966', size: rand(3, 5), gravity: 400,
+    });
+  }
+}
+function spawnExplosion(x, y, r, color) {
+  for (let i = 0; i < 14; i++) {
+    const a = Math.random() * Math.PI * 2;
+    const sp = rand(50, 200);
+    particles.push({
+      x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp,
+      life: 0.5, maxLife: 0.5, color, size: rand(2, 4),
+    });
+  }
+}
+function spawnDamageNumber(x, y, dmg) {
+  damageNumbers.push({
+    x: x + rand(-6, 6), y, vy: -55,
+    life: 0.7, maxLife: 0.7,
+    text: fmt(dmg), color: '#ffffff', size: 12,
+  });
+}
+function updateFX(dt) {
+  // cap arrays
+  if (particles.length > 200) particles.splice(0, particles.length - 200);
+  if (damageNumbers.length > 40) damageNumbers.splice(0, damageNumbers.length - 40);
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.life -= dt;
+    if (p.life <= 0) { particles.splice(i, 1); continue; }
+    p.x += p.vx * dt; p.y += p.vy * dt;
+    if (p.gravity) p.vy += p.gravity * dt;
+  }
+  for (let i = damageNumbers.length - 1; i >= 0; i--) {
+    const d = damageNumbers[i];
+    d.life -= dt;
+    d.y += d.vy * dt;
+    d.vy *= 0.92;
+    if (d.life <= 0) damageNumbers.splice(i, 1);
+  }
+}
+function drawFX(ctx) {
+  for (const p of particles) {
+    ctx.globalAlpha = p.life / p.maxLife;
+    ctx.fillStyle = p.color;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+  for (const d of damageNumbers) {
+    ctx.globalAlpha = clamp(d.life / d.maxLife, 0, 1);
+    ctx.fillStyle = d.color;
+    ctx.strokeStyle = '#000';
+    ctx.lineWidth = 3;
+    ctx.font = `900 ${d.size}px sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.strokeText(d.text, d.x, d.y);
+    ctx.fillText(d.text, d.x, d.y);
+  }
+  ctx.globalAlpha = 1;
+}
+
+// ---------- Screen shake ----------
+let shake = 0;
+function shakeScreen(amt) { shake = Math.max(shake, amt); }
+
+// ---------- Audio ----------
+let _audio = null, _audioGain = null;
+function getAudio() {
+  if (!_audio) {
+    try {
+      _audio = new (window.AudioContext || window.webkitAudioContext)();
+      _audioGain = _audio.createGain();
+      _audioGain.gain.value = state.muted ? 0 : 0.12;
+      _audioGain.connect(_audio.destination);
+    } catch (e) { return null; }
+  }
+  if (_audio.state === 'suspended') _audio.resume();
+  return _audio;
+}
+function sfx(type) {
+  const a = getAudio(); if (!a) return;
+  const now = a.currentTime;
+  const osc = a.createOscillator();
+  const g = a.createGain();
+  osc.connect(g); g.connect(_audioGain);
+  let dur = 0.08;
+  switch (type) {
+    case 'spawn':
+      osc.type = 'sine'; osc.frequency.setValueAtTime(440, now);
+      osc.frequency.linearRampToValueAtTime(660, now + 0.08);
+      g.gain.setValueAtTime(0.5, now); g.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
+      dur = 0.1; break;
+    case 'merge':
+      osc.type = 'triangle'; osc.frequency.setValueAtTime(523, now);
+      osc.frequency.linearRampToValueAtTime(880, now + 0.18);
+      g.gain.setValueAtTime(0.7, now); g.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
+      dur = 0.2; break;
+    case 'move':
+      osc.type = 'square'; osc.frequency.setValueAtTime(220, now);
+      g.gain.setValueAtTime(0.3, now); g.gain.exponentialRampToValueAtTime(0.001, now + 0.04);
+      dur = 0.05; break;
+    case 'kill':
+      osc.type = 'triangle'; osc.frequency.setValueAtTime(660, now);
+      osc.frequency.exponentialRampToValueAtTime(330, now + 0.08);
+      g.gain.setValueAtTime(0.5, now); g.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
+      dur = 0.1; break;
+    case 'bossDie':
+      osc.type = 'sawtooth'; osc.frequency.setValueAtTime(220, now);
+      osc.frequency.exponentialRampToValueAtTime(55, now + 0.5);
+      g.gain.setValueAtTime(0.8, now); g.gain.exponentialRampToValueAtTime(0.001, now + 0.5);
+      dur = 0.5; break;
+    case 'fire':
+      osc.type = 'square'; osc.frequency.setValueAtTime(880, now);
+      g.gain.setValueAtTime(0.2, now); g.gain.exponentialRampToValueAtTime(0.001, now + 0.03);
+      dur = 0.04; break;
+  }
+  osc.start(now); osc.stop(now + dur + 0.02);
+}
+
+// ---------- Combat removed in v2.5 ----------
+// No canvas, no enemies, no projectiles. Gold is passive based on grid.
+const enemies = [];      // empty stub (referenced by some dead class methods)
+const projectiles = [];  // empty stub
+let W = 400, H_combat = 240; // stubs for dead Enemy class
+function startStage() { /* no-op in v2.5 */ }
+function nearestEnemy() { return null; }
+function tickGrid(dt) { /* no shurikens fire — gold is passive */ }
+
+// ---------- Game Loop ----------
+let lastTime = 0;
+function gameLoop(now) {
+  const dt = Math.min(0.05, (now - lastTime) / 1000) || 0;
+  lastTime = now;
+  update(dt);
+  render();
+  requestAnimationFrame(gameLoop);
+}
+
+let autoMergeTimer = 0;
+let goldFractional = 0; // accumulator for sub-1 gold/sec
+
+function update(dt) {
+  // Time-based shuriken generator
+  if (emptySlots().length > 0) {
+    state.spawnProgress += dt / getSpawnInterval();
+    while (state.spawnProgress >= 1 && emptySlots().length > 0) {
+      state.spawnProgress -= 1;
+      const batch = getSpawnBatch();
+      for (let i = 0; i < batch; i++) {
+        if (emptySlots().length === 0) break;
+        spawnShuriken();
+      }
+    }
+  } else {
+    state.spawnProgress = Math.min(state.spawnProgress, 1);
+  }
+
+  // Passive gold: each shuriken contributes exponentially by level
+  // Lv1 = 0.5 / sec, Lv2 = 1, Lv3 = 2, Lv5 = 8, Lv10 = 256, etc.
+  let goldRate = 0;
+  for (const c of state.grid) {
+    if (c) goldRate += 0.5 * Math.pow(2, c.level - 1);
+  }
+  goldRate *= getGoldMul();
+  goldFractional += goldRate * dt;
+  if (goldFractional >= 1) {
+    const earn = Math.floor(goldFractional);
+    state.gold += earn;
+    goldFractional -= earn;
+  }
+
+  // auto merge
+  if (state.autoMerge) {
+    autoMergeTimer -= dt;
+    if (autoMergeTimer <= 0) {
+      autoMergeTimer = 0.5;
+      autoMergeStep();
+    }
+  }
+}
+
+function render() {
+  // No canvas in v2.5 — just HUD updates
+  updateHUD();
+}
+
+// ---------- HUD ----------
+function updateHUD() {
+  document.getElementById('gold').textContent = fmt(state.gold);
+  document.getElementById('gem').textContent = state.gem;
+  document.getElementById('stage-name').textContent =
+    `최고 Lv ${state.bestLevel} · 이번 run ${state.runBestLevel}`;
+  // shuriken count / max display
+  const totalSlots = state.grid.length;
+  const heldCount = totalSlots - emptySlots().length;
+  const scEl = document.getElementById('shuriken-count');
+  const smEl = document.getElementById('shuriken-max');
+  const biEl = document.getElementById('batch-info');
+  if (scEl) scEl.textContent = heldCount;
+  if (smEl) smEl.textContent = totalSlots;
+  if (biEl) biEl.textContent = '×' + getSpawnBatch();
+  // Time-based generator UI
+  const empties = emptySlots().length;
+  const isFull = empties === 0;
+  const fillPct = isFull ? 100 : Math.min(100, state.spawnProgress * 100);
+  document.getElementById('spawn-progress-fill').style.width = fillPct + '%';
+  // mirror to top wave-bar
+  const waveFill = document.getElementById('wave-fill');
+  if (waveFill) waveFill.style.width = fillPct + '%';
+  const interval = getSpawnInterval();
+  const remaining = isFull ? 0 : Math.max(0, (1 - state.spawnProgress) * interval);
+  document.getElementById('spawn-time-label').textContent = isFull
+    ? '⚠ 그리드 가득참' : remaining.toFixed(1) + 's';
+  document.getElementById('spawn-progress-bar').classList.toggle('full', isFull);
+  document.getElementById('spawn-progress-label').innerHTML = isFull
+    ? '<span style="color:#ffaa44">합쳐서 공간을 확보하세요</span>'
+    : `다음 표창 · <span id="spawn-time-label">${remaining.toFixed(1)}s</span> · <span style="color:#ffd966">탭하여 가속</span>`;
+  const instBtn = document.getElementById('instant-spawn-btn');
+  instBtn.disabled = state.gem < 1 || isFull;
+  document.getElementById('auto-merge-btn').className = 'auto-btn' + (state.autoMerge ? ' on' : '');
+  document.getElementById('auto-merge-btn').textContent = `⚙ 자동합치기 ${state.autoMerge ? 'ON' : 'OFF'}`;
+}
+
+// ---------- Grid Render ----------
+const gridEl = document.getElementById('grid');
+let selectedIdx = -1;
+
+function renderGrid() {
+  const size = getGridSize();
+  const cols = getGridCols();
+  // resize state.grid if needed
+  while (state.grid.length < size) state.grid.push(null);
+  gridEl.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
+  gridEl.style.gridTemplateRows = `repeat(${Math.ceil(size / cols)}, 1fr)`;
+  // reuse cells if possible
+  gridEl.innerHTML = '';
+  for (let i = 0; i < size; i++) {
+    const cell = document.createElement('div');
+    cell.className = 'cell';
+    cell.dataset.idx = i;
+    const c = state.grid[i];
+    if (!c) cell.classList.add('empty');
+    if (selectedIdx === i) cell.classList.add('selected');
+    if (c) {
+      const lvLabel = document.createElement('div');
+      lvLabel.className = 'lv-label';
+      lvLabel.textContent = 'Lv' + c.level;
+      lvLabel.style.color = levelColor(c.level);
+      cell.appendChild(lvLabel);
+      const inner = document.createElement('div');
+      inner.className = 'shuriken';
+      const sCanvas = document.createElement('canvas');
+      sCanvas.width = 80; sCanvas.height = 80;
+      drawShurikenSprite(sCanvas, c.level);
+      inner.appendChild(sCanvas);
+      cell.appendChild(inner);
+    }
+    cell.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      getAudio();
+      handleCellTap(i);
+    });
+    gridEl.appendChild(cell);
+  }
+}
+
+function drawShurikenSprite(canvas, level) {
+  const c = canvas.getContext('2d');
+  const cx = canvas.width / 2, cy = canvas.height / 2;
+  const s = Math.min(cx, cy) * 0.85;
+  const col = levelColor(level);
+  const glow = levelGlow(level);
+  c.clearRect(0, 0, canvas.width, canvas.height);
+  c.save();
+  c.translate(cx, cy);
+  // gentle rotation by timestamp
+  c.rotate((Date.now() / 1000 + level * 0.7) * 0.4);
+  if (glow > 0) { c.shadowColor = col; c.shadowBlur = glow; }
+  c.fillStyle = col;
+  c.strokeStyle = '#000';
+  c.lineWidth = 1.5;
+  c.beginPath();
+  const pts = levelPoints(level) * 2;
+  for (let i = 0; i < pts; i++) {
+    const r = i % 2 === 0 ? s : s * 0.4;
+    const a = (i / pts) * Math.PI * 2;
+    c.lineTo(Math.cos(a) * r, Math.sin(a) * r);
+  }
+  c.closePath();
+  c.fill();
+  c.stroke();
+  c.shadowBlur = 0;
+  // center hole
+  c.fillStyle = '#222';
+  c.beginPath();
+  c.arc(0, 0, s * 0.16, 0, Math.PI * 2);
+  c.fill();
+  // luster ring for higher levels
+  if (level >= 5) {
+    c.strokeStyle = '#ffffff';
+    c.globalAlpha = 0.4;
+    c.lineWidth = 1;
+    c.beginPath();
+    c.arc(0, 0, s * 0.55, 0, Math.PI * 2);
+    c.stroke();
+    c.globalAlpha = 1;
+  }
+  c.restore();
+}
+
+// Re-paint all grid shuriken sprites periodically for rotation animation
+function repaintGridSprites() {
+  const cells = gridEl.querySelectorAll('.cell');
+  cells.forEach(cell => {
+    const idx = parseInt(cell.dataset.idx);
+    const c = state.grid[idx];
+    if (!c) return;
+    const sCanvas = cell.querySelector('canvas');
+    if (sCanvas) drawShurikenSprite(sCanvas, c.level);
+  });
+}
+
+function flashCell(idx) {
+  const cell = gridEl.querySelector(`[data-idx="${idx}"]`);
+  if (!cell) return;
+  cell.style.transition = 'transform 0.2s, box-shadow 0.2s';
+  cell.style.transform = 'scale(1.18)';
+  cell.style.boxShadow = '0 0 16px #ffd966';
+  setTimeout(() => {
+    cell.style.transform = '';
+    cell.style.boxShadow = '';
+  }, 250);
+}
+
+function handleCellTap(idx) {
+  if (selectedIdx < 0) {
+    if (!state.grid[idx]) return;
+    selectedIdx = idx;
+    renderGrid();
+    return;
+  }
+  if (selectedIdx === idx) {
+    selectedIdx = -1;
+    renderGrid();
+    return;
+  }
+  // Capture pre-merge state for animation
+  const fromIdx = selectedIdx;
+  const toIdx = idx;
+  const aLv = state.grid[fromIdx] ? state.grid[fromIdx].level : null;
+  const bLv = state.grid[toIdx] ? state.grid[toIdx].level : null;
+  const willMerge = aLv !== null && bLv !== null && aLv === bLv;
+  // Capture DOM rects BEFORE state mutation / re-render
+  let fromRect = null, toRect = null;
+  if (willMerge) {
+    const fromCell = gridEl.querySelector(`[data-idx="${fromIdx}"]`);
+    const toCell   = gridEl.querySelector(`[data-idx="${toIdx}"]`);
+    if (fromCell && toCell) {
+      fromRect = fromCell.getBoundingClientRect();
+      toRect   = toCell.getBoundingClientRect();
+    }
+  }
+  const result = tryMerge(fromIdx, toIdx);
+  selectedIdx = -1;
+  renderGrid();
+  refreshUI();
+  save();
+  if (willMerge && result === 'merge' && fromRect && toRect) {
+    playMergeAnim(fromRect, toRect, aLv, toIdx);
+  }
+}
+
+// Multi-layered merge motion:
+//   ghost flies from source → target with a colored particle trail,
+//   on arrival: full-screen color flash, 2 expanding rings,
+//   10 sparkle particles flying outward, and the merged sprite pops in
+//   with overshoot + rotation. Color is taken from the NEW level.
+function playMergeAnim(fromRect, toRect, sourceLevel, toIdx) {
+  const newLevel = sourceLevel + 1;
+  const color = levelColor(newLevel);
+  const FLIGHT_MS = 300;
+
+  // Center points for trail & burst
+  const fromCx = fromRect.left + fromRect.width / 2;
+  const fromCy = fromRect.top  + fromRect.height / 2;
+  const toCx   = toRect.left   + toRect.width / 2;
+  const toCy   = toRect.top    + toRect.height / 2;
+
+  // 1) Flying ghost shuriken (renders source level sprite)
+  const ghost = document.createElement('div');
+  ghost.className = 'merge-ghost';
+  ghost.style.color = color; // for drop-shadow currentColor
+  ghost.style.left  = fromRect.left + 'px';
+  ghost.style.top   = fromRect.top  + 'px';
+  ghost.style.width  = fromRect.width  + 'px';
+  ghost.style.height = fromRect.height + 'px';
+  const gc = document.createElement('canvas');
+  gc.width = 80; gc.height = 80;
+  drawShurikenSprite(gc, sourceLevel);
+  ghost.appendChild(gc);
+  document.body.appendChild(ghost);
+
+  // 2) Hide the merged sprite at target — will materialize after burst
+  const toCell = gridEl.querySelector(`[data-idx="${toIdx}"]`);
+  const targetInner = toCell ? toCell.querySelector('.shuriken') : null;
+  if (targetInner) {
+    targetInner.style.transition = 'none';
+    targetInner.style.opacity = '0';
+    targetInner.style.transform = 'scale(0.05) rotate(-360deg)';
+  }
+
+  // 3) Force reflow then animate ghost toward target
+  ghost.getBoundingClientRect();
+  const dx = toRect.left - fromRect.left;
+  const dy = toRect.top  - fromRect.top;
+  ghost.style.transform = `translate(${dx}px, ${dy}px) scale(0.45) rotate(720deg)`;
+  ghost.style.opacity = '0.55';
+  ghost.style.filter  = 'brightness(1.4)';
+
+  // 4) Particle trail during flight (dropped every ~36ms along the path)
+  const startTime = Date.now();
+  const trailInterval = setInterval(() => {
+    const t = (Date.now() - startTime) / FLIGHT_MS;
+    if (t >= 0.95) { clearInterval(trailInterval); return; }
+    // ease-in curve for the trail position (matches flight ease)
+    const easeT = t * t * (3 - 2 * t);
+    const cx = fromCx + (toCx - fromCx) * easeT;
+    const cy = fromCy + (toCy - fromCy) * easeT;
+    const trail = document.createElement('div');
+    trail.className = 'merge-trail';
+    const sz = 7 + Math.random() * 6;
+    trail.style.left = (cx - sz/2 + rand(-4, 4)) + 'px';
+    trail.style.top  = (cy - sz/2 + rand(-4, 4)) + 'px';
+    trail.style.width  = sz + 'px';
+    trail.style.height = sz + 'px';
+    trail.style.background = color;
+    trail.style.boxShadow  = '0 0 10px ' + color;
+    document.body.appendChild(trail);
+    requestAnimationFrame(() => trail.classList.add('fade'));
+    setTimeout(() => trail.remove(), 560);
+  }, 36);
+
+  // 5) On arrival: massive multi-layer burst
+  setTimeout(() => {
+    clearInterval(trailInterval);
+    ghost.remove();
+
+    // 5a) full-screen color tint flash (mix-blend screen)
+    const flash = document.createElement('div');
+    flash.className = 'merge-flash';
+    flash.style.background = color;
+    document.body.appendChild(flash);
+    requestAnimationFrame(() => flash.classList.add('show'));
+    setTimeout(() => flash.classList.remove('show'), 60);
+    setTimeout(() => flash.remove(), 400);
+
+    // 5b) primary radial burst at target
+    const burst = document.createElement('div');
+    burst.className = 'merge-burst';
+    const bsz = Math.max(toRect.width, toRect.height) * 1.5;
+    burst.style.left = (toCx - bsz/2) + 'px';
+    burst.style.top  = (toCy - bsz/2) + 'px';
+    burst.style.width  = bsz + 'px';
+    burst.style.height = bsz + 'px';
+    burst.style.background = `radial-gradient(circle, ${color}cc 0%, ${color}55 40%, transparent 75%)`;
+    document.body.appendChild(burst);
+    burst.getBoundingClientRect();
+    burst.classList.add('expand');
+    setTimeout(() => burst.remove(), 380);
+
+    // 5c) secondary ring (delayed 60ms, smaller)
+    setTimeout(() => {
+      const ring = document.createElement('div');
+      ring.className = 'merge-ring2';
+      ring.style.color = color;
+      const rsz = Math.max(toRect.width, toRect.height) * 1.1;
+      ring.style.left = (toCx - rsz/2) + 'px';
+      ring.style.top  = (toCy - rsz/2) + 'px';
+      ring.style.width  = rsz + 'px';
+      ring.style.height = rsz + 'px';
+      document.body.appendChild(ring);
+      ring.getBoundingClientRect();
+      ring.classList.add('expand');
+      setTimeout(() => ring.remove(), 520);
+    }, 60);
+
+    // 5d) Sparkle burst — 12 particles flying outward
+    const N_SPARK = 12;
+    for (let i = 0; i < N_SPARK; i++) {
+      const sp = document.createElement('div');
+      sp.className = 'merge-sparkle';
+      sp.style.left = (toCx - 3.5) + 'px';
+      sp.style.top  = (toCy - 3.5) + 'px';
+      sp.style.background = color;
+      sp.style.boxShadow  = '0 0 10px ' + color;
+      document.body.appendChild(sp);
+      const ang = (i / N_SPARK) * Math.PI * 2 + rand(-0.25, 0.25);
+      const dist = 45 + Math.random() * 35;
+      requestAnimationFrame(() => {
+        sp.style.transform = `translate(${Math.cos(ang) * dist}px, ${Math.sin(ang) * dist}px) scale(${0.4 + Math.random() * 0.4})`;
+        sp.classList.add('go');
+      });
+      setTimeout(() => sp.remove(), 580);
+    }
+
+    // 5e) New sprite materializes with overshoot bounce
+    if (targetInner) {
+      targetInner.style.transition = 'opacity 0.2s ease-out, transform 0.42s cubic-bezier(0.34, 1.7, 0.5, 1)';
+      targetInner.style.opacity = '1';
+      targetInner.style.transform = 'scale(1) rotate(0deg)';
+    }
+  }, FLIGHT_MS);
+}
+
+// ---------- Panel UI ----------
+function refreshUI() {
+  renderGrid();
+  renderUpgrades();
+  document.getElementById('dps-info').textContent = `${fmt(getPassiveGoldRate())} 골드/sec`;
+  document.getElementById('best-info').textContent = `최고 Lv ${state.bestLevel} · 이번 run Lv ${state.runBestLevel}`;
+  renderPrestige();
+}
+function getPassiveGoldRate() {
+  let r = 0;
+  for (const c of state.grid) {
+    if (c) r += 0.5 * Math.pow(2, c.level - 1);
+  }
+  return r * getGoldMul();
+}
+function isUpgradeMaxed(id) {
+  if (id === 'maxShuriken') return state.upgrades.maxShuriken >= MAX_SHURIKEN_CAP - 6;
+  if (id === 'spawnBatch')  return state.upgrades.spawnBatch  >= SPAWN_BATCH_CAP - 1;
+  return false;
+}
+function renderUpgrades() {
+  const list = document.getElementById('upgrade-list');
+  list.innerHTML = '';
+  for (const u of UPGRADES) {
+    const lvl = state.upgrades[u.id];
+    const max = isUpgradeMaxed(u.id);
+    const cost = getUpgradeCost(u);
+    const can = !max && state.gold >= cost;
+    const div = document.createElement('div');
+    div.className = 'upgrade-card';
+    // display current value next to lv for the important ones
+    let valueHint = '';
+    if (u.id === 'maxShuriken') valueHint = ` <span style="color:#a8e6ff;font-size:10px;">(현 ${getGridSize()})</span>`;
+    else if (u.id === 'spawnBatch') valueHint = ` <span style="color:#a8e6ff;font-size:10px;">(×${getSpawnBatch()})</span>`;
+    else if (u.id === 'spawnRate') valueHint = ` <span style="color:#a8e6ff;font-size:10px;">(${getSpawnInterval().toFixed(1)}s)</span>`;
+    else if (u.id === 'spawnLevel') valueHint = ` <span style="color:#a8e6ff;font-size:10px;">(Lv ${getSpawnStartLevel()})</span>`;
+    div.innerHTML = `
+      <div class="upgrade-info">
+        <div class="upgrade-title">${u.name} <span class="upgrade-lv">Lv ${lvl}</span>${valueHint}</div>
+        <div class="upgrade-sub">${u.desc}</div>
+      </div>
+      <button class="upgrade-btn" ${can ? '' : 'disabled'} data-up="${u.id}">
+        ${max ? '최대' : `💰 ${fmt(cost)}`}
+      </button>
+    `;
+    list.appendChild(div);
+  }
+  list.querySelectorAll('[data-up]').forEach(b => {
+    b.onclick = () => {
+      const id = b.dataset.up;
+      const u = UPGRADES.find(x => x.id === id);
+      if (isUpgradeMaxed(id)) return;
+      const cost = getUpgradeCost(u);
+      if (state.gold < cost) return;
+      state.gold -= cost;
+      state.upgrades[id]++;
+      if (id === 'maxShuriken') {
+        // grow grid by 1 slot
+        state.grid.push(null);
+      }
+      refreshUI();
+      save();
+    };
+  });
+}
+function renderPrestige() {
+  const gain = getPrestigeGain();
+  const info = document.getElementById('prestige-info');
+  const btn = document.getElementById('prestige-btn');
+  if (state.bestLevel < 8) {
+    info.textContent = `Lv 8 도달 시 윤회 가능 (현재 최고 Lv ${state.bestLevel})`;
+    btn.disabled = true; btn.textContent = '잠김';
+  } else {
+    info.innerHTML = `윤회 시 영구 데미지/골드 +50%/회<br>총 윤회 ${state.prestigeCount}회 · 이번 +${gain} 효과 미사용 (단순 multiplier)`;
+    btn.disabled = false;
+    btn.textContent = '윤회';
+    btn.onclick = () => {
+      if (!confirm(`윤회하시겠습니까? 진행도 reset, 영구 +50% dmg/gold (총 ${(state.prestigeCount+1)*50}% 누적).`)) return;
+      state.prestigeCount++;
+      state.gold = 0;
+      state.stage = 1;
+      state.enemiesInStage = 0;
+      state.runBestLevel = 1;
+      // preserve grid size + spawn batch (capital investments) on prestige
+      const keepMax = state.upgrades.maxShuriken;
+      const keepBatch = state.upgrades.spawnBatch;
+      state.upgrades = { maxShuriken: keepMax, spawnRate:0, spawnBatch: keepBatch, firerate:0, baseDmg:0, goldMul:0, spawnLevel:0 };
+      state.grid = new Array(getGridSize()).fill(null);
+      startStage();
+      refreshUI();
+      save();
+      toast(`🌟 윤회! +50% 영구 강화`);
+    };
+  }
+}
+
+// ---------- Toast ----------
+function toast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(toast._t);
+  toast._t = setTimeout(() => t.classList.remove('show'), 2000);
+}
+
+// ---------- Spawn / Auto buttons ----------
+document.getElementById('instant-spawn-btn').addEventListener('click', (e) => {
+  e.preventDefault(); getAudio(); instantSpawn();
+});
+document.getElementById('auto-merge-btn').addEventListener('click', () => {
+  state.autoMerge = !state.autoMerge;
+  if (state.autoMerge) autoMergeTimer = 0;
+  refreshUI(); save();
+});
+
+// Tap progress bar to speed up generation (click power)
+const CLICK_PROGRESS = 0.06; // 6% per click → ~17 taps to fill
+document.getElementById('spawn-progress-wrap').addEventListener('pointerdown', (e) => {
+  e.preventDefault();
+  getAudio();
+  if (emptySlots().length === 0) return; // wasted clicks on full grid
+  state.spawnProgress = Math.min(1, state.spawnProgress + CLICK_PROGRESS);
+  sfx('move');
+  // visual pulse on bar
+  const fill = document.getElementById('spawn-progress-fill');
+  fill.style.transition = 'transform 0.08s, width 0.08s linear, filter 0.08s';
+  fill.style.filter = 'brightness(1.5)';
+  setTimeout(() => { fill.style.filter = ''; }, 100);
+});
+
+// ---------- Footer ----------
+document.getElementById('save-btn').onclick = () => { save(); toast('💾 저장됨'); };
+function applyMute() {
+  if (_audioGain) _audioGain.gain.value = state.muted ? 0 : 0.12;
+  document.getElementById('mute-btn').textContent = state.muted ? '🔇' : '🔊';
+}
+document.getElementById('mute-btn').onclick = () => {
+  state.muted = !state.muted;
+  localStorage.setItem('shuriken_v2_muted', state.muted ? '1' : '0');
+  getAudio();
+  applyMute();
+};
+document.getElementById('reset-btn').onclick = () => {
+  if (!confirm('정말 모든 진행도를 초기화합니까?')) return;
+  localStorage.removeItem(SAVE_KEY);
+  state = defaultState();
+  startStage();
+  refreshUI();
+  toast('🔄 초기화');
+};
+
+// ---------- Boot ----------
+function boot() {
+  const loaded = load();
+  // first-time player: start with progress near full (first spawn quickly)
+  if (!loaded) {
+    state.spawnProgress = 0.6;
+  }
+  startStage();
+  refreshUI();
+  applyMute();
+  setInterval(save, 10000);
+  setInterval(repaintGridSprites, 100);
+  requestAnimationFrame(gameLoop);
+}
+boot();
+</script>
+</body>
+</html>
