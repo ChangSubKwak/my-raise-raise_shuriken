@@ -290,6 +290,25 @@
     font-family: inherit; font-size: 11px; font-weight: 600; cursor: pointer;
   }
   .auto-btn.on { background: rgba(74,142,74,0.4); border-color: #6a8e6a; color: #afe; }
+  #burn-btn {
+    flex: 0.85; padding: 8px 6px;
+    background: linear-gradient(180deg, #ff5533, #aa2200);
+    border: 1px solid #ff7744; border-radius: 8px; color: #fff;
+    font-family: inherit; font-size: 11px; font-weight: 700; cursor: pointer;
+    box-shadow: 0 0 8px rgba(255,80,40,0.3);
+  }
+  #burn-btn:active { transform: scale(0.94); }
+  #burn-btn.active {
+    animation: burnPulse 0.5s ease-in-out infinite alternate;
+  }
+  @keyframes burnPulse {
+    from { box-shadow: 0 0 8px #ff5533aa, 0 0 0 rgba(255,80,40,0.3); }
+    to   { box-shadow: 0 0 18px #ffaa44, 0 0 26px rgba(255,170,50,0.5); }
+  }
+  /* burning mode body tint */
+  body.burning #stage {
+    box-shadow: inset 0 0 60px rgba(255, 80, 40, 0.25);
+  }
 
   /* Panel */
   #panel .section-title {
@@ -398,6 +417,7 @@
       </div>
       <button id="instant-spawn-btn" title="💎 1로 즉시 소환">💎 즉시</button>
       <button class="auto-btn" id="auto-merge-btn">⚙ 자동합치기 OFF</button>
+      <button id="burn-btn" title="💎 10 — 30초 버닝 모드">🔥 버닝</button>
     </div>
   </div>
 
@@ -574,6 +594,8 @@ function defaultState() {
     // Combo (chain merges) — not persisted; reset on load
     comboCount: 0,
     comboTimer: 0,
+    // Burning mode — temporary boosted state
+    burningTimer: 0,
     // ── Lifetime stats (survive prestige; visible in stats panel) ─────
     stats: {
       totalMerges: 0,
@@ -649,9 +671,26 @@ function getFireInterval() {
   const base = 2.0;
   return Math.max(0.25, base * Math.pow(0.95, state.upgrades.firerate));
 }
+function isBurning() { return (state.burningTimer || 0) > 0; }
 function getSpawnInterval() {
-  const base = 12.0; // slower default — merge focus
-  return Math.max(1.0, base * Math.pow(0.95, state.upgrades.spawnRate));
+  const base = 12.0;
+  const burnMul = isBurning() ? (1 / 3) : 1; // 3× faster when burning
+  return Math.max(0.4, base * Math.pow(0.95, state.upgrades.spawnRate) * burnMul);
+}
+
+const BURNING_DURATION = 30;
+const BURNING_COST = 10;
+function activateBurning() {
+  if (isBurning()) { toast('이미 버닝 중'); return; }
+  if (state.gem < BURNING_COST) { toast(`💎 ${BURNING_COST} 필요 (현재 ${state.gem})`); return; }
+  state.gem -= BURNING_COST;
+  state.burningTimer = BURNING_DURATION;
+  state.autoMerge = true; // force auto-merge ON while burning
+  toast('🔥 버닝 30초 — 자동합성 + 가속');
+  sfx('merge');
+  setTimeout(() => sfx('spawn'), 100);
+  refreshUI();
+  save();
 }
 function getBaseDmg() {
   return 5 + state.upgrades.baseDmg * 2;
@@ -1109,6 +1148,14 @@ function update(dt) {
       hideComboToast();
     }
   }
+  // Burning mode timer
+  if (state.burningTimer > 0) {
+    state.burningTimer -= dt;
+    if (state.burningTimer <= 0) {
+      state.burningTimer = 0;
+      toast('🔥 버닝 종료');
+    }
+  }
   goldFractional += goldRate * dt;
   if (goldFractional >= 1) {
     const earn = Math.floor(goldFractional);
@@ -1181,6 +1228,19 @@ function updateHUD() {
   instBtn.disabled = state.gem < 1 || isFull;
   document.getElementById('auto-merge-btn').className = 'auto-btn' + (state.autoMerge ? ' on' : '');
   document.getElementById('auto-merge-btn').textContent = `⚙ 자동합치기 ${state.autoMerge ? 'ON' : 'OFF'}`;
+  // Burning UI
+  const burnBtn = document.getElementById('burn-btn');
+  if (burnBtn) {
+    if (isBurning()) {
+      burnBtn.classList.add('active');
+      burnBtn.textContent = `🔥 ${Math.ceil(state.burningTimer)}s`;
+      document.body.classList.add('burning');
+    } else {
+      burnBtn.classList.remove('active');
+      burnBtn.textContent = `🔥 버닝 (💎${BURNING_COST})`;
+      document.body.classList.remove('burning');
+    }
+  }
 }
 
 // ---------- Grid Render ----------
@@ -2019,6 +2079,10 @@ document.getElementById('auto-merge-btn').addEventListener('click', () => {
   state.autoMerge = !state.autoMerge;
   if (state.autoMerge) autoMergeTimer = 0;
   refreshUI(); save();
+});
+document.getElementById('burn-btn').addEventListener('click', () => {
+  getAudio();
+  activateBurning();
 });
 
 // Tap progress bar to speed up generation (click power)
