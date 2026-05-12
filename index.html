@@ -554,6 +554,36 @@ function levelTier(lv) {
   return                { id: 'mystic', name: '玄' };
 }
 
+// Per-level Korean name (원작 명명 스타일 — each level has identity)
+const LEVEL_NAMES = [
+  null,                  // index 0
+  '나무 표창',           // 1 — wood
+  '대나무 표창',         // 2
+  '단단한 목창',         // 3
+  '쇠 표창',             // 4 — iron
+  '단조 철창',           // 5
+  '강철 표창',           // 6
+  '은빛 표창',           // 7 — silver
+  '백은 표창',           // 8
+  '월광 표창',           // 9
+  '황금 표창',           // 10 — gold
+  '용금 표창',           // 11
+  '천금 표창',           // 12
+  '현철 표창',           // 13 — mystic
+  '암현 표창',           // 14
+  '귀창(鬼槍)',          // 15
+  '천창(天槍)',          // 16
+  '신창(神槍)',          // 17
+  '명창(冥槍)',          // 18
+  '환영창',              // 19
+  '극창(極槍)',          // 20
+];
+function levelName(lv) {
+  if (lv <= 0) return '미상';
+  if (lv < LEVEL_NAMES.length) return LEVEL_NAMES[lv];
+  return `초월 ${lv}창`;
+}
+
 // ---------- Upgrade Definitions ----------
 // Based on original 표창키우기: "최대 개수 증가", "제작시간 감소", "제작 최대치 증가"
 const UPGRADES = [
@@ -1228,7 +1258,7 @@ function updateHUD() {
   document.getElementById('gold').textContent = fmt(state.gold);
   document.getElementById('gem').textContent = state.gem;
   document.getElementById('stage-name').textContent =
-    `최고 Lv ${state.bestLevel} · 이번 run ${state.runBestLevel}`;
+    `${levelName(state.bestLevel)} (Lv ${state.bestLevel})`;
   // shuriken count / max display
   const totalSlots = state.grid.length;
   const heldCount = totalSlots - emptySlots().length;
@@ -1306,6 +1336,7 @@ function renderGrid() {
       lvLabel.textContent = 'Lv' + c.level;
       lvLabel.style.color = levelColor(c.level);
       cell.appendChild(lvLabel);
+      cell.title = `Lv ${c.level} · ${levelName(c.level)}`;
       const inner = document.createElement('div');
       inner.className = 'shuriken';
       const sCanvas = document.createElement('canvas');
@@ -1953,7 +1984,8 @@ function showRecordOverlay(level) {
   if (!overlay) return;
   document.getElementById('record-tier').textContent = tier.name;
   document.getElementById('record-tier').style.color = color;
-  document.getElementById('record-level').textContent = `Lv ${level} 표창 도달`;
+  document.getElementById('record-level').innerHTML =
+    `Lv ${level} 「${levelName(level)}」 도달`;
   document.getElementById('record-sub').textContent = TIER_SUBTITLE[tier.id] || '새 경지';
   document.getElementById('record-canvas-wrap').style.color = color;
   const rcanvas = document.getElementById('record-canvas');
