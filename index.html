@@ -109,6 +109,25 @@
     will-change: transform, opacity;
   }
 
+  /* Combo indicator (active merge streak) */
+  #combo-indicator {
+    position: fixed; top: 70px; right: 16px; z-index: 100;
+    pointer-events: none; opacity: 0;
+    background: linear-gradient(135deg, #ffd966, #ff8844);
+    color: #1a0c00; font-weight: 900;
+    padding: 6px 12px; border-radius: 20px;
+    box-shadow: 0 4px 14px rgba(255, 170, 50, 0.4);
+    display: inline-flex; align-items: baseline; gap: 6px;
+    transform: scale(0.5) translateX(20px);
+    transition: opacity 0.18s ease-out, transform 0.32s cubic-bezier(0.34, 1.6, 0.5, 1);
+  }
+  #combo-indicator.show {
+    opacity: 1; transform: scale(1) translateX(0);
+  }
+  #combo-indicator .combo-x { font-size: 18px; }
+  #combo-indicator .combo-label { font-size: 11px; letter-spacing: 1px; }
+  #combo-indicator .combo-mul { font-size: 13px; color: #5a2200; }
+
   /* New-level-record celebration overlay */
   #record-overlay {
     position: fixed; inset: 0; pointer-events: none; z-index: 250;
@@ -346,6 +365,12 @@
   </div>
 </div>
 
+<div id="combo-indicator">
+  <span class="combo-x" id="combo-x">×3</span>
+  <span class="combo-label">콤보!</span>
+  <span class="combo-mul" id="combo-mul">+40%</span>
+</div>
+
 <div id="record-overlay">
   <div class="record-box">
     <div class="record-title">NEW RECORD</div>
@@ -458,6 +483,9 @@ function defaultState() {
     autoMerge: false,
     lastSave: Date.now(),
     muted: localStorage.getItem('shuriken_v2_muted') === '1',
+    // Combo (chain merges) — not persisted; reset on load
+    comboCount: 0,
+    comboTimer: 0,
     // ── Lifetime stats (survive prestige; visible in stats panel) ─────
     stats: {
       totalMerges: 0,
@@ -589,10 +617,15 @@ function tryMerge(fromIdx, toIdx) {
     state.grid[toIdx] = { id: state.nextShurikenId++, level: a.level + 1, fireTimer: rand(0, getFireInterval()) };
     state.grid[fromIdx] = null;
     const newLv = a.level + 1;
-    const mergeGold = Math.floor(Math.pow(2, newLv) * getGoldMul());
+    // Combo: chain merges within 2.5s → escalating bonus
+    state.comboCount = (state.comboCount || 0) + 1;
+    state.comboTimer = 2.5;
+    const comboMult = 1 + (state.comboCount - 1) * 0.2; // ×1.0, 1.2, 1.4, ...
+    const mergeGold = Math.floor(Math.pow(2, newLv) * getGoldMul() * comboMult);
     state.gold += mergeGold;
     state.stats.totalMerges = (state.stats.totalMerges || 0) + 1;
     state.stats.totalGoldEarned = (state.stats.totalGoldEarned || 0) + mergeGold;
+    if (state.comboCount >= 3) showComboToast(state.comboCount, comboMult);
     const isNewRecord = newLv > state.bestLevel;
     if (isNewRecord) {
       state.bestLevel = newLv;
@@ -957,6 +990,14 @@ function update(dt) {
     if (c) goldRate += 0.5 * Math.pow(2, c.level - 1);
   }
   goldRate *= getGoldMul();
+  // Combo timer tick — resets count when expired
+  if (state.comboTimer > 0) {
+    state.comboTimer -= dt;
+    if (state.comboTimer <= 0) {
+      state.comboCount = 0;
+      hideComboToast();
+    }
+  }
   goldFractional += goldRate * dt;
   if (goldFractional >= 1) {
     const earn = Math.floor(goldFractional);
@@ -1484,6 +1525,22 @@ function playMergeAnim(fromRect, toRect, sourceLevel, toIdx, fromIdx) {
       }
     }, 430);
   }, PULSE_MS + FLIGHT_MS);
+}
+
+// Combo indicator — show/refresh while merge streak is active
+function showComboToast(count, mult) {
+  const el = document.getElementById('combo-indicator');
+  if (!el) return;
+  document.getElementById('combo-x').textContent = '×' + count;
+  document.getElementById('combo-mul').textContent = '+' + Math.round((mult - 1) * 100) + '%';
+  el.classList.add('show');
+  // brief pulse on each refresh
+  el.style.transform = 'scale(1.15)';
+  requestAnimationFrame(() => { el.style.transform = ''; });
+}
+function hideComboToast() {
+  const el = document.getElementById('combo-indicator');
+  if (el) el.classList.remove('show');
 }
 
 // Show full-screen celebration when a new best level is reached.
