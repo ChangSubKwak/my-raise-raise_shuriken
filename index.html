@@ -215,6 +215,14 @@
   }
   .cell.empty { background: rgba(20,20,32,0.3); border-style: dashed; border-color: #2a2a3e; }
   .cell.selected { border-color: #ffd966; box-shadow: 0 0 12px #ffd96666; transform: scale(1.05); }
+  .cell.mergeable {
+    border-color: #66ff99;
+    box-shadow: 0 0 10px #66ff9988, inset 0 0 8px #66ff9933;
+    animation: mergePulse 1.2s ease-in-out infinite;
+  }
+  @keyframes mergePulse {
+    50% { box-shadow: 0 0 16px #66ff99cc, inset 0 0 12px #66ff9966; }
+  }
   .cell:active { transform: scale(0.97); }
   .cell .lv-label {
     position: absolute; top: 2px; left: 4px; font-size: 10px; font-weight: 800;
@@ -1129,6 +1137,13 @@ function renderGrid() {
     const c = state.grid[i];
     if (!c) cell.classList.add('empty');
     if (selectedIdx === i) cell.classList.add('selected');
+    // highlight cells that can merge with the selected one
+    if (selectedIdx >= 0 && selectedIdx !== i) {
+      const selCell = state.grid[selectedIdx];
+      if (selCell && c && c.level === selCell.level) {
+        cell.classList.add('mergeable');
+      }
+    }
     if (c) {
       const lvLabel = document.createElement('div');
       lvLabel.className = 'lv-label';
