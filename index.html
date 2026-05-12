@@ -263,6 +263,15 @@
     width: 70%; height: 70%; display: flex; align-items: center; justify-content: center;
     transition: transform 0.05s;
   }
+  /* New-spawn drop animation: falls in from above with rotation + bounce settle */
+  .cell.spawn-drop .shuriken {
+    animation: spawnDrop 0.5s cubic-bezier(0.34, 1.5, 0.64, 1) both;
+  }
+  @keyframes spawnDrop {
+    0%   { transform: translateY(-100px) rotate(-180deg) scale(0.4); opacity: 0; }
+    60%  { transform: translateY(8px)    rotate(20deg)   scale(1.15); opacity: 1; }
+    100% { transform: translateY(0)      rotate(0)       scale(1); opacity: 1; }
+  }
   .cell.dragging .shuriken {
     opacity: 0.3;
     transform: scale(0.6);
@@ -890,11 +899,15 @@ function emptySlots() {
   for (let i = 0; i < state.grid.length; i++) if (!state.grid[i]) out.push(i);
   return out;
 }
+// freshSpawnIds — set of shuriken ids that should play drop animation on next render
+const freshSpawnIds = new Set();
 function spawnShuriken() {
   const empties = emptySlots();
   if (empties.length === 0) return false;
   const idx = empties[Math.floor(Math.random() * empties.length)];
-  state.grid[idx] = { id: state.nextShurikenId++, level: getSpawnStartLevel(), fireTimer: rand(0, getFireInterval()) };
+  const id = state.nextShurikenId++;
+  state.grid[idx] = { id, level: getSpawnStartLevel(), fireTimer: rand(0, getFireInterval()) };
+  freshSpawnIds.add(id);
   state.stats.totalSpawned = (state.stats.totalSpawned || 0) + 1;
   sfx('spawn');
   renderGrid();
@@ -1505,6 +1518,10 @@ function renderGrid() {
     }
     if (c) {
       if (c.locked) cell.classList.add('locked-piece');
+      if (freshSpawnIds.has(c.id)) {
+        cell.classList.add('spawn-drop');
+        freshSpawnIds.delete(c.id);
+      }
       const lvLabel = document.createElement('div');
       lvLabel.className = 'lv-label';
       lvLabel.textContent = 'Lv' + c.level;
