@@ -696,6 +696,13 @@
       <div class="stat-row"><span class="stat-k">총 생성 표창</span><span class="stat-v" id="stat-spawned">0</span></div>
       <div class="stat-row"><span class="stat-k">누적 골드</span><span class="stat-v" id="stat-gold">0</span></div>
       <div class="stat-row"><span class="stat-k">플레이 시간</span><span class="stat-v" id="stat-playtime">0초</span></div>
+      <div class="stat-row" style="border-top:1px solid #2a2a3e;padding-top:5px;margin-top:3px;">
+        <span class="stat-k">전체 진척</span>
+        <span class="stat-v" id="stat-overall">—</span>
+      </div>
+      <div id="overall-bar" style="height:6px;background:rgba(0,0,0,0.5);border-radius:3px;overflow:hidden;">
+        <div id="overall-fill" style="height:100%;width:0%;background:linear-gradient(90deg,#aa6644,#ffaa33,#ffd966);transition:width 0.4s;"></div>
+      </div>
     </div>
     <div class="section-title">도감 (圖鑑) <span id="codex-count" style="color:#aaa;font-weight:400;font-size:10px;">0</span></div>
     <div class="codex-grid" id="codex-grid"></div>
@@ -2581,6 +2588,18 @@ function renderStats() {
   if (el('stat-spawned'))  el('stat-spawned').textContent  = fmt(s.totalSpawned || 0);
   if (el('stat-gold'))     el('stat-gold').textContent     = fmt(s.totalGoldEarned || 0);
   if (el('stat-playtime')) el('stat-playtime').textContent = fmtPlaytime(s.playTimeSec || 0);
+  // Composite progression score: 4 axes averaged
+  //   bestLevel / 30, achievements unlocked, totalMerges / 2000, prestigeCount / 5
+  const achvCount = Object.keys(state.achievements || {}).length;
+  const score = (
+    Math.min(1, (state.bestLevel || 0) / 30) +
+    Math.min(1, achvCount / ACHIEVEMENTS.length) +
+    Math.min(1, (s.totalMerges || 0) / 2000) +
+    Math.min(1, (state.prestigeCount || 0) / 5)
+  ) / 4;
+  const pct = Math.round(score * 100);
+  if (el('stat-overall')) el('stat-overall').textContent = pct + ' %';
+  if (el('overall-fill')) el('overall-fill').style.width = pct + '%';
 }
 function renderCodex() {
   const grid = document.getElementById('codex-grid');
