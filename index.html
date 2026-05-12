@@ -673,7 +673,10 @@ const UPGRADES = [
     desc: '+10% / Lv' },
   { id: 'spawnLevel',name: '시작 레벨',      base: 1,    costBase: 1500,costMul: 3.00, effect: 'spawnlv',
     desc: '생성 표창 시작 Lv +1' },
+  { id: 'luckChance', name: '합성술 (행운)',  base: 0,   costBase: 500, costMul: 1.80, effect: 'luck',
+    desc: '행운 합성 확률 +1% / Lv (최대 10 Lv)' },
 ];
+const LUCK_CHANCE_MAX_LV = 10;
 
 const MAX_SHURIKEN_CAP = 30;          // hard cap on field shurikens
 const SPAWN_BATCH_CAP = 6;            // hard cap on per-tick spawn count
@@ -692,7 +695,7 @@ function defaultState() {
     runBestLevel: 1,
     grid: new Array(6).fill(null), // size = 6 default; expandable via maxShuriken upgrade up to 30
     nextShurikenId: 1,
-    upgrades: { maxShuriken:0, spawnRate:0, spawnBatch:0, firerate:0, baseDmg:0, goldMul:0, spawnLevel:0 },
+    upgrades: { maxShuriken:0, spawnRate:0, spawnBatch:0, firerate:0, baseDmg:0, goldMul:0, spawnLevel:0, luckChance:0 },
     spawnProgress: 0,
     autoMerge: false,
     autoMergeCap: 99,  // auto-merge only merges shurikens at level ≤ cap
@@ -872,15 +875,18 @@ function tryMerge(fromIdx, toIdx) {
   }
   if (a.level === b.level) {
     // Jump merge — small chance of +N levels (원작 패턴)
-    //   base   95% → +1
-    //   lucky  4%  → +2  (행운 합성)
-    //   rare   0.9%→ +3  (대박 합성)
-    //   legend 0.1%→ +5  (전설 합성)
+    // Lucky-chance upgrade adds +1% per Lv (cap 10) to the +2 threshold.
+    // Burning mode doubles all jump probabilities.
+    const luckBonus = (state.upgrades.luckChance || 0) * 0.01;
+    const burnMul = isBurning() ? 2 : 1;
+    const pJump5 = 0.001 * burnMul;
+    const pJump3 = (0.010 + luckBonus * 0.2) * burnMul;
+    const pJump2 = (0.050 + luckBonus) * burnMul;
     const r = Math.random();
     let jump = 1;
-    if      (r < 0.001) jump = 5;
-    else if (r < 0.010) jump = 3;
-    else if (r < 0.050) jump = 2;
+    if      (r < pJump5) jump = 5;
+    else if (r < pJump3) jump = 3;
+    else if (r < pJump2) jump = 2;
     const newLv = a.level + jump;
     state.grid[toIdx] = { id: state.nextShurikenId++, level: newLv, fireTimer: rand(0, getFireInterval()) };
     state.grid[fromIdx] = null;
@@ -2298,6 +2304,7 @@ function getPassiveGoldRate() {
 function isUpgradeMaxed(id) {
   if (id === 'maxShuriken') return state.upgrades.maxShuriken >= MAX_SHURIKEN_CAP - 6;
   if (id === 'spawnBatch')  return state.upgrades.spawnBatch  >= SPAWN_BATCH_CAP - 1;
+  if (id === 'luckChance')  return state.upgrades.luckChance  >= LUCK_CHANCE_MAX_LV;
   return false;
 }
 function renderUpgrades() {
@@ -2316,6 +2323,7 @@ function renderUpgrades() {
     else if (u.id === 'spawnBatch') valueHint = ` <span style="color:#a8e6ff;font-size:10px;">(×${getSpawnBatch()})</span>`;
     else if (u.id === 'spawnRate') valueHint = ` <span style="color:#a8e6ff;font-size:10px;">(${getSpawnInterval().toFixed(1)}s)</span>`;
     else if (u.id === 'spawnLevel') valueHint = ` <span style="color:#a8e6ff;font-size:10px;">(Lv ${getSpawnStartLevel()})</span>`;
+    else if (u.id === 'luckChance') valueHint = ` <span style="color:#a8e6ff;font-size:10px;">(+2: ${(5 + state.upgrades.luckChance).toFixed(1)}%)</span>`;
     div.innerHTML = `
       <div class="upgrade-info">
         <div class="upgrade-title">${u.name} <span class="upgrade-lv">Lv ${lvl}</span>${valueHint}</div>
@@ -2363,10 +2371,11 @@ function renderPrestige() {
       state.stage = 1;
       state.enemiesInStage = 0;
       state.runBestLevel = 1;
-      // preserve grid size + spawn batch (capital investments) on prestige
+      // preserve capital investments on prestige: grid size, spawn batch, luck chance
       const keepMax = state.upgrades.maxShuriken;
       const keepBatch = state.upgrades.spawnBatch;
-      state.upgrades = { maxShuriken: keepMax, spawnRate:0, spawnBatch: keepBatch, firerate:0, baseDmg:0, goldMul:0, spawnLevel:0 };
+      const keepLuck = state.upgrades.luckChance;
+      state.upgrades = { maxShuriken: keepMax, spawnRate:0, spawnBatch: keepBatch, firerate:0, baseDmg:0, goldMul:0, spawnLevel:0, luckChance: keepLuck };
       state.grid = new Array(getGridSize()).fill(null);
       startStage();
       checkAchievements();
