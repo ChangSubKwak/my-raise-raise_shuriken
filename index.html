@@ -1683,10 +1683,11 @@ function updateHUD() {
   if (scEl) scEl.textContent = heldCount;
   if (smEl) smEl.textContent = totalSlots;
   if (biEl) biEl.textContent = '×' + getSpawnBatch();
-  // Time-based generator UI
+  // Time-based generator UI — bar reflects actual progress,
+  // so it visibly resets after each spawn (even immediate-from-queue spawns).
   const empties = emptySlots().length;
   const isFull = empties === 0;
-  const fillPct = isFull ? 100 : Math.min(100, state.spawnProgress * 100);
+  const fillPct = Math.min(100, state.spawnProgress * 100);
   document.getElementById('spawn-progress-fill').style.width = fillPct + '%';
   // mirror to top wave-bar
   const waveFill = document.getElementById('wave-fill');
