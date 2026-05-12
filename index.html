@@ -339,6 +339,21 @@ function levelColor(lv) { return LEVEL_COLORS[lv] || `hsl(${(lv * 47) % 360}, 80
 function levelPoints(lv) { return Math.min(12, 3 + Math.floor((lv - 1) / 1.5)); }
 function levelGlow(lv) { return lv >= 5 ? Math.min(20, (lv - 4) * 3) : 0; }
 
+// Tier classification — 5 visual tiers based on level range.
+// Each tier paints distinct decorative motifs on the base N-point star.
+//   1-3   목(木) — wooden cross-grain stripes
+//   4-6   철(鐵) — iron rivets
+//   7-9   은(銀) — silver double-ring + accent dots
+//   10-12 금(金) — gold gem accents + intense glow
+//   13+   현(玄) — mystic counter-rotating ring + particle aura
+function levelTier(lv) {
+  if (lv <= 3)  return { id: 'wood',   name: '木' };
+  if (lv <= 6)  return { id: 'iron',   name: '鐵' };
+  if (lv <= 9)  return { id: 'silver', name: '銀' };
+  if (lv <= 12) return { id: 'gold',   name: '金' };
+  return                { id: 'mystic', name: '玄' };
+}
+
 // ---------- Upgrade Definitions ----------
 // Based on original 표창키우기: "최대 개수 증가", "제작시간 감소", "제작 최대치 증가"
 const UPGRADES = [
@@ -971,11 +986,30 @@ function drawShurikenSprite(canvas, level) {
   const s = Math.min(cx, cy) * 0.85;
   const col = levelColor(level);
   const glow = levelGlow(level);
+  const tier = levelTier(level);
+  const t = Date.now() / 1000;
   c.clearRect(0, 0, canvas.width, canvas.height);
   c.save();
   c.translate(cx, cy);
-  // gentle rotation by timestamp
-  c.rotate((Date.now() / 1000 + level * 0.7) * 0.4);
+  c.rotate((t + level * 0.7) * 0.4);
+
+  // ── Mystic tier: counter-rotating particle aura behind body ─────────
+  if (tier.id === 'mystic') {
+    c.save();
+    c.rotate(-(t * 0.8 + level));
+    c.fillStyle = col;
+    c.globalAlpha = 0.35;
+    for (let i = 0; i < 8; i++) {
+      const a = (i / 8) * Math.PI * 2;
+      c.beginPath();
+      c.arc(Math.cos(a) * s * 1.05, Math.sin(a) * s * 1.05, s * 0.10, 0, Math.PI * 2);
+      c.fill();
+    }
+    c.globalAlpha = 1;
+    c.restore();
+  }
+
+  // ── Base N-point star body ──────────────────────────────────────────
   if (glow > 0) { c.shadowColor = col; c.shadowBlur = glow; }
   c.fillStyle = col;
   c.strokeStyle = '#000';
@@ -991,21 +1025,104 @@ function drawShurikenSprite(canvas, level) {
   c.fill();
   c.stroke();
   c.shadowBlur = 0;
-  // center hole
-  c.fillStyle = '#222';
+
+  // ── Tier-specific decorations on top of body ────────────────────────
+  if (tier.id === 'wood') {
+    // wood-grain stripes: 3 dark radial lines
+    c.strokeStyle = 'rgba(60,30,0,0.55)';
+    c.lineWidth = 1.2;
+    for (let i = 0; i < 3; i++) {
+      const a = (i / 3) * Math.PI * 2 + 0.3;
+      c.beginPath();
+      c.moveTo(Math.cos(a) * s * 0.25, Math.sin(a) * s * 0.25);
+      c.lineTo(Math.cos(a) * s * 0.85, Math.sin(a) * s * 0.85);
+      c.stroke();
+    }
+  } else if (tier.id === 'iron') {
+    // iron rivets — 4-6 dark dots at mid-radius
+    c.fillStyle = '#333';
+    const n = 5;
+    for (let i = 0; i < n; i++) {
+      const a = (i / n) * Math.PI * 2 + Math.PI / n;
+      c.beginPath();
+      c.arc(Math.cos(a) * s * 0.55, Math.sin(a) * s * 0.55, 2.2, 0, Math.PI * 2);
+      c.fill();
+    }
+  } else if (tier.id === 'silver') {
+    // silver — double ring with sheen highlight
+    c.strokeStyle = '#ffffff';
+    c.globalAlpha = 0.55;
+    c.lineWidth = 1.2;
+    c.beginPath(); c.arc(0, 0, s * 0.58, 0, Math.PI * 2); c.stroke();
+    c.beginPath(); c.arc(0, 0, s * 0.42, 0, Math.PI * 2); c.stroke();
+    c.globalAlpha = 1;
+    // 4 accent dots at cardinal positions
+    c.fillStyle = '#ffffff';
+    c.globalAlpha = 0.7;
+    for (let i = 0; i < 4; i++) {
+      const a = (i / 4) * Math.PI * 2;
+      c.beginPath();
+      c.arc(Math.cos(a) * s * 0.50, Math.sin(a) * s * 0.50, 1.6, 0, Math.PI * 2);
+      c.fill();
+    }
+    c.globalAlpha = 1;
+  } else if (tier.id === 'gold') {
+    // gold — 3 inset gem accents (triangle pattern)
+    c.fillStyle = '#fff7c4';
+    for (let i = 0; i < 3; i++) {
+      const a = (i / 3) * Math.PI * 2 + Math.PI / 6;
+      c.beginPath();
+      c.arc(Math.cos(a) * s * 0.45, Math.sin(a) * s * 0.45, 3, 0, Math.PI * 2);
+      c.fill();
+    }
+    // outer rotating sun-ray short marks
+    c.strokeStyle = '#ffd966';
+    c.lineWidth = 1.5;
+    c.globalAlpha = 0.75;
+    const rays = 8;
+    for (let i = 0; i < rays; i++) {
+      const a = (i / rays) * Math.PI * 2 + t * 1.2;
+      c.beginPath();
+      c.moveTo(Math.cos(a) * s * 0.92, Math.sin(a) * s * 0.92);
+      c.lineTo(Math.cos(a) * s * 1.10, Math.sin(a) * s * 1.10);
+      c.stroke();
+    }
+    c.globalAlpha = 1;
+  } else if (tier.id === 'mystic') {
+    // mystic — inner counter-rotating smaller 4-point star + glyph dots
+    c.save();
+    c.rotate(-t * 2);
+    c.fillStyle = '#ffffff';
+    c.globalAlpha = 0.85;
+    c.beginPath();
+    const innerPts = 8;
+    for (let i = 0; i < innerPts; i++) {
+      const r = i % 2 === 0 ? s * 0.42 : s * 0.16;
+      const a = (i / innerPts) * Math.PI * 2;
+      c.lineTo(Math.cos(a) * r, Math.sin(a) * r);
+    }
+    c.closePath();
+    c.fill();
+    c.globalAlpha = 1;
+    c.restore();
+    // glyph dots at 6 positions
+    c.fillStyle = col;
+    for (let i = 0; i < 6; i++) {
+      const a = (i / 6) * Math.PI * 2 + t * 0.5;
+      c.beginPath();
+      c.arc(Math.cos(a) * s * 0.70, Math.sin(a) * s * 0.70, 1.8, 0, Math.PI * 2);
+      c.fill();
+    }
+  }
+
+  // ── Center hole — always last, tinted by tier ───────────────────────
+  c.fillStyle = tier.id === 'gold'   ? '#5a3a08'
+              : tier.id === 'silver' ? '#333'
+              : tier.id === 'mystic' ? col
+              : '#222';
   c.beginPath();
   c.arc(0, 0, s * 0.16, 0, Math.PI * 2);
   c.fill();
-  // luster ring for higher levels
-  if (level >= 5) {
-    c.strokeStyle = '#ffffff';
-    c.globalAlpha = 0.4;
-    c.lineWidth = 1;
-    c.beginPath();
-    c.arc(0, 0, s * 0.55, 0, Math.PI * 2);
-    c.stroke();
-    c.globalAlpha = 1;
-  }
   c.restore();
 }
 
