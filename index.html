@@ -293,6 +293,20 @@
     font-family: inherit; font-size: 11px; font-weight: 600; cursor: pointer;
   }
   .auto-btn.on { background: rgba(74,142,74,0.4); border-color: #6a8e6a; color: #afe; }
+  .auto-merge-group { flex: 1; display: flex; flex-direction: column; gap: 3px; }
+  .auto-merge-group .auto-btn { flex: 0 0 auto; }
+  .auto-cap-row {
+    display: flex; gap: 4px; align-items: center; justify-content: center;
+    font-size: 10px; color: #8ae; font-weight: 700;
+  }
+  .cap-btn {
+    width: 22px; height: 22px; padding: 0;
+    background: rgba(50,50,70,0.7); border: 1px solid #555; color: #aaa;
+    border-radius: 4px; font-family: inherit; font-size: 12px; font-weight: 700;
+    cursor: pointer;
+  }
+  .cap-btn:active { transform: scale(0.9); }
+  .cap-val { padding: 0 4px; }
   #burn-btn {
     flex: 0.85; padding: 8px 6px;
     background: linear-gradient(180deg, #ff5533, #aa2200);
@@ -456,7 +470,14 @@
         <div id="spawn-progress-bar"><div id="spawn-progress-fill"></div></div>
       </div>
       <button id="instant-spawn-btn" title="💎 1로 즉시 소환">💎 즉시</button>
-      <button class="auto-btn" id="auto-merge-btn">⚙ 자동합치기 OFF</button>
+      <div class="auto-merge-group">
+        <button class="auto-btn" id="auto-merge-btn">⚙ 자동합치기 OFF</button>
+        <div class="auto-cap-row" id="auto-cap-row" style="display:none;">
+          <button class="cap-btn" id="cap-down">−</button>
+          <span class="cap-val">≤ Lv <span id="cap-display">99</span></span>
+          <button class="cap-btn" id="cap-up">+</button>
+        </div>
+      </div>
       <button id="burn-btn" title="💎 10 — 30초 버닝 모드">🔥 버닝</button>
     </div>
   </div>
@@ -662,6 +683,7 @@ function defaultState() {
     upgrades: { maxShuriken:0, spawnRate:0, spawnBatch:0, firerate:0, baseDmg:0, goldMul:0, spawnLevel:0 },
     spawnProgress: 0,
     autoMerge: false,
+    autoMergeCap: 99,  // auto-merge only merges shurikens at level ≤ cap
     lastSave: Date.now(),
     muted: localStorage.getItem('shuriken_v2_muted') === '1',
     // Combo (chain merges) — not persisted; reset on load
@@ -896,11 +918,13 @@ function tryMerge(fromIdx, toIdx) {
   }
 }
 function autoMergeStep() {
-  // find any same-level pair and merge once
+  // find any same-level pair (respecting cap) and merge once
+  const cap = state.autoMergeCap || 99;
   const seen = new Map(); // level -> first idx
   for (let i = 0; i < state.grid.length; i++) {
     const c = state.grid[i];
     if (!c) continue;
+    if (c.level > cap) continue; // preserve high-level shurikens
     if (seen.has(c.level)) {
       tryMerge(i, seen.get(c.level));
       renderGrid();
@@ -1327,6 +1351,10 @@ function updateHUD() {
   instBtn.disabled = state.gem < 1 || isFull;
   document.getElementById('auto-merge-btn').className = 'auto-btn' + (state.autoMerge ? ' on' : '');
   document.getElementById('auto-merge-btn').textContent = `⚙ 자동합치기 ${state.autoMerge ? 'ON' : 'OFF'}`;
+  const capRow = document.getElementById('auto-cap-row');
+  const capDisp = document.getElementById('cap-display');
+  if (capRow) capRow.style.display = state.autoMerge ? 'flex' : 'none';
+  if (capDisp) capDisp.textContent = state.autoMergeCap || 99;
   // Burning UI
   const burnBtn = document.getElementById('burn-btn');
   if (burnBtn) {
@@ -2292,6 +2320,14 @@ document.getElementById('auto-merge-btn').addEventListener('click', () => {
 document.getElementById('burn-btn').addEventListener('click', () => {
   getAudio();
   activateBurning();
+});
+document.getElementById('cap-down').addEventListener('click', () => {
+  state.autoMergeCap = Math.max(1, (state.autoMergeCap || 99) - 1);
+  refreshUI(); save();
+});
+document.getElementById('cap-up').addEventListener('click', () => {
+  state.autoMergeCap = Math.min(99, (state.autoMergeCap || 99) + 1);
+  refreshUI(); save();
 });
 
 // Tap progress bar to speed up generation (click power)
