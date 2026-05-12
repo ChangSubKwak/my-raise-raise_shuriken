@@ -466,6 +466,11 @@
     font-family: inherit; font-size: 11px; font-weight: 600; cursor: pointer;
   }
   .auto-btn.on { background: rgba(74,142,74,0.4); border-color: #6a8e6a; color: #afe; }
+  .auto-btn.locked {
+    background: linear-gradient(180deg, #4a3a8e, #2a1a6e);
+    border-color: #8a6ace; color: #ffd966; font-weight: 800;
+    box-shadow: 0 0 8px rgba(204,136,255,0.3);
+  }
   .auto-merge-group { flex: 1; display: flex; flex-direction: column; gap: 3px; }
   .auto-merge-group .auto-btn { flex: 0 0 auto; }
   .auto-cap-row {
@@ -947,8 +952,9 @@ function defaultState() {
     upgrades: { maxShuriken:0, spawnRate:0, spawnBatch:0, firerate:0, baseDmg:0, goldMul:0, spawnLevel:0, luckChance:0 },
     spawnProgress: 0,
     autoMerge: false,
-    autoMergeCap: 99,  // auto-merge only merges shurikens at level ≤ cap
-    hintMode: false,   // when true, all mergeable pairs glow without selection
+    autoMergeUnlocked: false, // gates state.autoMerge — must be purchased
+    autoMergeCap: 99,
+    hintMode: false,
     lastSave: Date.now(),
     muted: localStorage.getItem('shuriken_v2_muted') === '1',
     // Combo (chain merges) — not persisted; reset on load
@@ -992,6 +998,7 @@ const ACHIEVEMENTS = [
   { id: 'a_burn',         name: '불의 시간',       icon: '🔥', desc: '버닝 모드 첫 사용',    check: (s) => (s.stats.burnsUsed   || 0) >= 1 },
   { id: 'a_lv20',         name: '극창의 경지',     icon: '🐉', desc: 'Lv 20 도달',           check: (s) => (s.bestLevel || 0) >= 20 },
   { id: 'a_lv30',         name: '사신의 길',       icon: '🐲', desc: 'Lv 30 도달',           check: (s) => (s.bestLevel || 0) >= 30 },
+  { id: 'a_auto_unlock',  name: '게으름의 미덕',   icon: '🤖', desc: '자동합치기 영구 해금', check: (s) => !!s.autoMergeUnlocked },
 ];
 let state = defaultState();
 
@@ -1048,12 +1055,31 @@ function getSpawnInterval() {
 
 const BURNING_DURATION = 30;
 const BURNING_COST = 10;
+const AUTO_MERGE_UNLOCK_COST = 50; // gems — one-time purchase
+function tryUnlockAutoMerge() {
+  if (state.autoMergeUnlocked) return true;
+  if (state.gem < AUTO_MERGE_UNLOCK_COST) {
+    toast(`💎 ${AUTO_MERGE_UNLOCK_COST} 필요 (현재 ${state.gem})`);
+    return false;
+  }
+  if (!confirm(`자동합치기를 영구 해금합니다.\n비용: 💎 ${AUTO_MERGE_UNLOCK_COST}\n계속?`)) return false;
+  state.gem -= AUTO_MERGE_UNLOCK_COST;
+  state.autoMergeUnlocked = true;
+  state.autoMerge = true;
+  toast('🔓 자동합치기 영구 해금');
+  sfx('mergeGold');
+  setTimeout(() => sfx('merge'), 120);
+  checkAchievements();
+  refreshUI();
+  save();
+  return true;
+}
 function activateBurning() {
   if (isBurning()) { toast('이미 버닝 중'); return; }
   if (state.gem < BURNING_COST) { toast(`💎 ${BURNING_COST} 필요 (현재 ${state.gem})`); return; }
   state.gem -= BURNING_COST;
   state.burningTimer = BURNING_DURATION;
-  state.autoMerge = true; // force auto-merge ON while burning
+  // burning bypasses the unlock gate — engine OR handles it
   state.stats.burnsUsed = (state.stats.burnsUsed || 0) + 1;
   checkAchievements();
   toast('🔥 버닝 30초 — 자동합성 + 가속');
@@ -1617,8 +1643,9 @@ function update(dt) {
     playTimeFractional -= sec;
   }
 
-  // auto merge
-  if (state.autoMerge) {
+  // auto merge — gated by unlock; burning mode bypasses the gate temporarily
+  const autoMergeActive = (state.autoMerge && state.autoMergeUnlocked) || isBurning();
+  if (autoMergeActive) {
     autoMergeTimer -= dt;
     if (autoMergeTimer <= 0) {
       autoMergeTimer = 0.5;
@@ -1675,11 +1702,20 @@ function updateHUD() {
     : `다음 표창 · <span id="spawn-time-label">${remaining.toFixed(1)}s</span> · <span style="color:#ffd966">탭하여 가속</span>`;
   const instBtn = document.getElementById('instant-spawn-btn');
   instBtn.disabled = state.gem < 1 || isFull;
-  document.getElementById('auto-merge-btn').className = 'auto-btn' + (state.autoMerge ? ' on' : '');
-  document.getElementById('auto-merge-btn').textContent = `⚙ 자동합치기 ${state.autoMerge ? 'ON' : 'OFF'}`;
+  const amBtn = document.getElementById('auto-merge-btn');
+  if (state.autoMergeUnlocked) {
+    amBtn.className = 'auto-btn' + (state.autoMerge ? ' on' : '');
+    amBtn.textContent = `⚙ 자동합치기 ${state.autoMerge ? 'ON' : 'OFF'}`;
+    amBtn.title = '자동으로 같은 Lv 합체 (cap 적용)';
+  } else {
+    amBtn.className = 'auto-btn locked';
+    amBtn.textContent = `🔒 자동합치기 💎${AUTO_MERGE_UNLOCK_COST}`;
+    amBtn.title = `💎 ${AUTO_MERGE_UNLOCK_COST}로 영구 해금`;
+  }
   const capRow = document.getElementById('auto-cap-row');
   const capDisp = document.getElementById('cap-display');
-  if (capRow) capRow.style.display = state.autoMerge ? 'flex' : 'none';
+  // Show cap controls only when unlocked AND active
+  if (capRow) capRow.style.display = (state.autoMergeUnlocked && state.autoMerge) ? 'flex' : 'none';
   if (capDisp) capDisp.textContent = state.autoMergeCap || 99;
   // Burning UI
   const burnBtn = document.getElementById('burn-btn');
@@ -2740,11 +2776,12 @@ function renderPrestige() {
       state.stage = 1;
       state.enemiesInStage = 0;
       state.runBestLevel = 1;
-      // preserve capital investments on prestige: grid size, spawn batch, luck chance
+      // preserve capital investments on prestige: grid size, spawn batch, luck chance, autoMerge unlock
       const keepMax = state.upgrades.maxShuriken;
       const keepBatch = state.upgrades.spawnBatch;
       const keepLuck = state.upgrades.luckChance;
       state.upgrades = { maxShuriken: keepMax, spawnRate:0, spawnBatch: keepBatch, firerate:0, baseDmg:0, goldMul:0, spawnLevel:0, luckChance: keepLuck };
+      // autoMergeUnlocked is preserved automatically (not in upgrades)
       state.grid = new Array(getGridSize()).fill(null);
       startStage();
       checkAchievements();
@@ -2769,6 +2806,11 @@ document.getElementById('instant-spawn-btn').addEventListener('click', (e) => {
   e.preventDefault(); getAudio(); instantSpawn();
 });
 document.getElementById('auto-merge-btn').addEventListener('click', () => {
+  getAudio();
+  if (!state.autoMergeUnlocked) {
+    tryUnlockAutoMerge();
+    return;
+  }
   state.autoMerge = !state.autoMerge;
   if (state.autoMerge) autoMergeTimer = 0;
   refreshUI(); save();
