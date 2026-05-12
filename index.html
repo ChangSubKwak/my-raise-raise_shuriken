@@ -98,6 +98,16 @@
     transition: transform 0.5s ease-out, opacity 0.5s ease-out;
   }
   .merge-ring2.expand { transform: scale(2.0); opacity: 0; }
+  /* radiating light beams from collision point */
+  .merge-ray {
+    position: fixed; pointer-events: none; z-index: 48;
+    width: 4px; height: 120px;
+    transform-origin: top center;
+    background: linear-gradient(to bottom, currentColor 0%, transparent 100%);
+    opacity: 0;
+    transition: transform 0.5s ease-out, opacity 0.5s ease-out;
+    will-change: transform, opacity;
+  }
 
   /* Grid — main game focus */
   #grid-wrap {
@@ -1057,150 +1067,238 @@ function handleCellTap(idx) {
   refreshUI();
   save();
   if (willMerge && result === 'merge' && fromRect && toRect) {
-    playMergeAnim(fromRect, toRect, aLv, toIdx);
+    playMergeAnim(fromRect, toRect, aLv, toIdx, fromIdx);
   }
 }
 
-// Multi-layered merge motion:
-//   ghost flies from source → target with a colored particle trail,
-//   on arrival: full-screen color flash, 2 expanding rings,
-//   10 sparkle particles flying outward, and the merged sprite pops in
-//   with overshoot + rotation. Color is taken from the NEW level.
-function playMergeAnim(fromRect, toRect, sourceLevel, toIdx) {
+// Bidirectional convergence merge motion (v2.8):
+//   Phase 1 (0-90ms)    — anticipation: BOTH ghosts pulse + glow up
+//   Phase 2 (90-380ms)  — flight: BOTH fly to midpoint with 3D-feel flip + trails
+//   Phase 3 (380-460ms) — collision: screen flash, 8 light rays, double ring burst, 15 sparkles
+//   Phase 4 (380-720ms) — materialization: new sprite pops at midpoint then slides to target
+function playMergeAnim(fromRect, toRect, sourceLevel, toIdx, fromIdx) {
   const newLevel = sourceLevel + 1;
   const color = levelColor(newLevel);
-  const FLIGHT_MS = 300;
+  const PULSE_MS = 90;
+  const FLIGHT_MS = 290;
 
-  // Center points for trail & burst
+  // center points
   const fromCx = fromRect.left + fromRect.width / 2;
   const fromCy = fromRect.top  + fromRect.height / 2;
   const toCx   = toRect.left   + toRect.width / 2;
   const toCy   = toRect.top    + toRect.height / 2;
+  const midCx  = (fromCx + toCx) / 2;
+  const midCy  = (fromCy + toCy) / 2;
 
-  // 1) Flying ghost shuriken (renders source level sprite)
-  const ghost = document.createElement('div');
-  ghost.className = 'merge-ghost';
-  ghost.style.color = color; // for drop-shadow currentColor
-  ghost.style.left  = fromRect.left + 'px';
-  ghost.style.top   = fromRect.top  + 'px';
-  ghost.style.width  = fromRect.width  + 'px';
-  ghost.style.height = fromRect.height + 'px';
-  const gc = document.createElement('canvas');
-  gc.width = 80; gc.height = 80;
-  drawShurikenSprite(gc, sourceLevel);
-  ghost.appendChild(gc);
-  document.body.appendChild(ghost);
+  // helper: make a ghost shuriken at a given rect
+  function makeGhost(rect, level) {
+    const g = document.createElement('div');
+    g.className = 'merge-ghost';
+    g.style.color = color;
+    g.style.left  = rect.left + 'px';
+    g.style.top   = rect.top  + 'px';
+    g.style.width  = rect.width  + 'px';
+    g.style.height = rect.height + 'px';
+    g.style.transition = `transform ${PULSE_MS}ms ease-out, filter ${PULSE_MS}ms`;
+    const c = document.createElement('canvas');
+    c.width = 80; c.height = 80;
+    drawShurikenSprite(c, level);
+    g.appendChild(c);
+    document.body.appendChild(g);
+    return g;
+  }
 
-  // 2) Hide the merged sprite at target — will materialize after burst
+  // Two ghosts: source position + target position (both same source level)
+  const ghostA = makeGhost(fromRect, sourceLevel);
+  const ghostB = makeGhost(toRect, sourceLevel);
+
+  // Hide the merged sprite at target until materialization
   const toCell = gridEl.querySelector(`[data-idx="${toIdx}"]`);
   const targetInner = toCell ? toCell.querySelector('.shuriken') : null;
   if (targetInner) {
     targetInner.style.transition = 'none';
     targetInner.style.opacity = '0';
-    targetInner.style.transform = 'scale(0.05) rotate(-360deg)';
+    targetInner.style.transform = 'scale(0)';
   }
 
-  // 3) Force reflow then animate ghost toward target
-  ghost.getBoundingClientRect();
-  const dx = toRect.left - fromRect.left;
-  const dy = toRect.top  - fromRect.top;
-  ghost.style.transform = `translate(${dx}px, ${dy}px) scale(0.45) rotate(720deg)`;
-  ghost.style.opacity = '0.55';
-  ghost.style.filter  = 'brightness(1.4)';
+  // PHASE 1: ANTICIPATION — both ghosts pulse + glow
+  ghostA.getBoundingClientRect(); // reflow
+  ghostA.style.transform = 'scale(1.18)';
+  ghostA.style.filter = `brightness(1.6) drop-shadow(0 0 14px ${color})`;
+  ghostB.style.transform = 'scale(1.18)';
+  ghostB.style.filter = `brightness(1.6) drop-shadow(0 0 14px ${color})`;
 
-  // 4) Particle trail during flight (dropped every ~36ms along the path)
-  const startTime = Date.now();
-  const trailInterval = setInterval(() => {
-    const t = (Date.now() - startTime) / FLIGHT_MS;
-    if (t >= 0.95) { clearInterval(trailInterval); return; }
-    // ease-in curve for the trail position (matches flight ease)
-    const easeT = t * t * (3 - 2 * t);
-    const cx = fromCx + (toCx - fromCx) * easeT;
-    const cy = fromCy + (toCy - fromCy) * easeT;
-    const trail = document.createElement('div');
-    trail.className = 'merge-trail';
-    const sz = 7 + Math.random() * 6;
-    trail.style.left = (cx - sz/2 + rand(-4, 4)) + 'px';
-    trail.style.top  = (cy - sz/2 + rand(-4, 4)) + 'px';
-    trail.style.width  = sz + 'px';
-    trail.style.height = sz + 'px';
-    trail.style.background = color;
-    trail.style.boxShadow  = '0 0 10px ' + color;
-    document.body.appendChild(trail);
-    requestAnimationFrame(() => trail.classList.add('fade'));
-    setTimeout(() => trail.remove(), 560);
-  }, 36);
-
-  // 5) On arrival: massive multi-layer burst
+  // PHASE 2: FLIGHT — both ghosts fly to midpoint with 3D flip
   setTimeout(() => {
-    clearInterval(trailInterval);
-    ghost.remove();
+    ghostA.style.transition = `transform ${FLIGHT_MS}ms cubic-bezier(0.5, 0, 0.7, 0.1), opacity ${FLIGHT_MS}ms, filter ${FLIGHT_MS}ms`;
+    ghostB.style.transition = `transform ${FLIGHT_MS}ms cubic-bezier(0.5, 0, 0.7, 0.1), opacity ${FLIGHT_MS}ms, filter ${FLIGHT_MS}ms`;
+    const dxA = midCx - fromCx;
+    const dyA = midCy - fromCy;
+    const dxB = midCx - toCx;
+    const dyB = midCy - toCy;
+    ghostA.style.transform = `translate(${dxA}px, ${dyA}px) scale(0.6) rotate(540deg)`;
+    ghostB.style.transform = `translate(${dxB}px, ${dyB}px) scale(0.6) rotate(-540deg)`;
+    ghostA.style.opacity = '0.45';
+    ghostB.style.opacity = '0.45';
+    // Trail dots from BOTH endpoints
+    spawnConvergenceTrails(fromCx, fromCy, midCx, midCy, color, FLIGHT_MS);
+    spawnConvergenceTrails(toCx,   toCy,   midCx, midCy, color, FLIGHT_MS);
+  }, PULSE_MS);
 
-    // 5a) full-screen color tint flash (mix-blend screen)
+  // PHASE 3 + 4: COLLISION + MATERIALIZATION
+  setTimeout(() => {
+    ghostA.remove();
+    ghostB.remove();
+
+    // 3a) full-screen tint flash
     const flash = document.createElement('div');
     flash.className = 'merge-flash';
     flash.style.background = color;
     document.body.appendChild(flash);
     requestAnimationFrame(() => flash.classList.add('show'));
-    setTimeout(() => flash.classList.remove('show'), 60);
-    setTimeout(() => flash.remove(), 400);
+    setTimeout(() => flash.classList.remove('show'), 70);
+    setTimeout(() => flash.remove(), 450);
 
-    // 5b) primary radial burst at target
+    // 3b) 8 radiating light beams from midpoint
+    const RAYS = 8;
+    for (let i = 0; i < RAYS; i++) {
+      const ray = document.createElement('div');
+      ray.className = 'merge-ray';
+      ray.style.color = color;
+      ray.style.left = midCx + 'px';
+      ray.style.top  = midCy + 'px';
+      const ang = (i / RAYS) * 360 + rand(-10, 10);
+      // start collapsed
+      ray.style.transform = `translate(-50%, 0) rotate(${ang}deg) scaleY(0.15)`;
+      ray.style.opacity = '0';
+      document.body.appendChild(ray);
+      ray.getBoundingClientRect();
+      // explode outward
+      requestAnimationFrame(() => {
+        ray.style.transform = `translate(-50%, 0) rotate(${ang}deg) scaleY(1.4)`;
+        ray.style.opacity = '0.85';
+      });
+      setTimeout(() => {
+        ray.style.opacity = '0';
+        ray.style.transform = `translate(-50%, 0) rotate(${ang}deg) scaleY(2.2)`;
+      }, 120);
+      setTimeout(() => ray.remove(), 600);
+    }
+
+    // 3c) primary radial burst at midpoint
     const burst = document.createElement('div');
     burst.className = 'merge-burst';
-    const bsz = Math.max(toRect.width, toRect.height) * 1.5;
-    burst.style.left = (toCx - bsz/2) + 'px';
-    burst.style.top  = (toCy - bsz/2) + 'px';
+    const bsz = Math.max(toRect.width, toRect.height) * 1.8;
+    burst.style.left = (midCx - bsz/2) + 'px';
+    burst.style.top  = (midCy - bsz/2) + 'px';
     burst.style.width  = bsz + 'px';
     burst.style.height = bsz + 'px';
-    burst.style.background = `radial-gradient(circle, ${color}cc 0%, ${color}55 40%, transparent 75%)`;
+    burst.style.background = `radial-gradient(circle, ${color}ee 0%, ${color}66 35%, transparent 75%)`;
     document.body.appendChild(burst);
     burst.getBoundingClientRect();
     burst.classList.add('expand');
-    setTimeout(() => burst.remove(), 380);
+    setTimeout(() => burst.remove(), 400);
 
-    // 5c) secondary ring (delayed 60ms, smaller)
+    // 3d) secondary thin ring (delayed)
     setTimeout(() => {
       const ring = document.createElement('div');
       ring.className = 'merge-ring2';
       ring.style.color = color;
-      const rsz = Math.max(toRect.width, toRect.height) * 1.1;
-      ring.style.left = (toCx - rsz/2) + 'px';
-      ring.style.top  = (toCy - rsz/2) + 'px';
+      const rsz = Math.max(toRect.width, toRect.height) * 1.3;
+      ring.style.left = (midCx - rsz/2) + 'px';
+      ring.style.top  = (midCy - rsz/2) + 'px';
       ring.style.width  = rsz + 'px';
       ring.style.height = rsz + 'px';
       document.body.appendChild(ring);
       ring.getBoundingClientRect();
       ring.classList.add('expand');
       setTimeout(() => ring.remove(), 520);
-    }, 60);
+    }, 70);
 
-    // 5d) Sparkle burst — 12 particles flying outward
-    const N_SPARK = 12;
+    // 3e) 15 sparkles outward from midpoint
+    const N_SPARK = 15;
     for (let i = 0; i < N_SPARK; i++) {
       const sp = document.createElement('div');
       sp.className = 'merge-sparkle';
-      sp.style.left = (toCx - 3.5) + 'px';
-      sp.style.top  = (toCy - 3.5) + 'px';
+      sp.style.left = (midCx - 3.5) + 'px';
+      sp.style.top  = (midCy - 3.5) + 'px';
       sp.style.background = color;
-      sp.style.boxShadow  = '0 0 10px ' + color;
+      sp.style.boxShadow  = '0 0 12px ' + color;
       document.body.appendChild(sp);
       const ang = (i / N_SPARK) * Math.PI * 2 + rand(-0.25, 0.25);
-      const dist = 45 + Math.random() * 35;
+      const dist = 55 + Math.random() * 50;
       requestAnimationFrame(() => {
-        sp.style.transform = `translate(${Math.cos(ang) * dist}px, ${Math.sin(ang) * dist}px) scale(${0.4 + Math.random() * 0.4})`;
+        sp.style.transform = `translate(${Math.cos(ang) * dist}px, ${Math.sin(ang) * dist}px) scale(${0.35 + Math.random() * 0.5})`;
         sp.classList.add('go');
       });
-      setTimeout(() => sp.remove(), 580);
+      setTimeout(() => sp.remove(), 640);
     }
 
-    // 5e) New sprite materializes with overshoot bounce
-    if (targetInner) {
-      targetInner.style.transition = 'opacity 0.2s ease-out, transform 0.42s cubic-bezier(0.34, 1.7, 0.5, 1)';
-      targetInner.style.opacity = '1';
-      targetInner.style.transform = 'scale(1) rotate(0deg)';
-    }
-  }, FLIGHT_MS);
+    // PHASE 4: new sprite spawns at midpoint → slides to target → settles
+    const newGhost = document.createElement('div');
+    newGhost.className = 'merge-ghost';
+    newGhost.style.color = color;
+    newGhost.style.left  = (midCx - toRect.width / 2) + 'px';
+    newGhost.style.top   = (midCy - toRect.height / 2) + 'px';
+    newGhost.style.width  = toRect.width  + 'px';
+    newGhost.style.height = toRect.height + 'px';
+    newGhost.style.transition = 'none';
+    newGhost.style.transform = 'scale(0) rotate(-360deg)';
+    const ngc = document.createElement('canvas');
+    ngc.width = 80; ngc.height = 80;
+    drawShurikenSprite(ngc, newLevel);
+    newGhost.appendChild(ngc);
+    document.body.appendChild(newGhost);
+    newGhost.getBoundingClientRect();
+
+    // Pop up with strong overshoot
+    newGhost.style.transition = 'transform 0.20s cubic-bezier(0.34, 1.8, 0.5, 1)';
+    newGhost.style.transform = 'scale(1.35) rotate(0deg)';
+
+    // Slide to target cell + settle scale
+    setTimeout(() => {
+      newGhost.style.transition = 'transform 0.22s cubic-bezier(0.5, 0, 0.5, 1)';
+      const dxT = toRect.left - (midCx - toRect.width / 2);
+      const dyT = toRect.top  - (midCy - toRect.height / 2);
+      newGhost.style.transform = `translate(${dxT}px, ${dyT}px) scale(1)`;
+    }, 200);
+
+    // Reveal real target sprite, remove ghost
+    setTimeout(() => {
+      newGhost.remove();
+      if (targetInner) {
+        targetInner.style.transition = 'opacity 0.1s ease-out, transform 0.1s';
+        targetInner.style.opacity = '1';
+        targetInner.style.transform = 'scale(1) rotate(0deg)';
+      }
+    }, 430);
+  }, PULSE_MS + FLIGHT_MS);
+}
+
+// Drop trail dots along a path from (x1,y1) → (x2,y2) over durMs
+function spawnConvergenceTrails(x1, y1, x2, y2, color, durMs) {
+  let elapsed = 0;
+  const STEP = 32;
+  const id = setInterval(() => {
+    elapsed += STEP;
+    if (elapsed >= durMs * 0.95) { clearInterval(id); return; }
+    const t = elapsed / durMs;
+    const ease = t * t * (3 - 2 * t);
+    const cx = x1 + (x2 - x1) * ease;
+    const cy = y1 + (y2 - y1) * ease;
+    const trail = document.createElement('div');
+    trail.className = 'merge-trail';
+    const sz = 6 + Math.random() * 6;
+    trail.style.left = (cx - sz/2 + rand(-5, 5)) + 'px';
+    trail.style.top  = (cy - sz/2 + rand(-5, 5)) + 'px';
+    trail.style.width  = sz + 'px';
+    trail.style.height = sz + 'px';
+    trail.style.background = color;
+    trail.style.boxShadow  = '0 0 12px ' + color;
+    document.body.appendChild(trail);
+    requestAnimationFrame(() => trail.classList.add('fade'));
+    setTimeout(() => trail.remove(), 600);
+  }, STEP);
 }
 
 // ---------- Panel UI ----------
