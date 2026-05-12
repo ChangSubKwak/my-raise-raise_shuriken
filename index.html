@@ -565,6 +565,8 @@
     <div class="footer-row">
       <button class="footer-btn" id="save-btn">저장</button>
       <button class="footer-btn" id="mute-btn">🔊</button>
+      <button class="footer-btn" id="export-btn">📤</button>
+      <button class="footer-btn" id="import-btn">📥</button>
       <button class="footer-btn danger" id="reset-btn">초기화</button>
     </div>
   </div>
@@ -2564,6 +2566,33 @@ document.getElementById('spawn-progress-wrap').addEventListener('pointerdown', (
 
 // ---------- Footer ----------
 document.getElementById('save-btn').onclick = () => { save(); toast('💾 저장됨'); };
+document.getElementById('export-btn').onclick = async () => {
+  try {
+    save();
+    const code = btoa(unescape(encodeURIComponent(JSON.stringify(state))));
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(code);
+      toast('📤 클립보드에 복사됨 — 백업/공유 가능');
+    } else {
+      prompt('아래 코드를 복사하여 보관:', code);
+    }
+  } catch (e) {
+    toast('내보내기 실패');
+  }
+};
+document.getElementById('import-btn').onclick = () => {
+  const code = prompt('가져올 저장 코드를 붙여넣기:\n(주의: 현재 진행도가 덮어쓰여집니다)', '');
+  if (!code) return;
+  try {
+    const obj = JSON.parse(decodeURIComponent(escape(atob(code.trim()))));
+    if (typeof obj !== 'object' || !obj.upgrades) throw new Error('형식 오류');
+    if (!confirm('현재 진행도를 덮어쓰고 가져온 코드로 교체합니다. 계속?')) return;
+    localStorage.setItem(SAVE_KEY, JSON.stringify(obj));
+    location.reload();
+  } catch (e) {
+    toast('잘못된 코드: ' + (e.message || ''));
+  }
+};
 function applyMute() {
   if (_audioGain) _audioGain.gain.value = state.muted ? 0 : 0.12;
   document.getElementById('mute-btn').textContent = state.muted ? '🔇' : '🔊';
