@@ -307,6 +307,12 @@
   }
   .cap-btn:active { transform: scale(0.9); }
   .cap-val { padding: 0 4px; }
+  .grid-action-btn {
+    background: rgba(40,40,60,0.7); border: 1px solid #4a4a6e; color: #a8e6ff;
+    padding: 3px 10px; border-radius: 6px; font-family: inherit;
+    font-size: 11px; font-weight: 700; cursor: pointer;
+  }
+  .grid-action-btn:active { transform: scale(0.94); }
   #burn-btn {
     flex: 0.85; padding: 8px 6px;
     background: linear-gradient(180deg, #ff5533, #aa2200);
@@ -454,9 +460,10 @@
       </div>
     </div>
     <div id="grid-wrap">
-      <div id="grid-header" style="display:flex;justify-content:space-between;width:100%;max-width:320px;font-size:11px;font-weight:700;">
-        <span style="color:#aaa;">표창 보유 <span id="shuriken-count" style="color:#ffd966;">0</span> / <span id="shuriken-max">6</span></span>
+      <div id="grid-header" style="display:flex;justify-content:space-between;align-items:center;width:100%;max-width:320px;font-size:11px;font-weight:700;gap:8px;">
+        <span style="color:#aaa;">보유 <span id="shuriken-count" style="color:#ffd966;">0</span>/<span id="shuriken-max">6</span></span>
         <span style="color:#aaa;">제작 <span id="batch-info" style="color:#a8e6ff;">×1</span></span>
+        <button id="sort-btn" class="grid-action-btn" title="레벨 순으로 자동 정렬 (같은 Lv 인접)">↕ 정렬</button>
       </div>
       <div id="grid"></div>
       <div style="font-size:10px;color:#888;text-align:center;">
@@ -2321,6 +2328,26 @@ document.getElementById('burn-btn').addEventListener('click', () => {
   getAudio();
   activateBurning();
 });
+document.getElementById('sort-btn').addEventListener('click', () => {
+  getAudio();
+  sortGridByLevel();
+});
+
+// Sort the grid so equal-level shurikens sit adjacent (descending level first).
+// Empty slots accumulate at the end. Selection is cleared.
+function sortGridByLevel() {
+  const items = state.grid.filter(c => c !== null);
+  // Sort by level descending — high-tier first, then group equals together
+  items.sort((a, b) => b.level - a.level);
+  const newGrid = new Array(state.grid.length).fill(null);
+  for (let i = 0; i < items.length; i++) newGrid[i] = items[i];
+  state.grid = newGrid;
+  selectedIdx = -1;
+  sfx('move');
+  renderGrid();
+  save();
+}
+
 document.getElementById('cap-down').addEventListener('click', () => {
   state.autoMergeCap = Math.max(1, (state.autoMergeCap || 99) - 1);
   refreshUI(); save();
