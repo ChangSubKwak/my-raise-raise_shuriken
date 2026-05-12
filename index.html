@@ -101,6 +101,32 @@
     transition: transform 0.5s ease-out, opacity 0.5s ease-out;
   }
   .merge-ring2.expand { transform: scale(2.0); opacity: 0; }
+  /* Stage micro-shake on impactful merges */
+  @keyframes microShake1 {
+    0%,100% { transform: translate(0,0); }
+    25%     { transform: translate(-2px, 1px); }
+    50%     { transform: translate(2px, -1px); }
+    75%     { transform: translate(-1px, 2px); }
+  }
+  @keyframes microShake2 {
+    0%,100% { transform: translate(0,0); }
+    20%     { transform: translate(-4px, 2px); }
+    40%     { transform: translate(4px, -3px); }
+    60%     { transform: translate(-3px, 4px); }
+    80%     { transform: translate(3px, -2px); }
+  }
+  @keyframes microShake3 {
+    0%,100% { transform: translate(0,0); }
+    15%     { transform: translate(-7px, 3px); }
+    30%     { transform: translate(7px, -5px); }
+    45%     { transform: translate(-5px, 7px); }
+    60%     { transform: translate(6px, -4px); }
+    80%     { transform: translate(-3px, 2px); }
+  }
+  #stage.shake-1 { animation: microShake1 0.18s ease-out; }
+  #stage.shake-2 { animation: microShake2 0.28s ease-out; }
+  #stage.shake-3 { animation: microShake3 0.42s ease-out; }
+
   /* Floating gold popup on merge */
   .gold-popup {
     position: fixed; pointer-events: none; z-index: 80;
@@ -1003,6 +1029,15 @@ function tryMerge(fromIdx, toIdx) {
         : mTier === 'silver' ? 'mergeSilver'
         : mTier === 'iron'   ? 'mergeIron'
         : 'merge');
+    // Micro-shake: jump merges shake harder; otherwise scale by tier
+    const shakeIntensity = jump >= 5 ? 3
+                         : jump >= 3 ? 3
+                         : jump >= 2 ? 2
+                         : mTier === 'mystic' ? 2
+                         : mTier === 'gold'   ? 2
+                         : mTier === 'silver' ? 1
+                         : 0;
+    if (shakeIntensity > 0) shakeStage(shakeIntensity);
     checkAchievements();
     return 'merge';
   } else {
@@ -2165,6 +2200,17 @@ function checkAchievements() {
       sfx('merge');
     }
   }
+}
+
+// Stage shake. Intensity 1-3 picks animation duration/distance.
+function shakeStage(intensity) {
+  const stage = document.getElementById('stage');
+  if (!stage) return;
+  // remove any in-flight shake so the new one can play
+  stage.classList.remove('shake-1', 'shake-2', 'shake-3');
+  // force reflow so animation restarts
+  void stage.offsetWidth;
+  stage.classList.add('shake-' + intensity);
 }
 
 // Floating "+N gold" popup at a specified screen point.
