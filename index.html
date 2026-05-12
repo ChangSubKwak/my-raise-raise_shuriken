@@ -465,10 +465,11 @@
       </div>
     </div>
     <div id="grid-wrap">
-      <div id="grid-header" style="display:flex;justify-content:space-between;align-items:center;width:100%;max-width:320px;font-size:11px;font-weight:700;gap:8px;">
+      <div id="grid-header" style="display:flex;justify-content:space-between;align-items:center;width:100%;max-width:320px;font-size:11px;font-weight:700;gap:6px;">
         <span style="color:#aaa;">보유 <span id="shuriken-count" style="color:#ffd966;">0</span>/<span id="shuriken-max">6</span></span>
         <span style="color:#aaa;">제작 <span id="batch-info" style="color:#a8e6ff;">×1</span></span>
-        <button id="sort-btn" class="grid-action-btn" title="레벨 순으로 자동 정렬 (같은 Lv 인접)">↕ 정렬</button>
+        <button id="merge-all-btn" class="grid-action-btn" title="가능한 모든 같은 Lv 페어를 즉시 합치기 (잠금/상한 적용)">⚡ 모두</button>
+        <button id="sort-btn" class="grid-action-btn" title="레벨 순으로 자동 정렬">↕ 정렬</button>
       </div>
       <div id="grid"></div>
       <div style="font-size:10px;color:#888;text-align:center;">
@@ -2431,6 +2432,23 @@ document.getElementById('burn-btn').addEventListener('click', () => {
 document.getElementById('sort-btn').addEventListener('click', () => {
   getAudio();
   sortGridByLevel();
+});
+document.getElementById('merge-all-btn').addEventListener('click', () => {
+  getAudio();
+  // Run autoMergeStep repeatedly until no progress (respects cap + lock).
+  // Hard cap iterations to prevent infinite loops in pathological cases.
+  let merged = 0;
+  for (let i = 0; i < 200; i++) {
+    if (!autoMergeStep()) break;
+    merged++;
+  }
+  if (merged > 0) {
+    toast(`⚡ ${merged}회 일괄 합체`);
+  } else {
+    toast('합칠 페어가 없습니다');
+  }
+  refreshUI();
+  save();
 });
 
 // Sort the grid so equal-level shurikens sit adjacent (descending level first).
