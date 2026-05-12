@@ -109,6 +109,32 @@
     will-change: transform, opacity;
   }
 
+  /* Offline reward modal */
+  #offline-modal {
+    position: fixed; inset: 0; z-index: 240;
+    display: none; align-items: center; justify-content: center;
+    background: rgba(0,0,0,0.78);
+  }
+  #offline-modal.show { display: flex; }
+  .offline-box {
+    background: linear-gradient(180deg, #1a1f3a 0%, #0a0f24 100%);
+    border: 2px solid #ffd966; border-radius: 16px;
+    padding: 22px 26px; max-width: 320px; text-align: center;
+    box-shadow: 0 0 40px rgba(255,217,102,0.25);
+  }
+  .offline-title { font-size: 18px; font-weight: 900; color: #ffd966; margin-bottom: 10px; letter-spacing: 2px; }
+  .offline-time { font-size: 14px; color: #ddd; margin-bottom: 16px; }
+  .offline-gold-label { font-size: 11px; color: #888; }
+  .offline-gold { font-size: 26px; font-weight: 900; color: #ffd966; margin: 4px 0 10px; }
+  .offline-cap-note { font-size: 10px; color: #ff8844; margin-bottom: 10px; min-height: 14px; }
+  .offline-claim {
+    background: linear-gradient(180deg, #ffd966, #ffaa33);
+    border: none; color: #2a1500; padding: 10px 28px;
+    border-radius: 22px; font-family: inherit; font-weight: 900; font-size: 14px;
+    cursor: pointer;
+  }
+  .offline-claim:active { transform: scale(0.95); }
+
   /* Combo indicator (active merge streak) */
   #combo-indicator {
     position: fixed; top: 70px; right: 16px; z-index: 100;
@@ -362,6 +388,17 @@
       <button class="footer-btn" id="mute-btn">🔊</button>
       <button class="footer-btn danger" id="reset-btn">초기화</button>
     </div>
+  </div>
+</div>
+
+<div id="offline-modal">
+  <div class="offline-box">
+    <div class="offline-title">⏰ 자리비움 보상</div>
+    <div class="offline-time" id="offline-time">—</div>
+    <div class="offline-gold-label">패시브 골드 자동 누적</div>
+    <div class="offline-gold" id="offline-gold">💰 0</div>
+    <div class="offline-cap-note" id="offline-cap-note"></div>
+    <button class="offline-claim" id="offline-claim">받기</button>
   </div>
 </div>
 
@@ -1796,6 +1833,31 @@ document.getElementById('reset-btn').onclick = () => {
 };
 
 // ---------- Boot ----------
+// Offline reward — compute passive gold for time-away since last save.
+// Capped at 4 hours of real time at 50% efficiency to keep prestige
+// the primary progression vector (idle should supplement, not replace).
+function processOfflineReward() {
+  if (!state.lastSave) return;
+  const elapsedMs = Date.now() - state.lastSave;
+  if (elapsedMs < 30000) return; // ignore short reloads
+  const CAP_SEC = 4 * 3600;      // 4 hours
+  const EFFICIENCY = 0.5;
+  const elapsedSec = Math.min(CAP_SEC, Math.floor(elapsedMs / 1000));
+  const capped = (elapsedMs / 1000) > CAP_SEC;
+  const rate = getPassiveGoldRate();
+  if (rate < 0.1) return;
+  const goldEarned = Math.floor(rate * elapsedSec * EFFICIENCY);
+  if (goldEarned < 1) return;
+  state.gold += goldEarned;
+  state.stats.totalGoldEarned = (state.stats.totalGoldEarned || 0) + goldEarned;
+  // show modal
+  document.getElementById('offline-time').textContent = '자리비움: ' + fmtPlaytime(Math.floor(elapsedMs / 1000));
+  document.getElementById('offline-gold').textContent = '💰 ' + fmt(goldEarned);
+  document.getElementById('offline-cap-note').textContent =
+    capped ? '⚠ 최대 4시간 + 50% 효율 적용' : '50% 효율 적용';
+  document.getElementById('offline-modal').classList.add('show');
+}
+
 function boot() {
   const loaded = load();
   // first-time player: start with progress near full (first spawn quickly)
@@ -1805,10 +1867,15 @@ function boot() {
   startStage();
   refreshUI();
   applyMute();
+  if (loaded) processOfflineReward();
   setInterval(save, 10000);
   setInterval(repaintGridSprites, 100);
   requestAnimationFrame(gameLoop);
 }
+document.getElementById('offline-claim').addEventListener('click', () => {
+  document.getElementById('offline-modal').classList.remove('show');
+  refreshUI();
+});
 boot();
 </script>
 </body>
