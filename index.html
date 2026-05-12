@@ -223,6 +223,11 @@
     box-shadow: 0 0 10px #66ff9988, inset 0 0 8px #66ff9933;
     animation: mergePulse 1.2s ease-in-out infinite;
   }
+  .cell.locked-piece::before {
+    content: '🔒';
+    position: absolute; top: 2px; right: 3px; font-size: 10px;
+    z-index: 2; filter: drop-shadow(0 1px 2px rgba(0,0,0,0.9));
+  }
   @keyframes mergePulse {
     50% { box-shadow: 0 0 16px #66ff99cc, inset 0 0 12px #66ff9966; }
   }
@@ -467,8 +472,8 @@
       </div>
       <div id="grid"></div>
       <div style="font-size:10px;color:#888;text-align:center;">
-        같은 Lv 탭→탭 또는 <b>드래그</b>로 합체 · 다른 Lv = swap · 빈 칸 = 이동<br>
-        <span style="color:#aaa;">선택 시 합체 가능 셀이 초록색 펄스로 표시됩니다</span>
+        같은 Lv 탭→탭 또는 <b>드래그</b>로 합체 · 길게누름 = 🔒 잠금<br>
+        <span style="color:#aaa;">선택 시 합체 가능 셀 초록 펄스 · 잠금 = 자동합치기 보호</span>
       </div>
     </div>
     <div id="spawn-bar">
@@ -925,13 +930,14 @@ function tryMerge(fromIdx, toIdx) {
   }
 }
 function autoMergeStep() {
-  // find any same-level pair (respecting cap) and merge once
+  // find any same-level pair (respecting cap + lock) and merge once
   const cap = state.autoMergeCap || 99;
-  const seen = new Map(); // level -> first idx
+  const seen = new Map();
   for (let i = 0; i < state.grid.length; i++) {
     const c = state.grid[i];
     if (!c) continue;
-    if (c.level > cap) continue; // preserve high-level shurikens
+    if (c.locked) continue;        // locked pieces are protected
+    if (c.level > cap) continue;
     if (seen.has(c.level)) {
       tryMerge(i, seen.get(c.level));
       renderGrid();
@@ -1405,12 +1411,13 @@ function renderGrid() {
       }
     }
     if (c) {
+      if (c.locked) cell.classList.add('locked-piece');
       const lvLabel = document.createElement('div');
       lvLabel.className = 'lv-label';
       lvLabel.textContent = 'Lv' + c.level;
       lvLabel.style.color = levelColor(c.level);
       cell.appendChild(lvLabel);
-      cell.title = `Lv ${c.level} · ${levelName(c.level)}`;
+      cell.title = `Lv ${c.level} · ${levelName(c.level)}${c.locked ? ' 🔒' : ''}`;
       // Tier-scaled ambient halo around the cell (subtle for low Lv, strong for high)
       const tier = levelTier(c.level);
       const cellGlow = c.level < 4 ? 0
@@ -1460,12 +1467,31 @@ function attachDragHandlers(cell, idx, downEvent) {
   let dragging = false;
   let ghost = null;
   let lastTargetCell = null;
+  let longPressFired = false;
+  const LONG_PRESS_MS = 550;
+  // Long-press → toggle lock on the piece
+  const longPressTimer = setTimeout(() => {
+    if (dragging) return;
+    longPressFired = true;
+    piece.locked = !piece.locked;
+    if (navigator.vibrate) navigator.vibrate(40);
+    sfx(piece.locked ? 'merge' : 'move');
+    toast(piece.locked
+      ? `🔒 Lv ${piece.level} 잠금 — 자동합치기 보호`
+      : `🔓 Lv ${piece.level} 잠금 해제`);
+    renderGrid();
+    save();
+  }, LONG_PRESS_MS);
+  function cancelLongPress() {
+    clearTimeout(longPressTimer);
+  }
 
   function onMove(e) {
     const dx = e.clientX - startX;
     const dy = e.clientY - startY;
     if (!dragging) {
       if (Math.hypot(dx, dy) < DRAG_THRESHOLD) return;
+      cancelLongPress(); // moved → not a long-press
       // Start drag — create ghost
       dragging = true;
       cell.classList.add('dragging');
@@ -1506,12 +1532,13 @@ function attachDragHandlers(cell, idx, downEvent) {
   }
 
   function onUp(e) {
+    cancelLongPress();
     document.removeEventListener('pointermove', onMove);
     document.removeEventListener('pointerup', onUp);
     document.removeEventListener('pointercancel', onUp);
     if (lastTargetCell) lastTargetCell.classList.remove('drop-target');
+    if (longPressFired) return; // long-press handled, suppress tap/drop
     if (!dragging) {
-      // Treat as tap
       handleCellTap(idx);
       return;
     }
