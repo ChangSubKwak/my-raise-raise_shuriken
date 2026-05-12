@@ -231,6 +231,22 @@
   }
   .cell .shuriken {
     width: 70%; height: 70%; display: flex; align-items: center; justify-content: center;
+    transition: transform 0.05s;
+  }
+  .cell.dragging .shuriken {
+    opacity: 0.3;
+    transform: scale(0.6);
+  }
+  /* drag ghost — follows finger/cursor */
+  .drag-ghost {
+    position: fixed; pointer-events: none; z-index: 60;
+    transition: none;
+    filter: drop-shadow(0 6px 14px rgba(0,0,0,0.6)) drop-shadow(0 0 10px currentColor);
+  }
+  .cell.drop-target {
+    border-color: #66ff99;
+    box-shadow: 0 0 18px #66ff99cc, inset 0 0 14px #66ff9966;
+    transform: scale(1.1);
   }
 
   /* Spawn bar — time-based generator */
@@ -346,8 +362,8 @@
       </div>
       <div id="grid"></div>
       <div style="font-size:10px;color:#888;text-align:center;">
-        같은 레벨 표창 탭→탭 = 합체 · 다른 레벨 = swap · 빈 칸 = 이동<br>
-        <span style="color:#aaa;">전투는 자동 진행 · ⚔ 버튼으로 별도 화면에서 확인</span>
+        같은 Lv 탭→탭 또는 <b>드래그</b>로 합체 · 다른 Lv = swap · 빈 칸 = 이동<br>
+        <span style="color:#aaa;">선택 시 합체 가능 셀이 초록색 펄스로 표시됩니다</span>
       </div>
     </div>
     <div id="spawn-bar">
@@ -1161,9 +1177,122 @@ function renderGrid() {
     cell.addEventListener('pointerdown', (e) => {
       e.preventDefault();
       getAudio();
-      handleCellTap(i);
+      attachDragHandlers(cell, i, e);
     });
     gridEl.appendChild(cell);
+  }
+}
+
+// Drag-or-tap detection: pointermove >5px → drag flow, else → tap flow on release
+const DRAG_THRESHOLD = 6;
+let _dragState = null;
+function attachDragHandlers(cell, idx, downEvent) {
+  const piece = state.grid[idx];
+  // Empty cells: clear selection on tap; nothing to drag
+  if (!piece) {
+    if (selectedIdx >= 0) handleCellTap(idx);
+    return;
+  }
+  const startX = downEvent.clientX;
+  const startY = downEvent.clientY;
+  let dragging = false;
+  let ghost = null;
+  let lastTargetCell = null;
+
+  function onMove(e) {
+    const dx = e.clientX - startX;
+    const dy = e.clientY - startY;
+    if (!dragging) {
+      if (Math.hypot(dx, dy) < DRAG_THRESHOLD) return;
+      // Start drag — create ghost
+      dragging = true;
+      cell.classList.add('dragging');
+      const rect = cell.getBoundingClientRect();
+      ghost = document.createElement('div');
+      ghost.className = 'drag-ghost';
+      ghost.style.color = levelColor(piece.level);
+      ghost.style.left  = rect.left + 'px';
+      ghost.style.top   = rect.top  + 'px';
+      ghost.style.width  = rect.width  + 'px';
+      ghost.style.height = rect.height + 'px';
+      const c = document.createElement('canvas');
+      c.width = 80; c.height = 80;
+      c.style.width = '100%'; c.style.height = '100%';
+      drawShurikenSprite(c, piece.level);
+      ghost.appendChild(c);
+      document.body.appendChild(ghost);
+      _dragState = { from: idx, ghost, piece };
+    }
+    if (ghost) {
+      ghost.style.transform = `translate(${dx}px, ${dy}px)`;
+    }
+    // Find cell under pointer
+    const tgt = document.elementFromPoint(e.clientX, e.clientY);
+    const tgtCell = tgt && tgt.closest ? tgt.closest('.cell') : null;
+    if (tgtCell !== lastTargetCell) {
+      if (lastTargetCell) lastTargetCell.classList.remove('drop-target');
+      if (tgtCell && tgtCell !== cell) {
+        const tIdx = parseInt(tgtCell.dataset.idx);
+        const tPiece = state.grid[tIdx];
+        // highlight if mergeable or empty
+        if (!tPiece || (tPiece && tPiece.level === piece.level)) {
+          tgtCell.classList.add('drop-target');
+        }
+      }
+      lastTargetCell = tgtCell;
+    }
+  }
+
+  function onUp(e) {
+    document.removeEventListener('pointermove', onMove);
+    document.removeEventListener('pointerup', onUp);
+    document.removeEventListener('pointercancel', onUp);
+    if (lastTargetCell) lastTargetCell.classList.remove('drop-target');
+    if (!dragging) {
+      // Treat as tap
+      handleCellTap(idx);
+      return;
+    }
+    cell.classList.remove('dragging');
+    if (ghost) ghost.remove();
+    _dragState = null;
+    // Drop on the cell at release point
+    const tgt = document.elementFromPoint(e.clientX, e.clientY);
+    const tgtCell = tgt && tgt.closest ? tgt.closest('.cell') : null;
+    if (!tgtCell || tgtCell === cell) return; // dropped on self / outside grid
+    const toIdx = parseInt(tgtCell.dataset.idx);
+    // Use same tryMerge path; rect capture for animation
+    performDrop(idx, toIdx);
+  }
+
+  document.addEventListener('pointermove', onMove);
+  document.addEventListener('pointerup', onUp);
+  document.addEventListener('pointercancel', onUp);
+}
+
+function performDrop(fromIdx, toIdx) {
+  if (fromIdx === toIdx) return;
+  const a = state.grid[fromIdx];
+  const b = state.grid[toIdx];
+  if (!a) return;
+  const willMerge = a && b && a.level === b.level;
+  let fromRect = null, toRect = null;
+  if (willMerge) {
+    const fromCell = gridEl.querySelector(`[data-idx="${fromIdx}"]`);
+    const toCell   = gridEl.querySelector(`[data-idx="${toIdx}"]`);
+    if (fromCell && toCell) {
+      fromRect = fromCell.getBoundingClientRect();
+      toRect   = toCell.getBoundingClientRect();
+    }
+  }
+  const aLv = a.level;
+  const result = tryMerge(fromIdx, toIdx);
+  selectedIdx = -1;
+  renderGrid();
+  refreshUI();
+  save();
+  if (willMerge && result === 'merge' && fromRect && toRect) {
+    playMergeAnim(fromRect, toRect, aLv, toIdx, fromIdx);
   }
 }
 
