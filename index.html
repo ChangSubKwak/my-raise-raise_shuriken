@@ -449,6 +449,15 @@
     font-size: 11px; font-weight: 700; cursor: pointer;
   }
   .grid-action-btn:active { transform: scale(0.94); }
+  .grid-action-btn.on {
+    background: rgba(102, 255, 153, 0.25);
+    border-color: #66ff99; color: #afe;
+  }
+  /* Hint mode: subtle yellow ring around pairs of cells with same Lv */
+  .cell.hint-pair {
+    box-shadow: 0 0 6px #ffd96677, inset 0 0 4px #ffd96622 !important;
+    border-color: #ffd96688 !important;
+  }
   #burn-btn {
     flex: 0.85; padding: 8px 6px;
     background: linear-gradient(180deg, #ff5533, #aa2200);
@@ -599,6 +608,7 @@
       <div id="grid-header" style="display:flex;justify-content:space-between;align-items:center;width:100%;max-width:320px;font-size:11px;font-weight:700;gap:6px;">
         <span style="color:#aaa;">보유 <span id="shuriken-count" style="color:#ffd966;">0</span>/<span id="shuriken-max">6</span></span>
         <span style="color:#aaa;">제작 <span id="batch-info" style="color:#a8e6ff;">×1</span></span>
+        <button id="hint-btn" class="grid-action-btn" title="합칠 수 있는 모든 페어 항상 강조">💡 힌트</button>
         <button id="merge-all-btn" class="grid-action-btn" title="가능한 모든 같은 Lv 페어를 즉시 합치기 (잠금/상한 적용)">⚡ 모두</button>
         <button id="sort-btn" class="grid-action-btn" title="레벨 순으로 자동 정렬">↕ 정렬</button>
       </div>
@@ -880,6 +890,7 @@ function defaultState() {
     spawnProgress: 0,
     autoMerge: false,
     autoMergeCap: 99,  // auto-merge only merges shurikens at level ≤ cap
+    hintMode: false,   // when true, all mergeable pairs glow without selection
     lastSave: Date.now(),
     muted: localStorage.getItem('shuriken_v2_muted') === '1',
     // Combo (chain merges) — not persisted; reset on load
@@ -1638,6 +1649,20 @@ function renderGrid() {
   while (state.grid.length < size) state.grid.push(null);
   gridEl.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
   gridEl.style.gridTemplateRows = `repeat(${Math.ceil(size / cols)}, 1fr)`;
+  // Hint mode: pre-compute set of indexes that have at least one same-level twin
+  const hintPairSet = new Set();
+  if (state.hintMode) {
+    const levelToIdxs = new Map();
+    for (let j = 0; j < state.grid.length; j++) {
+      const cj = state.grid[j];
+      if (!cj) continue;
+      if (!levelToIdxs.has(cj.level)) levelToIdxs.set(cj.level, []);
+      levelToIdxs.get(cj.level).push(j);
+    }
+    for (const idxs of levelToIdxs.values()) {
+      if (idxs.length >= 2) for (const k of idxs) hintPairSet.add(k);
+    }
+  }
   // reuse cells if possible
   gridEl.innerHTML = '';
   for (let i = 0; i < size; i++) {
@@ -1654,6 +1679,10 @@ function renderGrid() {
         cell.classList.add('mergeable');
         cell.dataset.preview = (c.level + 1);
       }
+    }
+    // Hint mode (only when nothing selected, to avoid overlap with mergeable highlight)
+    if (state.hintMode && selectedIdx < 0 && hintPairSet.has(i)) {
+      cell.classList.add('hint-pair');
     }
     if (c) {
       if (c.locked) cell.classList.add('locked-piece');
@@ -2682,6 +2711,14 @@ document.getElementById('sort-btn').addEventListener('click', () => {
   getAudio();
   sortGridByLevel();
 });
+document.getElementById('hint-btn').addEventListener('click', () => {
+  getAudio();
+  state.hintMode = !state.hintMode;
+  document.getElementById('hint-btn').classList.toggle('on', state.hintMode);
+  toast(state.hintMode ? '💡 힌트 ON — 합칠 수 있는 페어 강조' : '힌트 OFF');
+  renderGrid();
+  save();
+});
 document.getElementById('merge-all-btn').addEventListener('click', () => {
   getAudio();
   // Run autoMergeStep repeatedly until no progress (respects cap + lock).
@@ -2824,6 +2861,8 @@ function boot() {
   startStage();
   refreshUI();
   applyMute();
+  // restore hint button visual state after load
+  document.getElementById('hint-btn').classList.toggle('on', !!state.hintMode);
   if (loaded) processOfflineReward();
   setInterval(save, 10000);
   setInterval(repaintGridSprites, 100);
