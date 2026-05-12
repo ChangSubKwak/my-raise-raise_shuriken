@@ -1411,6 +1411,23 @@ function renderGrid() {
       lvLabel.style.color = levelColor(c.level);
       cell.appendChild(lvLabel);
       cell.title = `Lv ${c.level} · ${levelName(c.level)}`;
+      // Tier-scaled ambient halo around the cell (subtle for low Lv, strong for high)
+      const tier = levelTier(c.level);
+      const cellGlow = c.level < 4 ? 0
+                     : c.level < 7 ? 4
+                     : c.level < 10 ? 8
+                     : c.level < 13 ? 14 : 20;
+      if (cellGlow > 0) {
+        cell.style.boxShadow = `inset 0 0 ${cellGlow}px ${levelColor(c.level)}33, 0 0 ${cellGlow * 0.5}px ${levelColor(c.level)}22`;
+      } else {
+        cell.style.boxShadow = '';
+      }
+      // mystic-tier cells also get a slow rotating bg shimmer
+      if (tier.id === 'mystic') {
+        cell.style.background = `radial-gradient(circle, ${levelColor(c.level)}11 0%, rgba(30,30,46,0.5) 70%)`;
+      } else {
+        cell.style.background = '';
+      }
       const inner = document.createElement('div');
       inner.className = 'shuriken';
       const sCanvas = document.createElement('canvas');
