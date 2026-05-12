@@ -757,6 +757,12 @@ const ACHIEVEMENTS = [
   { id: 'a_prestige',     name: '윤회 입문',       icon: '☯', desc: '첫 윤회',              check: (s) => (s.prestigeCount || 0) >= 1 },
   { id: 'a_lucky_1',      name: '행운의 합',       icon: '🍀', desc: '첫 행운 합성 (+2)',    check: (s) => (s.stats.luckyMerges || 0) >= 1 },
   { id: 'a_lucky_10',     name: '운명의 손',       icon: '🎰', desc: '행운 합성 10회',       check: (s) => (s.stats.luckyMerges || 0) >= 10 },
+  { id: 'a_lucky_100',    name: '신의 가호',       icon: '🌠', desc: '행운 합성 100회',      check: (s) => (s.stats.luckyMerges || 0) >= 100 },
+  { id: 'a_lock',         name: '소중한 표창',     icon: '🔒', desc: '표창 잠금 사용',       check: (s) => (s.stats.locksUsed   || 0) >= 1 },
+  { id: 'a_massmerge',    name: '일괄의 묘',       icon: '⚡', desc: '일괄 합치기 사용',     check: (s) => (s.stats.massMerges  || 0) >= 1 },
+  { id: 'a_burn',         name: '불의 시간',       icon: '🔥', desc: '버닝 모드 첫 사용',    check: (s) => (s.stats.burnsUsed   || 0) >= 1 },
+  { id: 'a_lv20',         name: '극창의 경지',     icon: '🐉', desc: 'Lv 20 도달',           check: (s) => (s.bestLevel || 0) >= 20 },
+  { id: 'a_lv30',         name: '사신의 길',       icon: '🐲', desc: 'Lv 30 도달',           check: (s) => (s.bestLevel || 0) >= 30 },
 ];
 let state = defaultState();
 
@@ -819,6 +825,8 @@ function activateBurning() {
   state.gem -= BURNING_COST;
   state.burningTimer = BURNING_DURATION;
   state.autoMerge = true; // force auto-merge ON while burning
+  state.stats.burnsUsed = (state.stats.burnsUsed || 0) + 1;
+  checkAchievements();
   toast('🔥 버닝 30초 — 자동합성 + 가속');
   sfx('merge');
   setTimeout(() => sfx('spawn'), 100);
@@ -1528,12 +1536,14 @@ function attachDragHandlers(cell, idx, downEvent) {
     if (dragging) return;
     longPressFired = true;
     piece.locked = !piece.locked;
+    if (piece.locked) state.stats.locksUsed = (state.stats.locksUsed || 0) + 1;
     if (navigator.vibrate) navigator.vibrate(40);
     sfx(piece.locked ? 'merge' : 'move');
     toast(piece.locked
       ? `🔒 Lv ${piece.level} 잠금 — 자동합치기 보호`
       : `🔓 Lv ${piece.level} 잠금 해제`);
     renderGrid();
+    checkAchievements();
     save();
   }, LONG_PRESS_MS);
   function cancelLongPress() {
@@ -2443,7 +2453,9 @@ document.getElementById('merge-all-btn').addEventListener('click', () => {
     merged++;
   }
   if (merged > 0) {
+    state.stats.massMerges = (state.stats.massMerges || 0) + 1;
     toast(`⚡ ${merged}회 일괄 합체`);
+    checkAchievements();
   } else {
     toast('합칠 페어가 없습니다');
   }
