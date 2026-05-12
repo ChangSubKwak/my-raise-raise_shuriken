@@ -330,6 +330,43 @@
   .stat-row { display: flex; justify-content: space-between; align-items: baseline; padding: 2px 0; font-size: 12px; }
   .stat-row .stat-k { color: #888; }
   .stat-row .stat-v { color: #ffd966; font-weight: 700; font-variant-numeric: tabular-nums; }
+  /* Codex grid — per-level sprite preview */
+  .codex-grid {
+    display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px;
+    padding: 6px; background: #14141e; border-radius: 8px; border: 1px solid #2a2a3e;
+  }
+  .codex-cell {
+    aspect-ratio: 1; display: flex; flex-direction: column; align-items: center;
+    justify-content: center; border-radius: 6px; background: rgba(20,20,30,0.6);
+    border: 1px solid #2a2a3e; cursor: help; position: relative;
+    transition: transform 0.1s, filter 0.2s;
+  }
+  .codex-cell.locked {
+    filter: grayscale(1) brightness(0.4);
+    color: #555;
+  }
+  .codex-cell.unlocked {
+    background: linear-gradient(135deg, rgba(255,217,102,0.08), rgba(255,170,50,0.04));
+    border-color: #ffd96644;
+  }
+  .codex-cell.current {
+    border-color: #66ff99;
+    box-shadow: 0 0 8px #66ff99aa;
+  }
+  .codex-cell:hover { transform: scale(1.12); }
+  .codex-cell canvas { width: 70%; height: 70%; }
+  .codex-cell .codex-lv {
+    position: absolute; bottom: 1px; right: 3px; font-size: 9px;
+    color: #ffd966; font-weight: 700;
+  }
+  .codex-cell:hover::after {
+    content: attr(data-tip);
+    position: absolute; bottom: calc(100% + 4px); left: 50%; transform: translateX(-50%);
+    background: rgba(0,0,0,0.95); color: #fff; padding: 4px 8px;
+    border-radius: 4px; font-size: 11px; white-space: nowrap; z-index: 100;
+    border: 1px solid #ffd96644;
+  }
+
   /* Achievement grid */
   .achv-grid {
     display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px;
@@ -448,6 +485,8 @@
       <div class="stat-row"><span class="stat-k">누적 골드</span><span class="stat-v" id="stat-gold">0</span></div>
       <div class="stat-row"><span class="stat-k">플레이 시간</span><span class="stat-v" id="stat-playtime">0초</span></div>
     </div>
+    <div class="section-title">도감 (圖鑑) <span id="codex-count" style="color:#aaa;font-weight:400;font-size:10px;">0</span></div>
+    <div class="codex-grid" id="codex-grid"></div>
     <div class="section-title">명예 (Achievements) <span id="achv-count" style="color:#aaa;font-weight:400;font-size:10px;">0/0</span></div>
     <div class="achv-grid" id="achv-grid"></div>
     <div class="section-title">환생</div>
@@ -2070,6 +2109,7 @@ function refreshUI() {
   document.getElementById('dps-info').textContent = `${fmt(getPassiveGoldRate())} 골드/sec`;
   document.getElementById('best-info').textContent = `최고 Lv ${state.bestLevel} · 이번 run Lv ${state.runBestLevel}`;
   renderStats();
+  renderCodex();
   renderAchievements();
   renderPrestige();
 }
@@ -2089,6 +2129,43 @@ function renderStats() {
   if (el('stat-gold'))     el('stat-gold').textContent     = fmt(s.totalGoldEarned || 0);
   if (el('stat-playtime')) el('stat-playtime').textContent = fmtPlaytime(s.playTimeSec || 0);
 }
+function renderCodex() {
+  const grid = document.getElementById('codex-grid');
+  const count = document.getElementById('codex-count');
+  if (!grid) return;
+  // Show up to bestLevel + 5 (peek 5 levels ahead)
+  const peek = 5;
+  const maxLv = Math.max(state.bestLevel + peek, 15);
+  if (count) count.textContent = `해금 ${state.bestLevel} / 도전 ${maxLv}`;
+  grid.innerHTML = '';
+  // Identify which level is currently the highest on the grid
+  let currentGridMax = 0;
+  for (const c of state.grid) if (c && c.level > currentGridMax) currentGridMax = c.level;
+  for (let lv = 1; lv <= maxLv; lv++) {
+    const cell = document.createElement('div');
+    const unlocked = lv <= state.bestLevel;
+    cell.className = 'codex-cell ' + (unlocked ? 'unlocked' : 'locked');
+    if (lv === currentGridMax) cell.classList.add('current');
+    if (unlocked) {
+      const c = document.createElement('canvas');
+      c.width = 50; c.height = 50;
+      drawShurikenSprite(c, lv);
+      cell.appendChild(c);
+    } else {
+      cell.textContent = '?';
+      cell.style.fontSize = '18px';
+    }
+    const lvTag = document.createElement('div');
+    lvTag.className = 'codex-lv';
+    lvTag.textContent = lv;
+    cell.appendChild(lvTag);
+    cell.dataset.tip = unlocked
+      ? `Lv ${lv} · ${levelName(lv)}`
+      : `Lv ${lv} · 미해금`;
+    grid.appendChild(cell);
+  }
+}
+
 function renderAchievements() {
   const grid = document.getElementById('achv-grid');
   const count = document.getElementById('achv-count');
