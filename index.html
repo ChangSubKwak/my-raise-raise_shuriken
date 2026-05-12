@@ -308,6 +308,31 @@
   .stat-row { display: flex; justify-content: space-between; align-items: baseline; padding: 2px 0; font-size: 12px; }
   .stat-row .stat-k { color: #888; }
   .stat-row .stat-v { color: #ffd966; font-weight: 700; font-variant-numeric: tabular-nums; }
+  /* Achievement grid */
+  .achv-grid {
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px;
+    padding: 6px; background: #14141e; border-radius: 8px; border: 1px solid #2a2a3e;
+  }
+  .achv-cell {
+    aspect-ratio: 1; display: flex; align-items: center; justify-content: center;
+    border-radius: 6px; background: rgba(20,20,30,0.6); font-size: 18px;
+    filter: grayscale(1) brightness(0.5); cursor: help;
+    border: 1px solid #2a2a3e; transition: filter 0.2s, transform 0.1s;
+    position: relative;
+  }
+  .achv-cell.unlocked {
+    filter: none;
+    background: linear-gradient(135deg, rgba(255,217,102,0.15), rgba(255,170,50,0.08));
+    border-color: #ffd96644;
+  }
+  .achv-cell:hover { transform: scale(1.1); }
+  .achv-cell:hover::after {
+    content: attr(data-tip);
+    position: absolute; bottom: calc(100% + 4px); left: 50%; transform: translateX(-50%);
+    background: rgba(0,0,0,0.95); color: #fff; padding: 4px 8px;
+    border-radius: 4px; font-size: 11px; white-space: nowrap; z-index: 100;
+    border: 1px solid #ffd96644;
+  }
   .upgrade-btn {
     background: #2a4a8e; border: 1px solid #4a6aae; border-radius: 6px;
     padding: 6px 10px; color: #fff; font-weight: 700; font-size: 11px;
@@ -399,6 +424,8 @@
       <div class="stat-row"><span class="stat-k">누적 골드</span><span class="stat-v" id="stat-gold">0</span></div>
       <div class="stat-row"><span class="stat-k">플레이 시간</span><span class="stat-v" id="stat-playtime">0초</span></div>
     </div>
+    <div class="section-title">명예 (Achievements) <span id="achv-count" style="color:#aaa;font-weight:400;font-size:10px;">0/0</span></div>
+    <div class="achv-grid" id="achv-grid"></div>
     <div class="section-title">환생</div>
     <div class="upgrade-card">
       <div class="upgrade-info">
@@ -554,9 +581,28 @@ function defaultState() {
       totalGoldEarned: 0,
       sessionStart: Date.now(),
       playTimeSec: 0,
+      bestCombo: 0,
     },
+    achievements: {}, // id → unlockedAt timestamp
   };
 }
+
+// Achievement definitions — pure data, check() reads state.stats.
+const ACHIEVEMENTS = [
+  { id: 'a_first_merge',  name: '첫 합체',         icon: '🌱', desc: '첫 합체 달성',         check: (s) => (s.stats.totalMerges  || 0) >= 1 },
+  { id: 'a_merge_100',    name: '백 번의 합',      icon: '✨', desc: '합체 100회',           check: (s) => (s.stats.totalMerges  || 0) >= 100 },
+  { id: 'a_merge_1000',   name: '천 번의 합',      icon: '🌟', desc: '합체 1,000회',         check: (s) => (s.stats.totalMerges  || 0) >= 1000 },
+  { id: 'a_spawn_500',    name: '대량 생성',       icon: '🏭', desc: '표창 생성 500개',      check: (s) => (s.stats.totalSpawned || 0) >= 500 },
+  { id: 'a_iron',         name: '철의 길',         icon: '🛡', desc: 'Lv 4 (鐵 tier) 도달', check: (s) => (s.bestLevel || 0) >= 4 },
+  { id: 'a_silver',       name: '은의 길',         icon: '⚙', desc: 'Lv 7 (銀 tier) 도달', check: (s) => (s.bestLevel || 0) >= 7 },
+  { id: 'a_gold',         name: '금의 길',         icon: '🌕', desc: 'Lv 10 (金 tier) 도달',check: (s) => (s.bestLevel || 0) >= 10 },
+  { id: 'a_mystic',       name: '현의 길',         icon: '🌀', desc: 'Lv 13 (玄 tier) 도달',check: (s) => (s.bestLevel || 0) >= 13 },
+  { id: 'a_combo_5',      name: '연쇄 합 5',       icon: '⚡', desc: '콤보 ×5 달성',         check: (s) => (s.stats.bestCombo || 0) >= 5 },
+  { id: 'a_combo_10',     name: '연쇄 합 10',      icon: '🔥', desc: '콤보 ×10 달성',        check: (s) => (s.stats.bestCombo || 0) >= 10 },
+  { id: 'a_gold_10k',     name: '재물 10K',        icon: '💰', desc: '누적 골드 10,000',     check: (s) => (s.stats.totalGoldEarned || 0) >= 10000 },
+  { id: 'a_gold_1m',      name: '재물 1M',         icon: '💎', desc: '누적 골드 1,000,000',  check: (s) => (s.stats.totalGoldEarned || 0) >= 1000000 },
+  { id: 'a_prestige',     name: '윤회 입문',       icon: '☯', desc: '첫 윤회',              check: (s) => (s.prestigeCount || 0) >= 1 },
+];
 let state = defaultState();
 
 // ---------- Save / Load ----------
@@ -579,6 +625,7 @@ function load() {
     // lifetime stats migration — re-anchor sessionStart so play-time count resumes
     state.stats = Object.assign(defaultState().stats, s.stats || {});
     state.stats.sessionStart = Date.now();
+    state.achievements = Object.assign({}, s.achievements || {});
     return true;
   } catch (e) { return false; }
 }
@@ -649,6 +696,7 @@ function spawnShuriken() {
   state.stats.totalSpawned = (state.stats.totalSpawned || 0) + 1;
   sfx('spawn');
   renderGrid();
+  checkAchievements();
   return true;
 }
 // Instant spawn (gem-paid premium). Skips waiting.
@@ -681,6 +729,7 @@ function tryMerge(fromIdx, toIdx) {
     // Combo: chain merges within 2.5s → escalating bonus
     state.comboCount = (state.comboCount || 0) + 1;
     state.comboTimer = 2.5;
+    if (state.comboCount > (state.stats.bestCombo || 0)) state.stats.bestCombo = state.comboCount;
     const comboMult = 1 + (state.comboCount - 1) * 0.2; // ×1.0, 1.2, 1.4, ...
     const mergeGold = Math.floor(Math.pow(2, newLv) * getGoldMul() * comboMult);
     state.gold += mergeGold;
@@ -698,6 +747,7 @@ function tryMerge(fromIdx, toIdx) {
     if (newLv > state.runBestLevel) state.runBestLevel = newLv;
     flashCell(toIdx);
     sfx('merge');
+    checkAchievements();
     return 'merge';
   } else {
     // swap
@@ -1708,6 +1758,19 @@ function playMergeAnim(fromRect, toRect, sourceLevel, toIdx, fromIdx) {
   }, PULSE_MS + FLIGHT_MS);
 }
 
+// Achievement check — called after relevant events. Pops a toast on unlock.
+function checkAchievements() {
+  if (!state.achievements) state.achievements = {};
+  for (const a of ACHIEVEMENTS) {
+    if (state.achievements[a.id]) continue;
+    if (a.check(state)) {
+      state.achievements[a.id] = Date.now();
+      toast(`🏅 ${a.icon} ${a.name} — ${a.desc}`);
+      sfx('merge');
+    }
+  }
+}
+
 // Combo indicator — show/refresh while merge streak is active
 function showComboToast(count, mult) {
   const el = document.getElementById('combo-indicator');
@@ -1816,6 +1879,7 @@ function refreshUI() {
   document.getElementById('dps-info').textContent = `${fmt(getPassiveGoldRate())} 골드/sec`;
   document.getElementById('best-info').textContent = `최고 Lv ${state.bestLevel} · 이번 run Lv ${state.runBestLevel}`;
   renderStats();
+  renderAchievements();
   renderPrestige();
 }
 function fmtPlaytime(sec) {
@@ -1832,6 +1896,22 @@ function renderStats() {
   if (el('stat-spawned'))  el('stat-spawned').textContent  = fmt(s.totalSpawned || 0);
   if (el('stat-gold'))     el('stat-gold').textContent     = fmt(s.totalGoldEarned || 0);
   if (el('stat-playtime')) el('stat-playtime').textContent = fmtPlaytime(s.playTimeSec || 0);
+}
+function renderAchievements() {
+  const grid = document.getElementById('achv-grid');
+  const count = document.getElementById('achv-count');
+  if (!grid) return;
+  const got = state.achievements || {};
+  const unlocked = ACHIEVEMENTS.filter(a => got[a.id]).length;
+  if (count) count.textContent = `${unlocked}/${ACHIEVEMENTS.length}`;
+  grid.innerHTML = '';
+  for (const a of ACHIEVEMENTS) {
+    const cell = document.createElement('div');
+    cell.className = 'achv-cell' + (got[a.id] ? ' unlocked' : '');
+    cell.textContent = a.icon;
+    cell.dataset.tip = (got[a.id] ? '✓ ' : '✗ ') + a.name + ' — ' + a.desc;
+    grid.appendChild(cell);
+  }
 }
 function getPassiveGoldRate() {
   let r = 0;
@@ -1914,6 +1994,7 @@ function renderPrestige() {
       state.upgrades = { maxShuriken: keepMax, spawnRate:0, spawnBatch: keepBatch, firerate:0, baseDmg:0, goldMul:0, spawnLevel:0 };
       state.grid = new Array(getGridSize()).fill(null);
       startStage();
+      checkAchievements();
       refreshUI();
       save();
       toast(`🌟 윤회! +50% 영구 강화`);
