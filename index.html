@@ -152,6 +152,43 @@
     will-change: transform, opacity;
   }
 
+  /* First-play tutorial overlay */
+  #tutorial-overlay {
+    position: fixed; inset: 0; z-index: 260;
+    display: none; align-items: center; justify-content: center;
+  }
+  #tutorial-overlay.show { display: flex; }
+  .tut-backdrop {
+    position: absolute; inset: 0;
+    background: radial-gradient(circle at center, rgba(10,10,20,0.7), rgba(0,0,0,0.92));
+  }
+  .tut-card {
+    position: relative; z-index: 1;
+    background: linear-gradient(180deg, #1a1a2e 0%, #0a0a14 100%);
+    border: 2px solid #ffd966; border-radius: 18px;
+    padding: 24px 28px; max-width: 340px; text-align: center;
+    box-shadow: 0 0 50px rgba(255,217,102,0.3);
+    animation: tutEnter 0.4s cubic-bezier(0.34, 1.5, 0.5, 1);
+  }
+  @keyframes tutEnter {
+    from { transform: scale(0.6); opacity: 0; }
+    to   { transform: scale(1);   opacity: 1; }
+  }
+  .tut-step { font-size: 10px; color: #ffd966; letter-spacing: 3px; font-weight: 700; margin-bottom: 6px; }
+  .tut-emoji { font-size: 48px; margin: 4px 0 8px; filter: drop-shadow(0 0 12px #ffd96655); }
+  .tut-title { font-size: 16px; font-weight: 900; color: #fff; margin-bottom: 10px; }
+  .tut-body { font-size: 12px; color: #ccc; line-height: 1.55; margin-bottom: 18px; }
+  .tut-actions { display: flex; gap: 8px; justify-content: center; }
+  .tut-skip, .tut-next {
+    padding: 8px 18px; border-radius: 10px; font-family: inherit; font-weight: 700;
+    font-size: 12px; cursor: pointer; border: none;
+  }
+  .tut-skip { background: #2a2a3a; color: #aaa; }
+  .tut-next {
+    background: linear-gradient(180deg, #ffd966, #ffaa33); color: #2a1500;
+  }
+  .tut-next:active { transform: scale(0.95); }
+
   /* Achievement unlock toast (slides in top-center, rich card) */
   #achv-toast {
     position: fixed; top: 24px; left: 50%; transform: translateX(-50%) translateY(-120px);
@@ -678,6 +715,20 @@
       <button class="footer-btn" id="export-btn">📤</button>
       <button class="footer-btn" id="import-btn">📥</button>
       <button class="footer-btn danger" id="reset-btn">초기화</button>
+    </div>
+  </div>
+</div>
+
+<div id="tutorial-overlay">
+  <div class="tut-backdrop"></div>
+  <div class="tut-card">
+    <div class="tut-step" id="tut-step">1 / 4</div>
+    <div class="tut-emoji" id="tut-emoji">🪙</div>
+    <div class="tut-title" id="tut-title">표창키우기에 오신 것을 환영합니다</div>
+    <div class="tut-body" id="tut-body">설명…</div>
+    <div class="tut-actions">
+      <button class="tut-skip" id="tut-skip">건너뛰기</button>
+      <button class="tut-next" id="tut-next">다음</button>
     </div>
   </div>
 </div>
@@ -2827,6 +2878,43 @@ document.getElementById('reset-btn').onclick = () => {
 };
 
 // ---------- Boot ----------
+// First-play tutorial — shown only when no save existed at boot.
+const TUTORIAL_STEPS = [
+  { emoji: '🪙', title: '표창키우기에 오신 것을 환영합니다',
+    body: '시간이 흐르며 표창이 자동으로 생성됩니다. 처음 진행 속도는 12초/표창입니다.' },
+  { emoji: '👆', title: '탭하여 합치기',
+    body: '같은 레벨의 표창을 탭→탭 하면 합쳐져 한 단계 올라갑니다. 골드도 함께 획득합니다.' },
+  { emoji: '✋', title: '드래그도 가능',
+    body: '표창을 끌어다 다른 표창 위에 놓으면 합쳐집니다. 같은 Lv: 합체 / 다른 Lv: 자리바꿈.' },
+  { emoji: '🔥', title: '버닝 모드와 자동화',
+    body: '💎 10으로 30초 가속 + 자동합성. 자동합치기 ON과 ⚡ 모두 버튼으로 빠르게 진행할 수 있습니다.' },
+];
+let _tutStep = 0;
+function showTutorial() {
+  _tutStep = 0;
+  document.getElementById('tutorial-overlay').classList.add('show');
+  renderTutStep();
+}
+function renderTutStep() {
+  const s = TUTORIAL_STEPS[_tutStep];
+  if (!s) { closeTutorial(); return; }
+  document.getElementById('tut-step').textContent = `${_tutStep + 1} / ${TUTORIAL_STEPS.length}`;
+  document.getElementById('tut-emoji').textContent = s.emoji;
+  document.getElementById('tut-title').textContent = s.title;
+  document.getElementById('tut-body').textContent = s.body;
+  document.getElementById('tut-next').textContent =
+    _tutStep === TUTORIAL_STEPS.length - 1 ? '시작' : '다음';
+}
+function closeTutorial() {
+  document.getElementById('tutorial-overlay').classList.remove('show');
+}
+document.getElementById('tut-next').addEventListener('click', () => {
+  _tutStep++;
+  if (_tutStep >= TUTORIAL_STEPS.length) { closeTutorial(); }
+  else renderTutStep();
+});
+document.getElementById('tut-skip').addEventListener('click', closeTutorial);
+
 // Offline reward — compute passive gold for time-away since last save.
 // Capped at 4 hours of real time at 50% efficiency to keep prestige
 // the primary progression vector (idle should supplement, not replace).
@@ -2864,6 +2952,8 @@ function boot() {
   // restore hint button visual state after load
   document.getElementById('hint-btn').classList.toggle('on', !!state.hintMode);
   if (loaded) processOfflineReward();
+  // First-time player → show tutorial
+  if (!loaded) setTimeout(showTutorial, 350);
   setInterval(save, 10000);
   setInterval(repaintGridSprites, 100);
   requestAnimationFrame(gameLoop);
