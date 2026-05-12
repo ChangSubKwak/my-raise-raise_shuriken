@@ -918,7 +918,13 @@ function tryMerge(fromIdx, toIdx) {
     }
     if (newLv > state.runBestLevel) state.runBestLevel = newLv;
     flashCell(toIdx);
-    sfx('merge');
+    // Tier-specific merge sound (matches visual evolution)
+    const mTier = levelTier(newLv).id;
+    sfx(mTier === 'mystic' ? 'mergeMystic'
+        : mTier === 'gold'   ? 'mergeGold'
+        : mTier === 'silver' ? 'mergeSilver'
+        : mTier === 'iron'   ? 'mergeIron'
+        : 'merge');
     checkAchievements();
     return 'merge';
   } else {
@@ -1208,6 +1214,27 @@ function sfx(type) {
       osc.frequency.linearRampToValueAtTime(880, now + 0.18);
       g.gain.setValueAtTime(0.7, now); g.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
       dur = 0.2; break;
+    case 'mergeIron':   // tier 鐵 (Lv 4-6) — slightly lower, fuller
+      osc.type = 'sawtooth'; osc.frequency.setValueAtTime(440, now);
+      osc.frequency.linearRampToValueAtTime(740, now + 0.20);
+      g.gain.setValueAtTime(0.55, now); g.gain.exponentialRampToValueAtTime(0.001, now + 0.22);
+      dur = 0.22; break;
+    case 'mergeSilver': // tier 銀 (Lv 7-9) — bright bell tone
+      osc.type = 'sine'; osc.frequency.setValueAtTime(660, now);
+      osc.frequency.linearRampToValueAtTime(1320, now + 0.22);
+      g.gain.setValueAtTime(0.65, now); g.gain.exponentialRampToValueAtTime(0.001, now + 0.25);
+      dur = 0.25; break;
+    case 'mergeGold':   // tier 金 (Lv 10-12) — rich chord-like ascending
+      osc.type = 'triangle'; osc.frequency.setValueAtTime(523, now);
+      osc.frequency.linearRampToValueAtTime(784, now + 0.10);  // perfect 5th
+      osc.frequency.linearRampToValueAtTime(1046, now + 0.22); // octave up
+      g.gain.setValueAtTime(0.75, now); g.gain.exponentialRampToValueAtTime(0.001, now + 0.28);
+      dur = 0.28; break;
+    case 'mergeMystic': // tier 玄 (Lv 13+) — descending mystical
+      osc.type = 'sine'; osc.frequency.setValueAtTime(1320, now);
+      osc.frequency.exponentialRampToValueAtTime(220, now + 0.45);
+      g.gain.setValueAtTime(0.7, now); g.gain.exponentialRampToValueAtTime(0.001, now + 0.5);
+      dur = 0.5; break;
     case 'move':
       osc.type = 'square'; osc.frequency.setValueAtTime(220, now);
       g.gain.setValueAtTime(0.3, now); g.gain.exponentialRampToValueAtTime(0.001, now + 0.04);
