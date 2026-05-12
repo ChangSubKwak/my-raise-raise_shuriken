@@ -46,12 +46,15 @@
 
   /* combat removed in v2.5 — gold is passive based on grid */
 
-  /* Merge animation — multi-layered choreography */
+  /* Merge animation — smooth choreography (v2.18) */
   .merge-ghost {
     position: fixed; pointer-events: none; z-index: 50;
     display: flex; align-items: center; justify-content: center;
-    transition: transform 0.30s cubic-bezier(0.55, 0, 0.7, 0.05),
-                opacity 0.30s ease-out, filter 0.30s ease-out;
+    /* gentler default; specific phases set their own timing */
+    transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1),
+                opacity   0.4s ease-out,
+                filter    0.4s ease-out;
+    will-change: transform, opacity, filter;
   }
   .merge-ghost canvas {
     width: 75% !important; height: 75% !important;
@@ -1664,25 +1667,65 @@ function playMergeAnim(fromRect, toRect, sourceLevel, toIdx, fromIdx) {
     targetInner.style.transform = 'scale(0)';
   }
 
-  // PHASE 1: ANTICIPATION — both ghosts pulse + glow
-  ghostA.getBoundingClientRect(); // reflow
-  ghostA.style.transform = 'scale(1.18)';
-  ghostA.style.filter = `brightness(1.6) drop-shadow(0 0 14px ${color})`;
-  ghostB.style.transform = 'scale(1.18)';
-  ghostB.style.filter = `brightness(1.6) drop-shadow(0 0 14px ${color})`;
+  // PHASE 1: ANTICIPATION — both ghosts pulse + glow (smoother in-out)
+  ghostA.style.transition = `transform ${PULSE_MS}ms cubic-bezier(0.4, 0, 0.2, 1), filter ${PULSE_MS}ms ease-out`;
+  ghostB.style.transition = `transform ${PULSE_MS}ms cubic-bezier(0.4, 0, 0.2, 1), filter ${PULSE_MS}ms ease-out`;
+  ghostA.getBoundingClientRect();
+  ghostA.style.transform = 'scale(1.15)';
+  ghostA.style.filter = `brightness(1.5) drop-shadow(0 0 12px ${color})`;
+  ghostB.style.transform = 'scale(1.15)';
+  ghostB.style.filter = `brightness(1.5) drop-shadow(0 0 12px ${color})`;
 
-  // PHASE 2: FLIGHT — both ghosts fly to midpoint with 3D flip
+  // PHASE 2: FLIGHT — both ghosts arc to midpoint with smooth JS-driven motion.
+  // Using rAF instead of single CSS transition lets us draw a parabolic arc
+  // (rather than a straight line) and continuously update scale + rotation
+  // for a much more natural "swooping" feel.
   setTimeout(() => {
-    ghostA.style.transition = `transform ${FLIGHT_MS}ms cubic-bezier(0.5, 0, 0.7, 0.1), opacity ${FLIGHT_MS}ms, filter ${FLIGHT_MS}ms`;
-    ghostB.style.transition = `transform ${FLIGHT_MS}ms cubic-bezier(0.5, 0, 0.7, 0.1), opacity ${FLIGHT_MS}ms, filter ${FLIGHT_MS}ms`;
-    const dxA = midCx - fromCx;
-    const dyA = midCy - fromCy;
-    const dxB = midCx - toCx;
-    const dyB = midCy - toCy;
-    ghostA.style.transform = `translate(${dxA}px, ${dyA}px) scale(0.6) rotate(540deg)`;
-    ghostB.style.transform = `translate(${dxB}px, ${dyB}px) scale(0.6) rotate(-540deg)`;
-    ghostA.style.opacity = '0.45';
-    ghostB.style.opacity = '0.45';
+    // disable CSS transitions during JS animation (we set transform each frame)
+    ghostA.style.transition = 'opacity 0.2s ease-out, filter 0.2s ease-out';
+    ghostB.style.transition = 'opacity 0.2s ease-out, filter 0.2s ease-out';
+    ghostA.style.opacity = '0.92';
+    ghostB.style.opacity = '0.92';
+    // arc apex offset perpendicular to the path direction
+    const pathDx = toCx - fromCx;
+    const pathDy = toCy - fromCy;
+    const pathLen = Math.hypot(pathDx, pathDy) || 1;
+    // perpendicular unit (rotated 90°)
+    const perpX = -pathDy / pathLen;
+    const perpY =  pathDx / pathLen;
+    const arcHeight = Math.min(60, pathLen * 0.35);
+    // gentle smooth-step easing (cubic ease-in-out, very smooth)
+    const ease = (t) => t * t * (3 - 2 * t);
+    const startTime = performance.now();
+    function step(now) {
+      const elapsed = now - startTime;
+      const t = Math.min(1, elapsed / FLIGHT_MS);
+      const e = ease(t);
+      // ghost A: fromCx,fromCy → midCx,midCy with arc curving outward
+      // ghost B: toCx,toCy → midCx,midCy with arc curving opposite direction
+      // arc factor peaks at t=0.5: 4t(1-t)
+      const arcA = 4 * e * (1 - e) * arcHeight;
+      const arcB = -4 * e * (1 - e) * arcHeight;
+      const ax = (midCx - fromCx) * e + perpX * arcA;
+      const ay = (midCy - fromCy) * e + perpY * arcA;
+      const bx = (midCx - toCx)   * e + perpX * arcB;
+      const by = (midCy - toCy)   * e + perpY * arcB;
+      // smoothly shrink + rotate continuously (not just endpoints)
+      const scale = 1 - 0.4 * e;        // 1 → 0.6
+      const rotA  = 540 * e;            // 0 → 540
+      const rotB  = -540 * e;           // 0 → -540
+      // brighten as they converge
+      const bright = 1 + 0.4 * e;
+      const fade = 1 - 0.5 * e;         // opacity 1 → 0.5 by arrival
+      ghostA.style.transform = `translate(${ax}px, ${ay}px) scale(${scale}) rotate(${rotA}deg)`;
+      ghostB.style.transform = `translate(${bx}px, ${by}px) scale(${scale}) rotate(${rotB}deg)`;
+      ghostA.style.filter = `brightness(${bright}) drop-shadow(0 0 ${10 + e * 18}px ${color})`;
+      ghostB.style.filter = `brightness(${bright}) drop-shadow(0 0 ${10 + e * 18}px ${color})`;
+      ghostA.style.opacity = String(fade);
+      ghostB.style.opacity = String(fade);
+      if (t < 1) requestAnimationFrame(step);
+    }
+    requestAnimationFrame(step);
     // Trail dots from BOTH endpoints
     spawnConvergenceTrails(fromCx, fromCy, midCx, midCy, color, FLIGHT_MS);
     spawnConvergenceTrails(toCx,   toCy,   midCx, midCy, color, FLIGHT_MS);
@@ -1794,27 +1837,30 @@ function playMergeAnim(fromRect, toRect, sourceLevel, toIdx, fromIdx) {
     document.body.appendChild(newGhost);
     newGhost.getBoundingClientRect();
 
-    // Pop up with strong overshoot
-    newGhost.style.transition = 'transform 0.20s cubic-bezier(0.34, 1.8, 0.5, 1)';
-    newGhost.style.transform = 'scale(1.35) rotate(0deg)';
+    // Soft pop with light overshoot (less jarring than 1.35 → 1.0)
+    newGhost.style.transition = 'transform 0.26s cubic-bezier(0.25, 1.4, 0.5, 1)';
+    newGhost.style.transform = 'scale(1.18) rotate(0deg)';
 
-    // Slide to target cell + settle scale
+    // Smooth slide to target with continuous deceleration (no abrupt finish)
     setTimeout(() => {
-      newGhost.style.transition = 'transform 0.22s cubic-bezier(0.5, 0, 0.5, 1)';
+      newGhost.style.transition = 'transform 0.32s cubic-bezier(0.33, 0, 0.1, 1)';
       const dxT = toRect.left - (midCx - toRect.width / 2);
       const dyT = toRect.top  - (midCy - toRect.height / 2);
       newGhost.style.transform = `translate(${dxT}px, ${dyT}px) scale(1)`;
-    }, 200);
+    }, 240);
 
-    // Reveal real target sprite, remove ghost
+    // Reveal real target sprite with cross-fade — smoother handoff
     setTimeout(() => {
-      newGhost.remove();
       if (targetInner) {
-        targetInner.style.transition = 'opacity 0.1s ease-out, transform 0.1s';
+        targetInner.style.transition = 'opacity 0.18s ease-out, transform 0.22s cubic-bezier(0.4, 0, 0.2, 1)';
         targetInner.style.opacity = '1';
         targetInner.style.transform = 'scale(1) rotate(0deg)';
       }
-    }, 430);
+      // fade ghost out before removing (avoids pop-out)
+      newGhost.style.transition = 'opacity 0.18s ease-out';
+      newGhost.style.opacity = '0';
+      setTimeout(() => newGhost.remove(), 200);
+    }, 540);
   }, PULSE_MS + FLIGHT_MS);
 }
 
@@ -1906,29 +1952,37 @@ function showRecordOverlay(level) {
   }, 350);
 }
 
-// Drop trail dots along a path from (x1,y1) → (x2,y2) over durMs
+// Drop trail dots along a smooth arc path matching the ghost flight.
+// Higher frequency + arc curvature for smoother visual trail.
 function spawnConvergenceTrails(x1, y1, x2, y2, color, durMs) {
   let elapsed = 0;
-  const STEP = 32;
+  const STEP = 20; // more frequent dots → smoother streak
+  // perpendicular for arc (matches ghost arc curve)
+  const dx = x2 - x1, dy = y2 - y1;
+  const len = Math.hypot(dx, dy) || 1;
+  const perpX = -dy / len, perpY = dx / len;
+  const arcH = Math.min(60, len * 0.35);
   const id = setInterval(() => {
     elapsed += STEP;
-    if (elapsed >= durMs * 0.95) { clearInterval(id); return; }
+    if (elapsed >= durMs * 0.96) { clearInterval(id); return; }
     const t = elapsed / durMs;
-    const ease = t * t * (3 - 2 * t);
-    const cx = x1 + (x2 - x1) * ease;
-    const cy = y1 + (y2 - y1) * ease;
+    const e = t * t * (3 - 2 * t);
+    const arc = 4 * e * (1 - e) * arcH;
+    const cx = x1 + (x2 - x1) * e + perpX * arc;
+    const cy = y1 + (y2 - y1) * e + perpY * arc;
     const trail = document.createElement('div');
     trail.className = 'merge-trail';
-    const sz = 6 + Math.random() * 6;
-    trail.style.left = (cx - sz/2 + rand(-5, 5)) + 'px';
-    trail.style.top  = (cy - sz/2 + rand(-5, 5)) + 'px';
+    // smaller jitter, larger near apex for streak effect
+    const sz = 5 + (1 - Math.abs(0.5 - e) * 2) * 5 + Math.random() * 2;
+    trail.style.left = (cx - sz/2 + rand(-2, 2)) + 'px';
+    trail.style.top  = (cy - sz/2 + rand(-2, 2)) + 'px';
     trail.style.width  = sz + 'px';
     trail.style.height = sz + 'px';
     trail.style.background = color;
-    trail.style.boxShadow  = '0 0 12px ' + color;
+    trail.style.boxShadow  = '0 0 14px ' + color;
     document.body.appendChild(trail);
     requestAnimationFrame(() => trail.classList.add('fade'));
-    setTimeout(() => trail.remove(), 600);
+    setTimeout(() => trail.remove(), 650);
   }, STEP);
 }
 
