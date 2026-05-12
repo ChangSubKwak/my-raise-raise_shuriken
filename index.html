@@ -204,6 +204,14 @@
     padding: 12px; flex: 1.5; display: flex; flex-direction: column; gap: 8px;
     align-items: center; justify-content: center;
     border-top: 1px solid #2a2a3e;
+    transition: background 0.3s;
+  }
+  #grid-wrap.full {
+    animation: gridFullPulse 1.4s ease-in-out infinite;
+  }
+  @keyframes gridFullPulse {
+    0%, 100% { background: linear-gradient(180deg, #11111e 0%, #0a0a16 100%); }
+    50%      { background: linear-gradient(180deg, #2a1810 0%, #1a0d05 100%); }
   }
   #grid {
     display: grid; gap: 6px;
@@ -1400,6 +1408,9 @@ function updateHUD() {
   // shuriken count / max display
   const totalSlots = state.grid.length;
   const heldCount = totalSlots - emptySlots().length;
+  // grid-full visual warning (pulsing red tint background)
+  const gridWrap = document.getElementById('grid-wrap');
+  if (gridWrap) gridWrap.classList.toggle('full', heldCount === totalSlots);
   const scEl = document.getElementById('shuriken-count');
   const smEl = document.getElementById('shuriken-max');
   const biEl = document.getElementById('batch-info');
