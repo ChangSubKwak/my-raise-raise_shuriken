@@ -109,6 +109,47 @@
     will-change: transform, opacity;
   }
 
+  /* New-level-record celebration overlay */
+  #record-overlay {
+    position: fixed; inset: 0; pointer-events: none; z-index: 250;
+    display: flex; align-items: center; justify-content: center;
+    background: radial-gradient(circle at center, rgba(0,0,0,0.55) 0%, rgba(0,0,0,0.85) 80%);
+    opacity: 0;
+    transition: opacity 0.25s ease-out;
+  }
+  #record-overlay.show { opacity: 1; }
+  .record-box {
+    text-align: center; transform: scale(0.3); opacity: 0;
+    transition: transform 0.55s cubic-bezier(0.34, 1.7, 0.5, 1),
+                opacity 0.4s ease-out;
+  }
+  #record-overlay.show .record-box { transform: scale(1); opacity: 1; }
+  .record-title {
+    font-size: 13px; letter-spacing: 4px; color: #ffd966; font-weight: 700;
+    text-shadow: 0 0 10px #ffd96655;
+  }
+  .record-tier-label {
+    font-size: 64px; font-weight: 900; line-height: 1; margin: 6px 0 4px;
+    text-shadow: 0 0 18px currentColor, 0 0 6px #000;
+  }
+  .record-level {
+    font-size: 28px; font-weight: 900; color: #fff; letter-spacing: 1px;
+    text-shadow: 0 2px 6px rgba(0,0,0,0.9);
+  }
+  .record-canvas-wrap {
+    margin: 20px auto 14px; width: 120px; height: 120px;
+    filter: drop-shadow(0 0 24px currentColor);
+  }
+  .record-canvas-wrap canvas { width: 100%; height: 100%; }
+  .record-sub {
+    font-size: 13px; color: #ddd; margin-top: 4px;
+  }
+  .record-tap-hint {
+    margin-top: 22px; font-size: 11px; color: #888;
+    animation: hintBlink 1.2s ease-in-out infinite;
+  }
+  @keyframes hintBlink { 50% { opacity: 0.4; } }
+
   /* Grid — main game focus */
   #grid-wrap {
     background: linear-gradient(180deg, #11111e 0%, #0a0a16 100%);
@@ -295,6 +336,18 @@
   </div>
 </div>
 
+<div id="record-overlay">
+  <div class="record-box">
+    <div class="record-title">NEW RECORD</div>
+    <div class="record-tier-label" id="record-tier" style="color:#ffd966;">金</div>
+    <div class="record-level" id="record-level">Lv 10 표창 도달</div>
+    <div class="record-canvas-wrap" id="record-canvas-wrap" style="color:#ffd966;">
+      <canvas id="record-canvas" width="160" height="160"></canvas>
+    </div>
+    <div class="record-sub" id="record-sub">기예의 새 경지</div>
+    <div class="record-tap-hint">아무 곳이나 탭하여 닫기</div>
+  </div>
+</div>
 <div id="toast"></div>
 
 <script>
@@ -514,14 +567,15 @@ function tryMerge(fromIdx, toIdx) {
     state.grid[toIdx] = { id: state.nextShurikenId++, level: a.level + 1, fireTimer: rand(0, getFireInterval()) };
     state.grid[fromIdx] = null;
     const newLv = a.level + 1;
-    // Merge bonus gold: exponential reward
     const mergeGold = Math.floor(Math.pow(2, newLv) * getGoldMul());
     state.gold += mergeGold;
-    if (newLv > state.bestLevel) {
-      const wasNew = newLv > state.bestLevel;
+    const isNewRecord = newLv > state.bestLevel;
+    if (isNewRecord) {
       state.bestLevel = newLv;
-      // gem reward for new max-level milestone
-      if (wasNew && newLv % 2 === 0) { state.gem += 1; toast(`💎 +1 (Lv ${newLv} 달성)`); }
+      if (newLv % 2 === 0) { state.gem += 1; toast(`💎 +1 (Lv ${newLv} 달성)`); }
+      // big celebration overlay — fires once per record
+      // (delay so the merge animation gets to play first)
+      setTimeout(() => showRecordOverlay(newLv), 720);
     }
     if (newLv > state.runBestLevel) state.runBestLevel = newLv;
     flashCell(toIdx);
@@ -1390,6 +1444,65 @@ function playMergeAnim(fromRect, toRect, sourceLevel, toIdx, fromIdx) {
       }
     }, 430);
   }, PULSE_MS + FLIGHT_MS);
+}
+
+// Show full-screen celebration when a new best level is reached.
+const TIER_SUBTITLE = {
+  wood:   '갓 깎은 목창의 첫 합',
+  iron:   '쇠의 무게를 견디다',
+  silver: '은빛 광채에 들어서다',
+  gold:   '금의 격을 얻다',
+  mystic: '현(玄)의 경지 — 미답의 영역',
+};
+function showRecordOverlay(level) {
+  const tier = levelTier(level);
+  const color = levelColor(level);
+  const overlay = document.getElementById('record-overlay');
+  if (!overlay) return;
+  document.getElementById('record-tier').textContent = tier.name;
+  document.getElementById('record-tier').style.color = color;
+  document.getElementById('record-level').textContent = `Lv ${level} 표창 도달`;
+  document.getElementById('record-sub').textContent = TIER_SUBTITLE[tier.id] || '새 경지';
+  document.getElementById('record-canvas-wrap').style.color = color;
+  const rcanvas = document.getElementById('record-canvas');
+  drawShurikenSprite(rcanvas, level);
+  // re-draw periodically so the sprite animates while the modal is open
+  const rcRedraw = setInterval(() => drawShurikenSprite(rcanvas, level), 80);
+  overlay.classList.add('show');
+  // ambient celebration burst behind the box
+  const W = window.innerWidth, H = window.innerHeight;
+  for (let i = 0; i < 30; i++) {
+    const sp = document.createElement('div');
+    sp.className = 'merge-sparkle';
+    sp.style.left = (W / 2 - 3.5) + 'px';
+    sp.style.top  = (H / 2 - 3.5) + 'px';
+    sp.style.background = color;
+    sp.style.boxShadow  = '0 0 16px ' + color;
+    sp.style.zIndex = '249';
+    document.body.appendChild(sp);
+    const ang = (i / 30) * Math.PI * 2 + rand(-0.2, 0.2);
+    const dist = 180 + Math.random() * 220;
+    requestAnimationFrame(() => {
+      sp.style.transform = `translate(${Math.cos(ang) * dist}px, ${Math.sin(ang) * dist}px) scale(${0.4 + Math.random() * 0.8})`;
+      sp.classList.add('go');
+    });
+    setTimeout(() => sp.remove(), 1200);
+  }
+  sfx('merge');
+  setTimeout(() => sfx('spawn'), 120);
+  setTimeout(() => sfx('merge'), 280);
+
+  // Click anywhere to dismiss (after a small grace so the merge tap doesn't immediately close it)
+  setTimeout(() => {
+    const dismiss = () => {
+      overlay.classList.remove('show');
+      clearInterval(rcRedraw);
+      document.removeEventListener('pointerdown', dismiss, true);
+      document.removeEventListener('keydown', dismiss, true);
+    };
+    document.addEventListener('pointerdown', dismiss, true);
+    document.addEventListener('keydown', dismiss, true);
+  }, 350);
 }
 
 // Drop trail dots along a path from (x1,y1) → (x2,y2) over durMs
