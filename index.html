@@ -152,6 +152,49 @@
     will-change: transform, opacity;
   }
 
+  /* Prestige (윤회) confirmation modal */
+  #prestige-modal {
+    position: fixed; inset: 0; z-index: 245;
+    display: none; align-items: center; justify-content: center;
+    background: radial-gradient(circle at center, rgba(60,30,100,0.5) 0%, rgba(0,0,0,0.85) 80%);
+  }
+  #prestige-modal.show { display: flex; }
+  .prestige-box {
+    background: linear-gradient(180deg, #2a1840 0%, #100a20 100%);
+    border: 2px solid #cc88ff; border-radius: 18px;
+    padding: 24px 28px; max-width: 360px;
+    box-shadow: 0 0 50px rgba(204,136,255,0.35);
+  }
+  .prestige-title {
+    font-size: 24px; font-weight: 900; color: #cc88ff;
+    text-align: center; letter-spacing: 6px; margin-bottom: 4px;
+    text-shadow: 0 0 14px #cc88ff66;
+  }
+  .prestige-sub { font-size: 12px; color: #c8a8e8; text-align: center; margin-bottom: 16px; }
+  .prestige-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 18px; }
+  .prestige-line {
+    display: flex; justify-content: space-between; padding: 6px 10px;
+    border-radius: 8px; font-size: 12px;
+    background: rgba(255,255,255,0.04);
+  }
+  .prestige-line .pl-k { color: #ccc; }
+  .prestige-line .pl-v { font-weight: 800; color: #fff; }
+  .prestige-line.keep { background: rgba(100,180,100,0.12); }
+  .prestige-line.keep .pl-v { color: #88ee88; }
+  .prestige-line.lose { background: rgba(180,80,80,0.12); }
+  .prestige-line.lose .pl-v { color: #ee8888; }
+  .prestige-actions { display: flex; gap: 8px; }
+  .prestige-cancel, .prestige-confirm {
+    flex: 1; padding: 10px; border-radius: 10px;
+    font-family: inherit; font-weight: 800; font-size: 13px; cursor: pointer;
+  }
+  .prestige-cancel { background: #2a2a3a; border: 1px solid #4a4a5a; color: #aaa; }
+  .prestige-confirm {
+    background: linear-gradient(180deg, #cc88ff, #8844cc);
+    border: none; color: #fff;
+  }
+  .prestige-confirm:active { transform: scale(0.96); }
+
   /* Offline reward modal */
   #offline-modal {
     position: fixed; inset: 0; z-index: 240;
@@ -603,6 +646,24 @@
       <button class="footer-btn" id="export-btn">📤</button>
       <button class="footer-btn" id="import-btn">📥</button>
       <button class="footer-btn danger" id="reset-btn">초기화</button>
+    </div>
+  </div>
+</div>
+
+<div id="prestige-modal">
+  <div class="prestige-box">
+    <div class="prestige-title">윤회 (輪廻)</div>
+    <div class="prestige-sub" id="prestige-modal-sub"></div>
+    <div class="prestige-list">
+      <div class="prestige-line"><span class="pl-k">현재 윤회 횟수</span><span class="pl-v" id="pl-count">0</span></div>
+      <div class="prestige-line"><span class="pl-k">영구 보너스 (이번 직후)</span><span class="pl-v" id="pl-bonus">+50%</span></div>
+      <div class="prestige-line keep"><span class="pl-k">유지: 명예 · 도감 · 통계</span><span class="pl-v">∞</span></div>
+      <div class="prestige-line keep"><span class="pl-k">유지: 최대 표창 · 제작 최대치 · 합성술</span><span class="pl-v">자본</span></div>
+      <div class="prestige-line lose"><span class="pl-k">초기화: 골드 · 그리드 · 그 외 강화</span><span class="pl-v">0</span></div>
+    </div>
+    <div class="prestige-actions">
+      <button class="prestige-cancel" id="prestige-cancel">취소</button>
+      <button class="prestige-confirm" id="prestige-confirm">윤회</button>
     </div>
   </div>
 </div>
@@ -2514,7 +2575,16 @@ function renderPrestige() {
     btn.disabled = false;
     btn.textContent = '윤회';
     btn.onclick = () => {
-      if (!confirm(`윤회하시겠습니까? 진행도 reset, 영구 +50% dmg/gold (총 ${(state.prestigeCount+1)*50}% 누적).`)) return;
+      // open the rich prestige modal instead of native confirm
+      document.getElementById('pl-count').textContent = state.prestigeCount;
+      document.getElementById('pl-bonus').textContent = `+50% (총 ${(state.prestigeCount+1)*50}%)`;
+      document.getElementById('prestige-modal-sub').textContent =
+        '진행을 끝맺고 다음 주기를 시작합니다. 일부 자본은 유지됩니다.';
+      document.getElementById('prestige-modal').classList.add('show');
+    };
+    // confirm path → executes the actual prestige
+    document.getElementById('prestige-confirm').onclick = () => {
+      document.getElementById('prestige-modal').classList.remove('show');
       state.prestigeCount++;
       state.gold = 0;
       state.stage = 1;
@@ -2711,6 +2781,15 @@ function boot() {
 document.getElementById('offline-claim').addEventListener('click', () => {
   document.getElementById('offline-modal').classList.remove('show');
   refreshUI();
+});
+document.getElementById('prestige-cancel').addEventListener('click', () => {
+  document.getElementById('prestige-modal').classList.remove('show');
+});
+// click backdrop to close prestige modal
+document.getElementById('prestige-modal').addEventListener('click', (e) => {
+  if (e.target.id === 'prestige-modal') {
+    document.getElementById('prestige-modal').classList.remove('show');
+  }
 });
 boot();
 </script>
