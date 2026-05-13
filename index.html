@@ -442,12 +442,19 @@
     font-size: 10px; color: #aaa; font-weight: 600; text-align: center;
   }
   #spawn-progress-bar {
-    height: 14px; background: rgba(0,0,0,0.5); border-radius: 7px; border: 1px solid #2a2a3e;
-    overflow: hidden;
+    height: 16px; background: rgba(0,0,0,0.5); border-radius: 8px; border: 1px solid #2a2a3e;
+    overflow: hidden; position: relative;
   }
   #spawn-progress-fill {
     height: 100%; width: 0%; background: linear-gradient(90deg, #2a4a8e, #4a8eef);
     transition: width 0.08s linear;
+  }
+  #spawn-progress-pct {
+    position: absolute; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 10px; font-weight: 800; color: #fff;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.95), 0 0 4px rgba(0,0,0,0.7);
+    pointer-events: none;
   }
   #spawn-progress-bar.full #spawn-progress-fill {
     background: linear-gradient(90deg, #aa6644, #ffaa33);
@@ -663,7 +670,10 @@
     <div id="spawn-bar">
       <div id="spawn-progress-wrap">
         <div id="spawn-progress-label">생성중 · <span id="spawn-time-label">5.0s</span></div>
-        <div id="spawn-progress-bar"><div id="spawn-progress-fill"></div></div>
+        <div id="spawn-progress-bar">
+          <div id="spawn-progress-fill"></div>
+          <div id="spawn-progress-pct">0%</div>
+        </div>
       </div>
       <button id="instant-spawn-btn" title="💎 1로 즉시 소환">💎 즉시</button>
       <div class="auto-merge-group">
@@ -1700,6 +1710,10 @@ function updateHUD() {
   const isFull = empties === 0;
   const fillPct = Math.min(100, state.spawnProgress * 100);
   document.getElementById('spawn-progress-fill').style.width = fillPct + '%';
+  const pctEl = document.getElementById('spawn-progress-pct');
+  if (pctEl) pctEl.textContent = isFull
+    ? '⏸ 일시정지 ' + fillPct.toFixed(0) + '%'
+    : fillPct.toFixed(1) + '%';
   // mirror to top wave-bar
   const waveFill = document.getElementById('wave-fill');
   if (waveFill) waveFill.style.width = fillPct + '%';
