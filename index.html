@@ -1588,21 +1588,32 @@ function gameLoop(now) {
 let autoMergeTimer = 0;
 let goldFractional = 0; // accumulator for sub-1 gold/sec
 let playTimeFractional = 0; // accumulator for sub-1 second playtime
+let _prevFullState = false; // tracks emptySlots()===0 across frames for transition detection
 
 function update(dt) {
   // Time-based shuriken generator.
-  // Progress keeps accumulating even when the grid is full, capped at 1.0 —
-  // this "queues" a ready spawn, so the moment a merge frees a slot, the
-  // next shuriken appears immediately instead of restarting the 12s wait.
-  state.spawnProgress = Math.min(1, state.spawnProgress + dt / getSpawnInterval());
-  while (state.spawnProgress >= 1 && emptySlots().length > 0) {
-    state.spawnProgress -= 1;
-    const batch = getSpawnBatch();
-    for (let i = 0; i < batch; i++) {
-      if (emptySlots().length === 0) break;
-      spawnShuriken();
+  //   While full          → gauge pauses (no progress accumulation)
+  //   Full → not-full     → gauge resets to 0 (visible "restart")
+  //   While not full      → normal tick + spawn at 1.0
+  const currentlyFull = emptySlots().length === 0;
+  if (currentlyFull) {
+    // pause: keep current progress as-is, do nothing
+  } else {
+    if (_prevFullState) {
+      // Transition: visible restart of the gauge from 0
+      state.spawnProgress = 0;
+    }
+    state.spawnProgress += dt / getSpawnInterval();
+    while (state.spawnProgress >= 1 && emptySlots().length > 0) {
+      state.spawnProgress -= 1;
+      const batch = getSpawnBatch();
+      for (let i = 0; i < batch; i++) {
+        if (emptySlots().length === 0) break;
+        spawnShuriken();
+      }
     }
   }
+  _prevFullState = currentlyFull;
 
   // Passive gold: each shuriken contributes exponentially by level
   // Lv1 = 0.5 / sec, Lv2 = 1, Lv3 = 2, Lv5 = 8, Lv10 = 256, etc.
@@ -1697,12 +1708,8 @@ function updateHUD() {
   document.getElementById('spawn-time-label').textContent = isFull
     ? '⚠ 그리드 가득참' : remaining.toFixed(1) + 's';
   document.getElementById('spawn-progress-bar').classList.toggle('full', isFull);
-  // When full + progress at 1.0, a spawn is queued and ready
-  const queued = isFull && state.spawnProgress >= 0.999;
   document.getElementById('spawn-progress-label').innerHTML = isFull
-    ? (queued
-        ? '<span style="color:#ffd966">✓ 준비됨 — 공간을 확보하면 즉시 생성</span>'
-        : '<span style="color:#ffaa44">합쳐서 공간을 확보하세요</span>')
+    ? '<span style="color:#ffaa44">⏸ 가득참 — 합쳐서 공간을 확보하세요 (게이지 일시정지)</span>'
     : `다음 표창 · <span id="spawn-time-label">${remaining.toFixed(1)}s</span> · <span style="color:#ffd966">탭하여 가속</span>`;
   const instBtn = document.getElementById('instant-spawn-btn');
   instBtn.disabled = state.gem < 1 || isFull;
