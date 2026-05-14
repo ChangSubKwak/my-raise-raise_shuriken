@@ -731,6 +731,8 @@
       </div>
       <button class="upgrade-btn prestige" id="prestige-btn" disabled>잠김</button>
     </div>
+    <div class="section-title">깨달음 (悟) <span id="enlight-count" style="color:#cc88ff;font-weight:400;font-size:10px;">0 보유</span></div>
+    <div id="skill-tree"></div>
     <div class="footer-row">
       <button class="footer-btn" id="save-btn">저장</button>
       <button class="footer-btn" id="mute-btn">🔊</button>
@@ -771,7 +773,7 @@
     <div class="prestige-list">
       <div class="prestige-line"><span class="pl-k">현재 윤회 횟수</span><span class="pl-v" id="pl-count">0</span></div>
       <div class="prestige-line"><span class="pl-k">영구 보너스 (이번 직후)</span><span class="pl-v" id="pl-bonus">+50%</span></div>
-      <div class="prestige-line keep"><span class="pl-k">유지: 명예 · 도감 · 통계</span><span class="pl-v">∞</span></div>
+      <div class="prestige-line keep"><span class="pl-k">유지: 명예 · 도감 · 통계 · 깨달음 스킬</span><span class="pl-v">∞</span></div>
       <div class="prestige-line keep"><span class="pl-k">유지: 최대 표창 · 제작 최대치 · 합성술</span><span class="pl-v">자본</span></div>
       <div class="prestige-line lose"><span class="pl-k">초기화: 골드 · 그리드 · 그 외 강화</span><span class="pl-v">0</span></div>
     </div>
@@ -945,6 +947,30 @@ const LUCK_CHANCE_MAX_LV = 10;
 const MAX_SHURIKEN_CAP = 30;          // hard cap on field shurikens
 const SPAWN_BATCH_CAP = 6;            // hard cap on per-tick spawn count
 
+// ── 윤회 스킬 트리 — permanent nodes bought with 깨달음(悟) ──────────
+const SKILLS = [
+  { id: 'goldMastery',  name: '재물의 도',  icon: '💰', maxLv: 10,
+    desc: '패시브·합성 골드 +15% / Lv',
+    cost: (lv) => 1 + lv },
+  { id: 'swiftHands',   name: '신속한 손',  icon: '⚡', maxLv: 10,
+    desc: '표창 생성 주기 −4% / Lv',
+    cost: (lv) => 1 + lv },
+  { id: 'fate',         name: '운명',       icon: '🍀', maxLv: 10,
+    desc: '행운 합성(+2) 확률 +0.8% / Lv',
+    cost: (lv) => 2 + lv },
+  { id: 'masterSmith',  name: '명장',       icon: '🔨', maxLv: 5,
+    desc: '생성 표창 시작 Lv +1 / Lv',
+    cost: (lv) => 3 + lv * 2 },
+  { id: 'inheritance',  name: '계승',       icon: '🧬', maxLv: 5,
+    desc: '윤회 시 최고 Lv 표창 N개 유지',
+    cost: (lv) => 3 + lv * 2 },
+];
+function getSkillLv(id) { return (state.skills && state.skills[id]) || 0; }
+function getEnlightenmentGain() {
+  // 깨달음 earned on prestige scales with bestLevel reached this run
+  return Math.max(1, Math.floor((state.runBestLevel || 1) / 3));
+}
+
 // ---------- State ----------
 function defaultState() {
   return {
@@ -955,6 +981,9 @@ function defaultState() {
     gold: 0,
     gem: 0,
     prestigeCount: 0,
+    // 깨달음(悟) — earned per prestige, spent on permanent skill nodes
+    enlightenment: 0,
+    skills: { goldMastery: 0, swiftHands: 0, fate: 0, masterSmith: 0, inheritance: 0 },
     bestLevel: 1,
     runBestLevel: 1,
     grid: new Array(6).fill(null), // size = 6 default; expandable via maxShuriken upgrade up to 30
@@ -1033,6 +1062,8 @@ function load() {
     state.stats = Object.assign(defaultState().stats, s.stats || {});
     state.stats.sessionStart = Date.now();
     state.achievements = Object.assign({}, s.achievements || {});
+    state.enlightenment = s.enlightenment || 0;
+    state.skills = Object.assign({ goldMastery:0, swiftHands:0, fate:0, masterSmith:0, inheritance:0 }, s.skills || {});
     return true;
   } catch (e) { return false; }
 }
@@ -1060,7 +1091,8 @@ function isBurning() { return (state.burningTimer || 0) > 0; }
 function getSpawnInterval() {
   const base = 12.0;
   const burnMul = isBurning() ? (1 / 3) : 1; // 3× faster when burning
-  return Math.max(0.4, base * Math.pow(0.95, state.upgrades.spawnRate) * burnMul);
+  const skillMul = Math.pow(0.96, getSkillLv('swiftHands')); // −4%/Lv
+  return Math.max(0.4, base * Math.pow(0.95, state.upgrades.spawnRate) * burnMul * skillMul);
 }
 
 const BURNING_DURATION = 30;
@@ -1102,12 +1134,13 @@ function getBaseDmg() {
   return 5 + state.upgrades.baseDmg * 2;
 }
 function getSpawnStartLevel() {
-  return 1 + state.upgrades.spawnLevel;
+  return 1 + state.upgrades.spawnLevel + getSkillLv('masterSmith');
 }
 function getGoldMul() {
   const u = 1 + state.upgrades.goldMul * 0.1;
   const prestige = 1 + state.prestigeCount * 0.5;
-  return u * prestige;
+  const skill = 1 + getSkillLv('goldMastery') * 0.15;
+  return u * prestige * skill;
 }
 function shurikenDmg(level) {
   return getBaseDmg() * Math.pow(2, level - 1) * (1 + state.prestigeCount * 0.5);
@@ -1175,7 +1208,8 @@ function tryMerge(fromIdx, toIdx) {
     // Jump merge — small chance of +N levels (원작 패턴)
     // Lucky-chance upgrade adds +1% per Lv (cap 10) to the +2 threshold.
     // Burning mode doubles all jump probabilities.
-    const luckBonus = (state.upgrades.luckChance || 0) * 0.01;
+    const luckBonus = (state.upgrades.luckChance || 0) * 0.01
+                    + getSkillLv('fate') * 0.008; // fate skill: +0.8%/Lv
     const burnMul = isBurning() ? 2 : 1;
     const pJump5 = 0.001 * burnMul;
     const pJump3 = (0.010 + luckBonus * 0.2) * burnMul;
@@ -2633,6 +2667,7 @@ function refreshUI() {
   renderCodex();
   renderAchievements();
   renderPrestige();
+  renderSkillTree();
 }
 function fmtPlaytime(sec) {
   if (sec < 60) return sec + '초';
@@ -2774,6 +2809,49 @@ function renderUpgrades() {
     };
   });
 }
+function renderSkillTree() {
+  const el = document.getElementById('skill-tree');
+  const countEl = document.getElementById('enlight-count');
+  if (!el) return;
+  const pts = state.enlightenment || 0;
+  if (countEl) countEl.textContent = `${pts} 보유`;
+  el.innerHTML = '';
+  for (const sk of SKILLS) {
+    const lv = getSkillLv(sk.id);
+    const maxed = lv >= sk.maxLv;
+    const cost = maxed ? 0 : sk.cost(lv);
+    const can = !maxed && pts >= cost;
+    const card = document.createElement('div');
+    card.className = 'upgrade-card';
+    card.innerHTML = `
+      <div class="upgrade-info">
+        <div class="upgrade-title">${sk.icon} ${sk.name}
+          <span class="upgrade-lv">Lv ${lv}/${sk.maxLv}</span></div>
+        <div class="upgrade-sub">${sk.desc}</div>
+      </div>
+      <button class="upgrade-btn" ${can ? '' : 'disabled'} data-skill="${sk.id}">
+        ${maxed ? '최대' : `悟 ${cost}`}
+      </button>
+    `;
+    el.appendChild(card);
+  }
+  el.querySelectorAll('[data-skill]').forEach(b => {
+    b.onclick = () => {
+      const id = b.dataset.skill;
+      const sk = SKILLS.find(x => x.id === id);
+      const lv = getSkillLv(id);
+      if (lv >= sk.maxLv) return;
+      const cost = sk.cost(lv);
+      if ((state.enlightenment || 0) < cost) return;
+      state.enlightenment -= cost;
+      if (!state.skills) state.skills = {};
+      state.skills[id] = lv + 1;
+      sfx('mergeSilver');
+      refreshUI();
+      save();
+    };
+  });
+}
 function renderPrestige() {
   const gain = getPrestigeGain();
   const info = document.getElementById('prestige-info');
@@ -2782,20 +2860,25 @@ function renderPrestige() {
     info.textContent = `Lv 8 도달 시 윤회 가능 (현재 최고 Lv ${state.bestLevel})`;
     btn.disabled = true; btn.textContent = '잠김';
   } else {
-    info.innerHTML = `윤회 시 영구 데미지/골드 +50%/회<br>총 윤회 ${state.prestigeCount}회 · 이번 +${gain} 효과 미사용 (단순 multiplier)`;
+    const enlightGain = getEnlightenmentGain();
+    info.innerHTML = `윤회 시 깨달음(悟) <b style="color:#cc88ff">+${enlightGain}</b> 획득<br>총 윤회 ${state.prestigeCount}회 · 영구 골드 +${state.prestigeCount * 50}%`;
     btn.disabled = false;
     btn.textContent = '윤회';
     btn.onclick = () => {
       // open the rich prestige modal instead of native confirm
       document.getElementById('pl-count').textContent = state.prestigeCount;
-      document.getElementById('pl-bonus').textContent = `+50% (총 ${(state.prestigeCount+1)*50}%)`;
+      document.getElementById('pl-bonus').textContent =
+        `골드 +50% · 깨달음(悟) +${getEnlightenmentGain()}`;
       document.getElementById('prestige-modal-sub').textContent =
-        '진행을 끝맺고 다음 주기를 시작합니다. 일부 자본은 유지됩니다.';
+        '진행을 끝맺고 다음 주기를 시작합니다. 깨달음으로 영구 스킬을 강화하세요.';
       document.getElementById('prestige-modal').classList.add('show');
     };
     // confirm path → executes the actual prestige
     document.getElementById('prestige-confirm').onclick = () => {
       document.getElementById('prestige-modal').classList.remove('show');
+      // 깨달음 earned this prestige
+      const enlightGain = getEnlightenmentGain();
+      state.enlightenment = (state.enlightenment || 0) + enlightGain;
       state.prestigeCount++;
       state.gold = 0;
       state.stage = 1;
@@ -2806,13 +2889,19 @@ function renderPrestige() {
       const keepBatch = state.upgrades.spawnBatch;
       const keepLuck = state.upgrades.luckChance;
       state.upgrades = { maxShuriken: keepMax, spawnRate:0, spawnBatch: keepBatch, firerate:0, baseDmg:0, goldMul:0, spawnLevel:0, luckChance: keepLuck };
-      // autoMergeUnlocked is preserved automatically (not in upgrades)
+      // 계승(inheritance) skill: keep N highest-level shurikens through prestige
+      const keepN = getSkillLv('inheritance');
+      let kept = [];
+      if (keepN > 0) {
+        kept = state.grid.filter(c => c).sort((a, b) => b.level - a.level).slice(0, keepN);
+      }
       state.grid = new Array(getGridSize()).fill(null);
+      kept.forEach((c, i) => { state.grid[i] = { id: state.nextShurikenId++, level: c.level, fireTimer: 0 }; });
       startStage();
       checkAchievements();
       refreshUI();
       save();
-      toast(`🌟 윤회! +50% 영구 강화`);
+      toast(`🌟 윤회! 깨달음(悟) +${enlightGain}${keepN > 0 ? ` · 표창 ${kept.length}개 계승` : ''}`);
     };
   }
 }
