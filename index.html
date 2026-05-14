@@ -502,6 +502,17 @@
     background: rgba(102, 255, 153, 0.25);
     border-color: #66ff99; color: #afe;
   }
+  #sell-btn.on {
+    background: rgba(255, 170, 50, 0.25);
+    border-color: #ffaa33; color: #ffd966;
+  }
+  /* sell-mode: occupied cells get a coin tint + cursor hint */
+  body.sell-mode .cell:not(.empty) {
+    cursor: pointer;
+    box-shadow: inset 0 0 10px rgba(255,170,50,0.35) !important;
+    border-color: #ffaa3399 !important;
+  }
+  body.sell-mode .cell:not(.empty):active { transform: scale(0.92); }
   /* Hint mode: subtle yellow ring around pairs of cells with same Lv */
   .cell.hint-pair {
     box-shadow: 0 0 6px #ffd96677, inset 0 0 4px #ffd96622 !important;
@@ -658,13 +669,14 @@
         <span style="color:#aaa;">보유 <span id="shuriken-count" style="color:#ffd966;">0</span>/<span id="shuriken-max">6</span></span>
         <span style="color:#aaa;">제작 <span id="batch-info" style="color:#a8e6ff;">×1</span></span>
         <button id="hint-btn" class="grid-action-btn" title="합칠 수 있는 모든 페어 항상 강조">💡 힌트</button>
+        <button id="sell-btn" class="grid-action-btn" title="판매 모드 — 표창을 탭하면 골드로 환전">💸 판매</button>
         <button id="merge-all-btn" class="grid-action-btn" title="가능한 모든 같은 Lv 페어를 즉시 합치기 (잠금/상한 적용)">⚡ 모두</button>
         <button id="sort-btn" class="grid-action-btn" title="레벨 순으로 자동 정렬">↕ 정렬</button>
       </div>
       <div id="grid"></div>
       <div style="font-size:10px;color:#888;text-align:center;">
         같은 Lv 탭→탭 또는 <b>드래그</b>로 합체 · 길게누름 = 🔒 잠금<br>
-        <span style="color:#aaa;">선택 시 합체 가능 셀 초록 펄스 · 잠금 = 자동합치기 보호</span>
+        <span style="color:#aaa;">💸 판매 모드 = 탭하여 골드 환전 · 잠금 = 자동합치기/판매 보호</span>
       </div>
     </div>
     <div id="spawn-bar">
@@ -1794,6 +1806,7 @@ function updateHUD() {
 // ---------- Grid Render ----------
 const gridEl = document.getElementById('grid');
 let selectedIdx = -1;
+let sellMode = false;
 
 function renderGrid() {
   const size = getGridSize();
@@ -1888,6 +1901,11 @@ const DRAG_THRESHOLD = 6;
 let _dragState = null;
 function attachDragHandlers(cell, idx, downEvent) {
   const piece = state.grid[idx];
+  // Sell mode: any tap on an occupied cell sells it; skip drag entirely
+  if (sellMode) {
+    if (piece) handleCellTap(idx);
+    return;
+  }
   // Empty cells: clear selection on tap; nothing to drag
   if (!piece) {
     if (selectedIdx >= 0) handleCellTap(idx);
@@ -2189,6 +2207,11 @@ function flashCell(idx) {
 }
 
 function handleCellTap(idx) {
+  // Sell mode: tapping a shuriken sells it immediately
+  if (sellMode) {
+    if (state.grid[idx]) sellShuriken(idx);
+    return;
+  }
   if (selectedIdx < 0) {
     if (!state.grid[idx]) return;
     selectedIdx = idx;
@@ -2945,6 +2968,15 @@ document.getElementById('hint-btn').addEventListener('click', () => {
   renderGrid();
   save();
 });
+document.getElementById('sell-btn').addEventListener('click', () => {
+  getAudio();
+  sellMode = !sellMode;
+  document.getElementById('sell-btn').classList.toggle('on', sellMode);
+  selectedIdx = -1;
+  document.body.classList.toggle('sell-mode', sellMode);
+  toast(sellMode ? '💸 판매 모드 — 표창을 탭하면 골드 환전' : '판매 모드 종료');
+  renderGrid();
+});
 document.getElementById('merge-all-btn').addEventListener('click', () => {
   getAudio();
   // Run autoMergeStep repeatedly until no progress (respects cap + lock).
@@ -2964,6 +2996,29 @@ document.getElementById('merge-all-btn').addEventListener('click', () => {
   refreshUI();
   save();
 });
+
+// Sell a shuriken for gold. Value scales with level (2^level × goldMul × 0.5).
+function sellShuriken(idx) {
+  const c = state.grid[idx];
+  if (!c) return false;
+  if (c.locked) { toast('🔒 잠긴 표창은 팔 수 없습니다'); return false; }
+  const value = Math.floor(Math.pow(2, c.level) * getGoldMul() * 0.5);
+  state.gold += value;
+  state.stats.totalGoldEarned = (state.stats.totalGoldEarned || 0) + value;
+  state.grid[idx] = null;
+  // gold popup at the cell
+  const cell = gridEl.querySelector(`[data-idx="${idx}"]`);
+  if (cell) {
+    const r = cell.getBoundingClientRect();
+    spawnGoldPopup(r.left + r.width / 2 - 14, r.top + r.height / 2, value);
+  }
+  sfx('move');
+  selectedIdx = -1;
+  renderGrid();
+  refreshUI();
+  save();
+  return true;
+}
 
 // Sort the grid so equal-level shurikens sit adjacent (descending level first).
 // Empty slots accumulate at the end. Selection is cleared.
