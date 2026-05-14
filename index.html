@@ -254,6 +254,30 @@
   }
   .prestige-confirm:active { transform: scale(0.96); }
 
+  /* Daily attendance modal */
+  #attend-modal {
+    position: fixed; inset: 0; z-index: 242;
+    display: none; align-items: center; justify-content: center;
+    background: rgba(0,0,0,0.8);
+  }
+  #attend-modal.show { display: flex; }
+  .attend-box {
+    background: linear-gradient(180deg, #1a2a3a 0%, #0a1420 100%);
+    border: 2px solid #66ccff; border-radius: 16px;
+    padding: 24px 28px; max-width: 320px; text-align: center;
+    box-shadow: 0 0 40px rgba(102,204,255,0.3);
+  }
+  .attend-title { font-size: 19px; font-weight: 900; color: #66ccff; letter-spacing: 2px; margin-bottom: 8px; }
+  .attend-streak { font-size: 14px; color: #fff; font-weight: 700; margin-bottom: 12px; }
+  .attend-reward { font-size: 22px; font-weight: 900; color: #ffd966; margin-bottom: 12px; line-height: 1.4; }
+  .attend-hint { font-size: 10px; color: #88a; margin-bottom: 14px; }
+  .attend-claim {
+    background: linear-gradient(180deg, #66ccff, #3399dd); border: none; color: #06121e;
+    padding: 10px 28px; border-radius: 22px; font-family: inherit;
+    font-weight: 900; font-size: 14px; cursor: pointer;
+  }
+  .attend-claim:active { transform: scale(0.95); }
+
   /* Offline reward modal */
   #offline-modal {
     position: fixed; inset: 0; z-index: 240;
@@ -796,6 +820,16 @@
   </div>
 </div>
 
+<div id="attend-modal">
+  <div class="attend-box">
+    <div class="attend-title">📅 일일 출석</div>
+    <div class="attend-streak" id="attend-streak">1일 연속 출석</div>
+    <div class="attend-reward" id="attend-reward">💎 +1</div>
+    <div class="attend-hint">매일 접속하면 연속 보상이 커집니다 (7일마다 보너스)</div>
+    <button class="attend-claim" id="attend-claim">받기</button>
+  </div>
+</div>
+
 <div id="offline-modal">
   <div class="offline-box">
     <div class="offline-title">⏰ 자리비움 보상</div>
@@ -996,6 +1030,9 @@ function defaultState() {
     // 깨달음(悟) — earned per prestige, spent on permanent skill nodes
     enlightenment: 0,
     skills: { goldMastery: 0, swiftHands: 0, fate: 0, masterSmith: 0, inheritance: 0 },
+    // Daily attendance
+    lastAttendDate: '',   // 'YYYY-M-D' of last claimed day
+    attendStreak: 0,      // consecutive-day streak
     bestLevel: 1,
     runBestLevel: 1,
     grid: new Array(6).fill(null), // size = 6 default; expandable via maxShuriken upgrade up to 30
@@ -1076,6 +1113,8 @@ function load() {
     state.achievements = Object.assign({}, s.achievements || {});
     state.enlightenment = s.enlightenment || 0;
     state.skills = Object.assign({ goldMastery:0, swiftHands:0, fate:0, masterSmith:0, inheritance:0 }, s.skills || {});
+    state.lastAttendDate = s.lastAttendDate || '';
+    state.attendStreak = s.attendStreak || 0;
     return true;
   } catch (e) { return false; }
 }
@@ -3145,6 +3184,48 @@ document.getElementById('tut-next').addEventListener('click', () => {
 });
 document.getElementById('tut-skip').addEventListener('click', closeTutorial);
 
+// ── Daily attendance ────────────────────────────────────────────────
+function dateKey(d) {
+  d = d || new Date();
+  return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
+}
+function daysBetween(aKey, bKey) {
+  // crude: parse both, diff in days
+  const pa = aKey.split('-').map(Number);
+  const pb = bKey.split('-').map(Number);
+  const da = new Date(pa[0], pa[1] - 1, pa[2]);
+  const db = new Date(pb[0], pb[1] - 1, pb[2]);
+  return Math.round((db - da) / 86400000);
+}
+function processAttendance() {
+  const today = dateKey();
+  if (state.lastAttendDate === today) return; // already claimed today
+  let streak = 1;
+  if (state.lastAttendDate) {
+    const gap = daysBetween(state.lastAttendDate, today);
+    if (gap === 1) streak = (state.attendStreak || 0) + 1; // consecutive
+    else streak = 1; // missed a day → reset
+  }
+  state.lastAttendDate = today;
+  state.attendStreak = streak;
+  // Reward scales with streak (capped). gem every streak; bonus gem at 7-day milestones.
+  const gems = 1 + Math.min(4, Math.floor(streak / 3)); // 1..5 gems
+  const bonusGem = (streak % 7 === 0) ? 5 : 0;
+  const totalGems = gems + bonusGem;
+  state.gem += totalGems;
+  // gold bonus = passive rate × streak × 60s equivalent (small kickstart)
+  const goldBonus = Math.floor(getPassiveGoldRate() * streak * 30);
+  state.gold += goldBonus;
+  state.stats.totalGoldEarned = (state.stats.totalGoldEarned || 0) + goldBonus;
+  // show modal
+  document.getElementById('attend-streak').textContent = `${streak}일 연속 출석`;
+  document.getElementById('attend-reward').innerHTML =
+    `💎 +${totalGems}${bonusGem ? ` <span style="color:#ffd966">(7일 보너스 +5)</span>` : ''}` +
+    (goldBonus > 0 ? `<br>💰 +${fmt(goldBonus)}` : '');
+  document.getElementById('attend-modal').classList.add('show');
+  save();
+}
+
 // Offline reward — compute passive gold for time-away since last save.
 // Capped at 4 hours of real time at 50% efficiency to keep prestige
 // the primary progression vector (idle should supplement, not replace).
@@ -3184,12 +3265,19 @@ function boot() {
   if (loaded) processOfflineReward();
   // First-time player → show tutorial
   if (!loaded) setTimeout(showTutorial, 350);
+  // Daily attendance — checked after offline reward so modals queue cleanly
+  setTimeout(processAttendance, loaded ? 400 : 1200);
   setInterval(save, 10000);
   setInterval(repaintGridSprites, 100);
   requestAnimationFrame(gameLoop);
 }
 document.getElementById('offline-claim').addEventListener('click', () => {
   document.getElementById('offline-modal').classList.remove('show');
+  refreshUI();
+});
+document.getElementById('attend-claim').addEventListener('click', () => {
+  document.getElementById('attend-modal').classList.remove('show');
+  sfx('mergeGold');
   refreshUI();
 });
 document.getElementById('prestige-cancel').addEventListener('click', () => {
