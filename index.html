@@ -1087,6 +1087,13 @@ const ACHIEVEMENTS = [
   { id: 'a_lv20',         name: '극창의 경지',     icon: '🐉', desc: 'Lv 20 도달',           check: (s) => (s.bestLevel || 0) >= 20 },
   { id: 'a_lv30',         name: '사신의 길',       icon: '🐲', desc: 'Lv 30 도달',           check: (s) => (s.bestLevel || 0) >= 30 },
   { id: 'a_auto_unlock',  name: '게으름의 미덕',   icon: '🤖', desc: '자동합치기 영구 해금', check: (s) => !!s.autoMergeUnlocked },
+  { id: 'a_enlighten_1',  name: '깨달음의 시작',   icon: '🧘', desc: '윤회 스킬 첫 투자',    check: (s) => Object.values(s.skills || {}).some(v => v > 0) },
+  { id: 'a_enlighten_max',name: '도(道)에 이르다', icon: '☸', desc: '윤회 스킬 하나 최대',  check: (s) => SKILLS.some(sk => (s.skills && s.skills[sk.id] || 0) >= sk.maxLv) },
+  { id: 'a_sell',         name: '상인의 길',       icon: '💸', desc: '표창 첫 판매',        check: (s) => (s.stats.totalSold || 0) >= 1 },
+  { id: 'a_attend_7',     name: '일주일의 정성',   icon: '📅', desc: '7일 연속 출석',       check: (s) => (s.attendStreak || 0) >= 7 },
+  { id: 'a_attend_30',    name: '한 달의 수행',    icon: '🗓', desc: '30일 연속 출석',      check: (s) => (s.attendStreak || 0) >= 30 },
+  { id: 'a_prestige_10',  name: '십회의 윤회',     icon: '🔄', desc: '윤회 10회',           check: (s) => (s.prestigeCount || 0) >= 10 },
+  { id: 'a_lv40',         name: '도(道)의 표창',   icon: '🌌', desc: 'Lv 40 도달',          check: (s) => (s.bestLevel || 0) >= 40 },
 ];
 let state = defaultState();
 
@@ -3044,6 +3051,7 @@ function sellShuriken(idx) {
   const value = Math.floor(Math.pow(2, c.level) * getGoldMul() * 0.5);
   state.gold += value;
   state.stats.totalGoldEarned = (state.stats.totalGoldEarned || 0) + value;
+  state.stats.totalSold = (state.stats.totalSold || 0) + 1;
   state.grid[idx] = null;
   // gold popup at the cell
   const cell = gridEl.querySelector(`[data-idx="${idx}"]`);
@@ -3055,6 +3063,7 @@ function sellShuriken(idx) {
   selectedIdx = -1;
   renderGrid();
   refreshUI();
+  checkAchievements();
   save();
   return true;
 }
