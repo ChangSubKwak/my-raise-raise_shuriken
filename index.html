@@ -3025,17 +3025,18 @@ let playTimeFractional = 0; // accumulator for sub-1 second playtime
 let _prevFullState = false; // tracks emptySlots()===0 across frames for transition detection
 
 function update(dt) {
-  // SIMPLIFIED DESIGN (v2.65 final fix):
-  //   While full     → spawnProgress FORCED to 0. Bar shows 0% + "⏸ 일시정지" label.
+  // FINAL DESIGN (v2.66) — pent-up + visible reset:
+  //   While full     → spawnProgress FORCED to 1.0 (bar at 100% orange "pent-up").
+  //   Full → not full → spawnProgress RESET to 0 (bar drops from 100% → 0%, clear visual).
   //   While not full → tick 0→1, spawn at 1, repeat.
-  // No _prevFullState transition tracking, no race conditions, no stale captures.
-  // When grid frees, tick simply resumes from 0 — single source of truth.
+  // EVERY FRAME enforces: isFull ⇒ progress=1. Race-free.
   const isFull = emptySlots().length === 0;
   if (isFull) {
-    state.spawnProgress = 0; // forced — never accumulates while paused
+    state.spawnProgress = 1; // pent-up indicator — bar visible at full
   } else {
-    // Visible "resume" toast on full → not-full transition (once per transition)
+    // Transition from full → not full: reset to 0 (visible drop) + toast
     if (_prevFullState) {
+      state.spawnProgress = 0;
       toast('▶ 게이지 재개');
     }
     state.spawnProgress += dt / getSpawnInterval();
@@ -3048,7 +3049,6 @@ function update(dt) {
       }
     }
   }
-  // Track for transition toast (NOT for spawn logic — that's purely full-check based)
   _prevFullState = emptySlots().length === 0;
 
   // Passive gold: each shuriken contributes exponentially by level
@@ -3183,9 +3183,9 @@ function updateHUD() {
   // so it visibly resets after each spawn (even immediate-from-queue spawns).
   const empties = emptySlots().length;
   const isFull = empties === 0;
-  // v2.65 simplification: under "force 0 while full" model, spawnProgress is
-  // already guaranteed correct here — no defensive sync needed. Just render.
-  if (isFull) state.spawnProgress = 0; // final safety net (no-op if update ran)
+  // v2.66: bulletproof — if full, force spawnProgress=1 (pent-up indicator).
+  // This double-checks update()'s logic so any render path sees consistent state.
+  if (isFull) state.spawnProgress = 1;
   const fillPct = Math.min(100, state.spawnProgress * 100);
   document.getElementById('spawn-progress-fill').style.width = fillPct + '%';
   const pctEl = document.getElementById('spawn-progress-pct');
@@ -4303,11 +4303,18 @@ function refreshUI() {
   // bug fix: keep HUD in sync (also force spawn-bar refresh)
   updateHUD();
 }
-// v2.65 simplification: under the new "force 0 while full" model, no transition
-// reset is needed here. Kept as no-op so renderGrid callers don't break.
-// (If grid is now full, force spawnProgress = 0 immediately so bar shows 0%.)
+// v2.66: handle the spawn gauge state for any grid mutation.
+// - now full → force progress=1 (pent-up bar at 100%)
+// - was full, now not full → reset to 0 immediately + toast (no waiting for next frame)
 function syncSpawnGaugeAfterMutation() {
-  if (emptySlots().length === 0) state.spawnProgress = 0;
+  const nowFull = emptySlots().length === 0;
+  if (nowFull) {
+    state.spawnProgress = 1;
+  } else if (_prevFullState) {
+    state.spawnProgress = 0;
+    toast('▶ 게이지 재개');
+    _prevFullState = false; // prevent update() from showing toast again
+  }
 }
 function fmtPlaytime(sec) {
   if (sec < 60) return sec + '초';
