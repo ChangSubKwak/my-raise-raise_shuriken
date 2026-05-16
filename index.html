@@ -254,6 +254,45 @@
   }
   .prestige-confirm:active { transform: scale(0.96); }
 
+  /* Q-Leap 58: DOM particle burst from grid cells */
+  .cell-burst {
+    position: fixed; width: 7px; height: 7px;
+    border-radius: 50%; pointer-events: none; z-index: 240;
+    transform: translate(-50%, -50%);
+    animation: cellBurst 0.7s ease-out forwards;
+  }
+  @keyframes cellBurst {
+    0%   { transform: translate(-50%, -50%) scale(1.1); opacity: 1; }
+    60%  { opacity: 0.8; }
+    100% { transform: translate(calc(-50% + var(--tx)), calc(-50% + var(--ty))) scale(0); opacity: 0; }
+  }
+  /* Q-Leap 57: help modal */
+  #help-modal {
+    position: fixed; inset: 0; z-index: 254;
+    display: none; align-items: center; justify-content: center;
+    background: rgba(0,0,0,0.85);
+  }
+  #help-modal.show { display: flex; }
+  .help-box {
+    background: linear-gradient(180deg, #1a2030 0%, #08090c 100%);
+    border: 2px solid #99ccdd; border-radius: 18px;
+    padding: 18px 22px; max-width: 420px; width: 92%;
+    box-shadow: 0 0 30px rgba(153,204,221,0.25);
+    max-height: 85vh; overflow-y: auto;
+  }
+  .help-title { font-size: 18px; font-weight: 900; color: #ccddee; text-align: center; margin-bottom: 8px; letter-spacing: 3px; }
+  .help-tabs { display: flex; gap: 4px; margin-bottom: 10px; flex-wrap: wrap; }
+  .help-tab {
+    padding: 5px 9px; border-radius: 6px; cursor: pointer;
+    background: rgba(255,255,255,0.05); border: 1px solid #344;
+    color: #aaa; font-family: inherit; font-weight: 700; font-size: 10px;
+  }
+  .help-tab.active { background: linear-gradient(180deg, #66ccff, #2288cc); color: #fff; border-color: #66ccff; }
+  .help-content { display: flex; flex-direction: column; gap: 10px; font-size: 11px; line-height: 1.5; margin-bottom: 14px; }
+  .help-section h4 { margin: 0 0 4px; color: #ffd966; font-size: 12px; font-weight: 800; }
+  .help-section p { margin: 0; color: #ccc; }
+  .help-section .hk { color: #88ddff; font-weight: 700; }
+
   /* Q-Leap 55: info modal */
   #info-modal {
     position: fixed; inset: 0; z-index: 253;
@@ -1130,6 +1169,7 @@
         <button id="trophy-btn" class="grid-action-btn" title="명예 & 통계 — 도달한 명예와 일생 통계 확인">🏆 명예</button>
         <button id="ritual-btn" class="grid-action-btn" title="의식 합성 — 같은 Lv 3+ 연결 그룹을 한 번에 합쳐 큰 점프" disabled>✨ 의식</button>
         <button id="log-btn" class="grid-action-btn" title="활동 로그 — 최근 30개 사건">📜 로그</button>
+        <button id="help-btn" class="grid-action-btn" title="도움말 — 게임 시스템 가이드">❓ 도움말</button>
       </div>
       <div id="grid"></div>
       <div style="font-size:10px;color:#888;text-align:center;">
@@ -1251,6 +1291,21 @@
       <button class="prestige-cancel" id="prestige-cancel">취소</button>
       <button class="prestige-confirm" id="prestige-confirm">윤회</button>
     </div>
+  </div>
+</div>
+
+<div id="help-modal">
+  <div class="help-box">
+    <div class="help-title">❓ 게임 가이드</div>
+    <div class="help-tabs">
+      <button class="help-tab active" data-tab="basics">기본</button>
+      <button class="help-tab" data-tab="variants">표창 변종</button>
+      <button class="help-tab" data-tab="systems">시스템</button>
+      <button class="help-tab" data-tab="missions">미션/도전</button>
+      <button class="help-tab" data-tab="combat">윤회/도전</button>
+    </div>
+    <div class="help-content" id="help-content"></div>
+    <button class="codex-close" id="help-close">닫기</button>
   </div>
 </div>
 
@@ -2396,6 +2451,7 @@ function tryMerge(fromIdx, toIdx) {
     state.grid[fromIdx] = null;
     if (childGolden) {
       state.stats.goldenSpawned = (state.stats.goldenSpawned || 0) + 1;
+      spawnCellBurst(toIdx, '#ffd966', 14);
       if (goldensIn === 0) {
         setTimeout(() => toast('✦ 황금 표창 자연 발생!'), 350);
         addEvent('golden', `황금 표창 자연 발생 (Lv ${newLv})`);
@@ -2403,6 +2459,7 @@ function tryMerge(fromIdx, toIdx) {
     }
     if (childStar) {
       state.stats.starSpawned = (state.stats.starSpawned || 0) + 1;
+      spawnCellBurst(toIdx, '#cc66ff', 16);
       if (starsIn === 0) {
         setTimeout(() => toast('★ 별 표창 자연 발생! (spawn 가속)'), 480);
         addEvent('star', `별 표창 자연 발생 (Lv ${newLv})`);
@@ -2410,6 +2467,7 @@ function tryMerge(fromIdx, toIdx) {
     }
     if (childDark) {
       state.stats.darkSpawned = (state.stats.darkSpawned || 0) + 1;
+      spawnCellBurst(toIdx, '#aa44ff', 18);
       if (darksIn === 0) {
         setTimeout(() => toast('🌑 검은 표창 자연 발생! (합성 시 인접 흡수)'), 600);
         addEvent('dark', `검은 표창 자연 발생 (Lv ${newLv})`);
@@ -3892,6 +3950,28 @@ function spawnGoldPopup(x, y, amount) {
 }
 
 // Jump-merge celebratory screen flash. Color/intensity scales with jump tier.
+// Q-Leap 58: DOM particle burst from a grid cell (used for variant merges)
+function spawnCellBurst(idx, color, count = 12) {
+  const cell = document.querySelector(`[data-idx="${idx}"]`);
+  if (!cell) return;
+  const r = cell.getBoundingClientRect();
+  const cx = r.left + r.width / 2;
+  const cy = r.top + r.height / 2;
+  for (let i = 0; i < count; i++) {
+    const p = document.createElement('div');
+    p.className = 'cell-burst';
+    const angle = (i / count) * Math.PI * 2 + Math.random() * 0.4;
+    const distance = 36 + Math.random() * 28;
+    p.style.background = color;
+    p.style.left = cx + 'px';
+    p.style.top  = cy + 'px';
+    p.style.setProperty('--tx', Math.cos(angle) * distance + 'px');
+    p.style.setProperty('--ty', Math.sin(angle) * distance + 'px');
+    document.body.appendChild(p);
+    setTimeout(() => p.remove(), 720);
+  }
+}
+
 // Q-Leap 53: combo milestones — periodic rewards as the combo streak rises
 const COMBO_MILESTONES = {
   5:  { gem: 1, tint: '#ffd966', label: '연쇄 ×5', effect: () => {} },
@@ -4101,6 +4181,18 @@ function refreshUI() {
   renderAchievements();
   renderPrestige();
   renderSkillTree();
+  // Bug fix: keep _prevFullState in sync with current grid state, so that
+  // any mutation (merge/sell/sort/etc.) that frees space immediately resets
+  // the spawn gauge — without waiting for the next gameLoop tick.
+  const nowFull = emptySlots().length === 0;
+  if (!nowFull && _prevFullState) {
+    state.spawnProgress = 0;     // visible reset on full → not-full transition
+    _prevFullState = false;
+  } else if (nowFull) {
+    _prevFullState = true;
+  }
+  // also refresh the HUD spawn bar widget so users see the change instantly
+  updateHUD();
 }
 function fmtPlaytime(sec) {
   if (sec < 60) return sec + '초';
@@ -4692,6 +4784,66 @@ document.getElementById('info-close').addEventListener('click', () => {
 });
 document.getElementById('info-modal').addEventListener('click', (e) => {
   if (e.target.id === 'info-modal') document.getElementById('info-modal').classList.remove('show');
+});
+// Q-Leap 57: help / guide modal
+const HELP_SECTIONS = {
+  basics: [
+    { title: '기본 합성', body: '같은 Lv 표창 2개를 <span class="hk">탭→탭</span> 또는 <span class="hk">드래그</span>로 합치면 Lv+1. 자동으로 진행 — 시간이 흐르며 표창이 자동 생성됩니다.' },
+    { title: '잠금 (Lock)', body: '표창 길게 누르면 🔒 잠금. 자동합치기/판매로부터 보호. 강력한 표창 보존용.' },
+    { title: '판매 (Sell)', body: '💸 판매 모드 토글 후 표창 탭 시 골드 환전 (값 = 2^Lv × 0.5).' },
+    { title: '윤회 (Prestige)', body: 'Lv 8+ 도달 시 윤회 가능. 깨달음(悟) 획득 → 스킬트리 강화. 누적 +50% 골드/회. 도감/grid 크기 보존.' },
+    { title: '버닝 모드', body: '💎 10 — 30초간 자동합치기 + 가속.' },
+  ],
+  variants: [
+    { title: '✦ 황금 표창', body: '0.5% 자연 발생. <span class="hk">판매 5x</span> 또는 <span class="hk">합성 +1 점프</span>. 부모 1=50% / 2=100% 전이.' },
+    { title: '★ 별 표창', body: '0.25% 자연 발생. <span class="hk">그리드에 있으면 spawn ×1.43</span> (별 1개당 곱셈). 황금과 직교.' },
+    { title: '🌑 검은 표창', body: '0.15% 자연 발생 (가장 희소). <span class="hk">합성 시 4방향 인접 같은 Lv 흡수 +1</span>. 의식 합성의 단일 표창 버전.' },
+    { title: '동시 보유 가능', body: '한 표창이 황금+별+검은 동시 가능. 합성 시 모두 자식에게 전이 시도. 판매 시 5×5×5=125x.' },
+  ],
+  systems: [
+    { title: '🙏 축복 칸', body: '30초마다 그리드 한 칸이 축복 상태. 그 칸에서 합성 시 <span class="hk">+1 점프 + 콤보 가속</span>. 깨달음 스킬 "축복 지속"으로 +5s/Lv.' },
+    { title: '📖 도감', body: '첫 도달한 Lv 영구 기록. 신규 등록 시 <span class="hk">깨달음 +1</span>. 윤회를 거쳐도 보존.' },
+    { title: '🔗 인접 시너지', body: '같은 Lv 표창이 4방향 인접 시 <span class="hk">골드 생성 +20%/인접</span> (max +80%). 색상 dot으로 표시.' },
+    { title: '✨ 의식 합성', body: '같은 Lv 4방향 연결 그룹 3+ 시 자동 활성화. 발동 시 <span class="hk">한꺼번에 합쳐 큰 점프</span> (3개→+1, 4개→+2 ...).' },
+    { title: '🌟 콤보', body: '2.5초 안 chain merge 시 콤보 ×N. 콤보당 +20% 골드. 5/10/15/20/30/50 마일스톤 보너스.' },
+  ],
+  missions: [
+    { title: '📋 일일 미션', body: '매일 자정 9종 중 3개 무작위. 보석 3~6 보상. <span class="hk">매일 다른 조합</span> (date-seeded).' },
+    { title: '🏅 주간 미션', body: '매주 월요일 자정 1개. 큰 도전, 큰 보상 (보석 25~40 + 깨달음 +2~4).' },
+    { title: '📅 일일 도전', body: '매일 1개 특수 룰 활성. 점프 보장/spawn 2x/판매 3x/시너지 2x 등 7종.' },
+    { title: '📅 출석', body: '매일 접속 시 보석 +1, 7일 보너스. 연속 끊김 시 reset.' },
+  ],
+  combat: [
+    { title: '⚔ 윤회 도전 (Trial)', body: '윤회 직후 60초 도전 시작. <span class="hk">spawn ×2</span>, 목표 Lv 달성 시 깨달음 +5 (윤회 횟수에 따라 증가).' },
+    { title: '🎆 마일스톤', body: 'Lv 20/30/40/50/60 첫 도달 시 화면 폭발 + 보석 5~60. <span class="hk">최고 Lv 60 = 무한(無限)</span>.' },
+    { title: '🛒 보석 상점', body: '5종 일회성 효과: 셔플/축복재배치/시간가속/행운의손/표창강화. 가격 자연 제한.' },
+    { title: '🌌 깨달음 스킬', body: '9종 트리 — 골드/spawn/행운/계승/축복지속/도감/황금운/별운 등. 윤회 시 누적.' },
+  ],
+};
+let helpTab = 'basics';
+function renderHelp() {
+  const content = document.getElementById('help-content');
+  if (!content) return;
+  document.querySelectorAll('.help-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === helpTab));
+  const sections = HELP_SECTIONS[helpTab] || [];
+  content.innerHTML = sections.map(s => `<div class="help-section"><h4>${s.title}</h4><p>${s.body}</p></div>`).join('');
+}
+document.getElementById('help-btn').addEventListener('click', () => {
+  getAudio();
+  renderHelp();
+  document.getElementById('help-modal').classList.add('show');
+});
+document.getElementById('help-close').addEventListener('click', () => {
+  document.getElementById('help-modal').classList.remove('show');
+});
+document.getElementById('help-modal').addEventListener('click', (e) => {
+  if (e.target.id === 'help-modal') document.getElementById('help-modal').classList.remove('show');
+});
+document.querySelectorAll('.help-tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    helpTab = tab.dataset.tab;
+    renderHelp();
+  });
 });
 document.getElementById('hint-btn').addEventListener('click', () => {
   getAudio();
