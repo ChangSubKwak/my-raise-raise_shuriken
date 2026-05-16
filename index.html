@@ -317,6 +317,36 @@
     60%  { opacity: 0.8; }
     100% { transform: translate(calc(-50% + var(--tx)), calc(-50% + var(--ty))) scale(0); opacity: 0; }
   }
+  /* Q-Leap 74: storage modal */
+  #storage-modal {
+    position: fixed; inset: 0; z-index: 253;
+    display: none; align-items: center; justify-content: center;
+    background: rgba(0,0,0,0.85);
+  }
+  #storage-modal.show { display: flex; }
+  .storage-box {
+    background: linear-gradient(180deg, #18221c 0%, #060a08 100%);
+    border: 2px solid #88ccaa; border-radius: 18px;
+    padding: 18px 22px; max-width: 380px; width: 90%;
+    box-shadow: 0 0 30px rgba(136,204,170,0.25);
+  }
+  .storage-title { font-size: 18px; font-weight: 900; color: #aaeebb; text-align: center; letter-spacing: 3px; margin-bottom: 4px; }
+  .storage-sub { font-size: 11px; color: #88a; text-align: center; margin-bottom: 12px; }
+  .storage-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
+  .storage-row {
+    background: rgba(255,255,255,0.05); border: 1px solid #2a4838;
+    border-radius: 10px; padding: 8px 10px;
+    display: flex; align-items: center; gap: 10px;
+  }
+  .storage-row .sr-info { flex: 1; font-size: 13px; font-weight: 700; color: #fff; }
+  .storage-row .sr-take {
+    padding: 6px 12px; border-radius: 7px; cursor: pointer;
+    background: linear-gradient(180deg, #88ccaa, #44886a); border: none; color: #fff;
+    font-family: inherit; font-weight: 800; font-size: 11px;
+  }
+  .storage-row .sr-take:active { transform: scale(0.95); }
+  .storage-empty { text-align: center; color: #666; padding: 20px; font-size: 11px; }
+
   /* Q-Leap 57: help modal */
   #help-modal {
     position: fixed; inset: 0; z-index: 254;
@@ -1311,6 +1341,7 @@
         <button id="ritual-btn" class="grid-action-btn" title="의식 합성 — 같은 Lv 3+ 연결 그룹을 한 번에 합쳐 큰 점프" disabled>✨ 의식</button>
         <button id="log-btn" class="grid-action-btn" title="활동 로그 — 최근 30개 사건">📜 로그</button>
         <button id="help-btn" class="grid-action-btn" title="도움말 — 게임 시스템 가이드">❓ 도움말</button>
+        <button id="storage-btn" class="grid-action-btn" title="보관소 — 그리드 외 3칸 보관">📦 보관 <span id="storage-count">0/3</span></button>
       </div>
       <div id="grid"></div>
       <div style="font-size:10px;color:#888;text-align:center;">
@@ -1436,6 +1467,15 @@
       <button class="prestige-cancel" id="prestige-cancel">취소</button>
       <button class="prestige-confirm" id="prestige-confirm">윤회</button>
     </div>
+  </div>
+</div>
+
+<div id="storage-modal">
+  <div class="storage-box">
+    <div class="storage-title">📦 표창 보관소</div>
+    <div class="storage-sub">최대 3칸. 보관 중인 표창은 그리드 시너지/spawn 영향 없음.</div>
+    <div id="storage-list" class="storage-list"></div>
+    <button class="codex-close" id="storage-close">닫기</button>
   </div>
 </div>
 
@@ -1836,6 +1876,8 @@ function defaultState() {
     autoRitualEnabled: false,
     // Q-Leap 73: 윤회 가속 모드 — toggleable spawn speed × 0.7 (only if prestige >= 5)
     prestigeSpeedEnabled: false,
+    // Q-Leap 74: 표창 보관소 — store up to 3 shurikens outside the grid
+    storage: [],
     // Q-Leap 59: 자동 매도 — auto-sell shuriken at or below threshold
     autoSellEnabled: false,
     autoSellThreshold: 1,     // Lv ≤ this → auto-sell (golden/star/dark/locked excluded)
@@ -1945,6 +1987,7 @@ const ACHIEVEMENTS = [
   { id: 'a_split',        name: '분할의 수',       icon: '🔱', desc: '표창 분할 첫 사용',   check: (s) => (s.stats.splitsUsed || 0) >= 1 },
   { id: 'a_attend_60',    name: '한 갑(甲)의 수행',icon: '🏯', desc: '60일 연속 출석',      check: (s) => (s.attendStreak || 0) >= 60 },
   { id: 'a_attend_100',   name: '백 일의 정진',    icon: '🌌', desc: '100일 연속 출석',     check: (s) => (s.attendStreak || 0) >= 100 },
+  { id: 'a_storage_1',    name: '보관의 시작',     icon: '📦', desc: '보관소 첫 사용',     check: (s) => Array.isArray(s.storage) && s.storage.length >= 1 },
 ];
 
 // Q-Leap 41: Daily quest templates. Generator picks 3 each day (seeded by date).
@@ -2467,6 +2510,7 @@ function load() {
     state.autoLockThreshold = s.autoLockThreshold || 15;
     state.autoRitualEnabled = !!s.autoRitualEnabled;
     state.prestigeSpeedEnabled = !!s.prestigeSpeedEnabled;
+    state.storage = Array.isArray(s.storage) ? s.storage.slice(0, 3) : [];
     return true;
   } catch (e) { return false; }
 }
@@ -3409,6 +3453,9 @@ function updateHUD() {
   if (biEl) biEl.textContent = '×' + getSpawnBatch();
   const nslEl = document.getElementById('next-spawn-lv');
   if (nslEl) nslEl.textContent = getSpawnStartLevel();
+  // Q-Leap 74: storage count
+  const stcEl = document.getElementById('storage-count');
+  if (stcEl) stcEl.textContent = `${(state.storage || []).length}/3`;
   // Time-based generator UI — bar reflects actual progress,
   // so it visibly resets after each spawn (even immediate-from-queue spawns).
   const empties = emptySlots().length;
@@ -5257,7 +5304,9 @@ document.getElementById('log-modal').addEventListener('click', (e) => {
   if (e.target.id === 'log-modal') document.getElementById('log-modal').classList.remove('show');
 });
 // Q-Leap 55: info mode + modal
+let _infoModalIdx = -1;
 function showShurikenInfo(idx) {
+  _infoModalIdx = idx;
   const c = state.grid[idx];
   if (!c) return;
   const cols = getGridCols();
@@ -5287,6 +5336,7 @@ function showShurikenInfo(idx) {
   if (c.star)   traits += '<span class="info-trait star">★ 별</span>';
   if (c.dark)   traits += '<span class="info-trait dark">🌑 검은</span>';
   if (c.locked) traits += '<span class="info-trait locked">🔒 잠금</span>';
+  const canStore = !c.locked && (state.storage || []).length < 3;
   document.getElementById('info-body').innerHTML = `
     <div class="info-row"><span class="if-k">현재 골드율</span><span class="if-v">${baseGoldRate.toFixed(1)} / 초</span></div>
     <div class="info-row"><span class="if-k">인접 시너지</span><span class="if-v">${adj}개 (+${Math.round((synergyMul-1)*100)}%)</span></div>
@@ -5295,7 +5345,15 @@ function showShurikenInfo(idx) {
     ${c.golden ? '<div class="info-row" style="color:#ffd966;font-size:11px;">✦ 합성 시 +1 점프 · 판매 5x</div>' : ''}
     ${c.star ? '<div class="info-row" style="color:#ddaaff;font-size:11px;">★ 그리드에 있으면 spawn ×1.43</div>' : ''}
     ${c.dark ? '<div class="info-row" style="color:#cc99ff;font-size:11px;">🌑 합성 시 인접 같은 Lv 흡수 (+1 추가)</div>' : ''}
+    ${canStore ? `<button id="info-store-btn" style="width:100%;padding:9px;margin-top:6px;border-radius:8px;background:linear-gradient(180deg,#88ccaa,#44886a);border:none;color:#fff;font-family:inherit;font-weight:800;font-size:12px;cursor:pointer;">📦 보관소로 이동 (${(state.storage || []).length}/3)</button>` : ''}
   `;
+  const storeBtn = document.getElementById('info-store-btn');
+  if (storeBtn) storeBtn.addEventListener('click', () => {
+    getAudio();
+    if (storeShuriken(_infoModalIdx)) {
+      document.getElementById('info-modal').classList.remove('show');
+    }
+  });
   document.getElementById('info-modal').classList.add('show');
 }
 document.getElementById('info-btn').addEventListener('click', () => {
@@ -5310,6 +5368,70 @@ document.getElementById('info-close').addEventListener('click', () => {
 });
 document.getElementById('info-modal').addEventListener('click', (e) => {
   if (e.target.id === 'info-modal') document.getElementById('info-modal').classList.remove('show');
+});
+// Q-Leap 74: storage functions
+function storeShuriken(idx) {
+  if (!state.storage) state.storage = [];
+  if (state.storage.length >= 3) { toast('보관소 가득 (3/3)'); return false; }
+  const c = state.grid[idx];
+  if (!c) return false;
+  state.storage.push(c);
+  state.grid[idx] = null;
+  toast(`📦 Lv ${c.level} 보관`);
+  sfx('move');
+  renderGrid();
+  refreshUI();
+  save();
+  return true;
+}
+function takeFromStorage(storageIdx) {
+  const c = state.storage[storageIdx];
+  if (!c) return false;
+  const empties = emptySlots();
+  if (empties.length === 0) { toast('그리드에 빈 슬롯이 없습니다'); return false; }
+  const targetIdx = empties[0];
+  state.grid[targetIdx] = c;
+  state.storage.splice(storageIdx, 1);
+  toast(`📦 Lv ${c.level} 꺼내기`);
+  sfx('spawn');
+  flashCell(targetIdx);
+  renderGrid();
+  refreshUI();
+  save();
+  return true;
+}
+function renderStorage() {
+  const list = document.getElementById('storage-list');
+  if (!list) return;
+  if (!state.storage || state.storage.length === 0) {
+    list.innerHTML = '<div class="storage-empty">보관 중인 표창이 없습니다.<br>표창 정보 모달의 "보관" 버튼으로 추가하세요.</div>';
+    return;
+  }
+  list.innerHTML = state.storage.map((c, i) => `
+    <div class="storage-row">
+      <div class="sr-info">Lv ${c.level} · ${levelName(c.level)}${c.golden ? ' ✦' : ''}${c.star ? ' ★' : ''}${c.dark ? ' 🌑' : ''}${c.locked ? ' 🔒' : ''}</div>
+      <button class="sr-take" data-i="${i}">꺼내기</button>
+    </div>
+  `).join('');
+  list.querySelectorAll('.sr-take').forEach(b => {
+    b.addEventListener('click', () => {
+      getAudio();
+      const i = parseInt(b.dataset.i, 10);
+      takeFromStorage(i);
+      renderStorage();
+    });
+  });
+}
+document.getElementById('storage-btn').addEventListener('click', () => {
+  getAudio();
+  renderStorage();
+  document.getElementById('storage-modal').classList.add('show');
+});
+document.getElementById('storage-close').addEventListener('click', () => {
+  document.getElementById('storage-modal').classList.remove('show');
+});
+document.getElementById('storage-modal').addEventListener('click', (e) => {
+  if (e.target.id === 'storage-modal') document.getElementById('storage-modal').classList.remove('show');
 });
 // Q-Leap 57: help / guide modal
 const HELP_SECTIONS = {
