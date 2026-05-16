@@ -1401,6 +1401,19 @@ const SKILLS = [
   { id: 'inheritance',  name: '계승',       icon: '🧬', maxLv: 5,
     desc: '윤회 시 최고 Lv 표창 N개 유지',
     cost: (lv) => 3 + lv * 2 },
+  // Q-Leap 50: new skill nodes that synergize with later systems
+  { id: 'blessTime',    name: '축복 지속',  icon: '🙏', maxLv: 6,
+    desc: '축복 칸 지속 시간 +5초 / Lv (기본 30s)',
+    cost: (lv) => 2 + lv },
+  { id: 'codexBoost',   name: '도감의 길',  icon: '📖', maxLv: 5,
+    desc: '도감 신규 등록 시 깨달음 +1 추가 / 2Lv',
+    cost: (lv) => 3 + lv * 2 },
+  { id: 'goldenLuck',   name: '황금 운',    icon: '✦', maxLv: 5,
+    desc: '황금 표창 자연 발생률 +0.2% / Lv (기본 0.5%)',
+    cost: (lv) => 3 + lv * 2 },
+  { id: 'starLuck',     name: '별의 운',    icon: '★', maxLv: 5,
+    desc: '별 표창 자연 발생률 +0.1% / Lv (기본 0.25%)',
+    cost: (lv) => 4 + lv * 2 },
 ];
 function getSkillLv(id) { return (state.skills && state.skills[id]) || 0; }
 function getEnlightenmentGain() {
@@ -1420,7 +1433,7 @@ function defaultState() {
     prestigeCount: 0,
     // 깨달음(悟) — earned per prestige, spent on permanent skill nodes
     enlightenment: 0,
-    skills: { goldMastery: 0, swiftHands: 0, fate: 0, masterSmith: 0, inheritance: 0 },
+    skills: { goldMastery: 0, swiftHands: 0, fate: 0, masterSmith: 0, inheritance: 0, blessTime: 0, codexBoost: 0, goldenLuck: 0, starLuck: 0 },
     // Q-Leap 39: 표창 도감 — first-reach record of each level; persists through prestige.
     // Each new entry grants +1 깨달음 (extra enlightenment source).
     codex: {},
@@ -1527,6 +1540,8 @@ const ACHIEVEMENTS = [
   { id: 'a_star_5',       name: '별의 수집가',     icon: '🌟', desc: '별 표창 5개 획득',    check: (s) => (s.stats.starSpawned || 0) >= 5 },
   { id: 'a_lv50',         name: '천(天)에 이르다', icon: '☁', desc: 'Lv 50 도달',          check: (s) => (s.bestLevel || 0) >= 50 },
   { id: 'a_lv60',         name: '무한(無限)',      icon: '♾', desc: 'Lv 60 도달',          check: (s) => (s.bestLevel || 0) >= 60 },
+  { id: 'a_milestone_3',  name: '마일스톤 3종',    icon: '🎆', desc: '주요 마일스톤 3개 달성', check: (s) => (s.stats.milestonesReached || 0) >= 3 },
+  { id: 'a_milestone_5',  name: '모든 마일스톤',   icon: '🌌', desc: '5종 마일스톤 모두 달성', check: (s) => (s.stats.milestonesReached || 0) >= 5 },
 ];
 
 // Q-Leap 41: Daily quest templates. Generator picks 3 each day (seeded by date).
@@ -1668,7 +1683,7 @@ const SHOP_ITEMS = [
     desc: '축복 칸을 즉시 새 위치로 (타이머 리셋)',
     effect: () => {
       rerollBlessedCell();
-      state.blessedTimer = 30;
+      state.blessedTimer = 30 + getSkillLv('blessTime') * 5;
       sfx('spawn');
       return true;
     },
@@ -1854,7 +1869,7 @@ function load() {
     state.stats.sessionStart = Date.now();
     state.achievements = Object.assign({}, s.achievements || {});
     state.enlightenment = s.enlightenment || 0;
-    state.skills = Object.assign({ goldMastery:0, swiftHands:0, fate:0, masterSmith:0, inheritance:0 }, s.skills || {});
+    state.skills = Object.assign({ goldMastery:0, swiftHands:0, fate:0, masterSmith:0, inheritance:0, blessTime:0, codexBoost:0, goldenLuck:0, starLuck:0 }, s.skills || {});
     state.lastAttendDate = s.lastAttendDate || '';
     state.attendStreak = s.attendStreak || 0;
     state.codex = s.codex || {};
@@ -1917,7 +1932,7 @@ function consumeBlessing(fromIdx, toIdx) {
   if (state.blessedIdx < 0) return false;
   if (state.blessedIdx !== fromIdx && state.blessedIdx !== toIdx) return false;
   state.blessedIdx = -1;
-  state.blessedTimer = 30; // reroll in 30s
+  state.blessedTimer = 30 + getSkillLv('blessTime') * 5;
   return true;
 }
 function countStars() {
@@ -2082,16 +2097,20 @@ function tryMerge(fromIdx, toIdx) {
     jump = Math.min(jump, 8); // hard cap — 5 natural + 1 blessed + 2 golden + 1 luckyHand→clamped
     const newLv = a.level + jump;
     // Child golden inheritance: 2 parents=100%, 1 parent=50%, 0 parents=0.5% spontaneous
+    // Q-Leap 50: goldenLuck skill — +0.2%/Lv to spontaneous rate
     let childGolden = false;
+    const goldenSpontaneous = 0.005 + getSkillLv('goldenLuck') * 0.002;
     if (goldensIn === 2) childGolden = true;
     else if (goldensIn === 1) childGolden = Math.random() < 0.5;
-    else childGolden = Math.random() < 0.005;
+    else childGolden = Math.random() < goldenSpontaneous;
     // Q-Leap 47: child star inheritance (rarer: 0.25% spontaneous, can co-occur with golden)
+    // Q-Leap 50: starLuck skill — +0.1%/Lv to spontaneous rate
     const starsIn = (a.star ? 1 : 0) + (b.star ? 1 : 0);
     let childStar = false;
+    const starSpontaneous = 0.0025 + getSkillLv('starLuck') * 0.001;
     if (starsIn === 2) childStar = true;
     else if (starsIn === 1) childStar = Math.random() < 0.5;
-    else childStar = Math.random() < 0.0025;
+    else childStar = Math.random() < starSpontaneous;
     state.grid[toIdx] = { id: state.nextShurikenId++, level: newLv, fireTimer: rand(0, getFireInterval()), golden: childGolden, star: childStar };
     state.grid[fromIdx] = null;
     if (childGolden) {
@@ -2156,16 +2175,20 @@ function tryMerge(fromIdx, toIdx) {
       // big celebration overlay — fires once per record
       // (delay so the merge animation gets to play first)
       setTimeout(() => showRecordOverlay(newLv), 720);
+      // Q-Leap 49: milestone explosions for major thresholds
+      triggerMilestone(newLv);
     }
     if (newLv > state.runBestLevel) state.runBestLevel = newLv;
     // Q-Leap 43: trial — check if goal reached
     if (state.trialActive) checkTrialProgress();
     // Q-Leap 39: codex — first reach of this level grants 깨달음 +1 permanently
+    // Q-Leap 50: codexBoost skill — +1 추가 / 2Lv (floor)
     if (!state.codex) state.codex = {};
     if (!state.codex[newLv]) {
       state.codex[newLv] = true;
-      state.enlightenment = (state.enlightenment || 0) + 1;
-      setTimeout(() => toast(`📖 도감 신규 등록: Lv ${newLv} · 깨달음(悟) +1`), 400);
+      const codexBonus = 1 + Math.floor(getSkillLv('codexBoost') / 2);
+      state.enlightenment = (state.enlightenment || 0) + codexBonus;
+      setTimeout(() => toast(`📖 도감 신규 등록: Lv ${newLv} · 깨달음(悟) +${codexBonus}`), 400);
       sfx('spawn');
     }
     flashCell(toIdx);
@@ -2608,11 +2631,11 @@ function update(dt) {
       toast('🔥 버닝 종료');
     }
   }
-  // Q-Leap 38: blessed cell — reroll every 30s
+  // Q-Leap 38: blessed cell — reroll every 30s (+ blessTime skill)
   state.blessedTimer = (state.blessedTimer || 0) - dt;
   if (state.blessedTimer <= 0) {
     rerollBlessedCell();
-    state.blessedTimer = 30; // next reroll in 30s
+    state.blessedTimer = 30 + getSkillLv('blessTime') * 5;
   }
   // Q-Leap 42: time-boost timer (shop item)
   if ((state.timeBoostTimer || 0) > 0) {
@@ -3520,6 +3543,36 @@ function spawnGoldPopup(x, y, amount) {
 }
 
 // Jump-merge celebratory screen flash. Color/intensity scales with jump tier.
+// Q-Leap 49: milestone explosions for first reach of Lv 20/30/40/50/60
+const MILESTONES = {
+  20: { gem: 5,  tint: '#ffaa33', label: '극(極)의 경지' },
+  30: { gem: 10, tint: '#88aaff', label: '현무(玄武)의 격' },
+  40: { gem: 20, tint: '#ffd966', label: '도(道)에 이르다' },
+  50: { gem: 35, tint: '#88ffee', label: '천(天)의 빛' },
+  60: { gem: 60, tint: '#ff88ff', label: '무한(無限)의 끝' },
+};
+function triggerMilestone(lv) {
+  const m = MILESTONES[lv];
+  if (!m) return;
+  state.gem += m.gem;
+  state.stats.milestonesReached = (state.stats.milestonesReached || 0) + 1;
+  // big radial flash, more intense than jump flash
+  const flash = document.createElement('div');
+  flash.style.cssText = `position:fixed;inset:0;z-index:235;pointer-events:none;
+    background:radial-gradient(circle, ${m.tint}cc 0%, ${m.tint}33 30%, ${m.tint}00 70%);
+    mix-blend-mode:screen;opacity:0;
+    transition:opacity 0.6s ease-out;`;
+  document.body.appendChild(flash);
+  requestAnimationFrame(() => { flash.style.opacity = '1'; });
+  setTimeout(() => { flash.style.opacity = '0'; }, 700);
+  setTimeout(() => flash.remove(), 1500);
+  shakeStage(3);
+  setTimeout(() => toast(`🎆 ${m.label} (Lv ${lv}) · 💎 +${m.gem}`), 900);
+  sfx('mergeMystic');
+  setTimeout(() => sfx('mergeGold'), 150);
+  setTimeout(() => sfx('merge'), 300);
+}
+
 function flashJumpScreen(jump) {
   const tint = jump === 5 ? '#ff66ff'
              : jump === 3 ? '#ffaa33'
