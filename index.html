@@ -1291,6 +1291,7 @@
       <div id="grid-header" style="display:flex;justify-content:space-between;align-items:center;width:100%;max-width:320px;font-size:11px;font-weight:700;gap:6px;">
         <span style="color:#aaa;">보유 <span id="shuriken-count" style="color:#ffd966;">0</span>/<span id="shuriken-max">6</span></span>
         <span style="color:#aaa;">제작 <span id="batch-info" style="color:#a8e6ff;">×1</span></span>
+        <span style="color:#aaa;" title="다음 spawn될 표창 레벨">다음 Lv <span id="next-spawn-lv" style="color:#88ddff;">1</span></span>
         <button id="hint-btn" class="grid-action-btn" title="합칠 수 있는 모든 페어 항상 강조">💡 힌트</button>
         <button id="sell-btn" class="grid-action-btn" title="판매 모드 — 표창을 탭하면 골드로 환전">💸 판매</button>
         <button id="info-btn" class="grid-action-btn" title="정보 모드 — 표창을 탭하면 상세 정보">ℹ 정보</button>
@@ -1893,6 +1894,8 @@ const ACHIEVEMENTS = [
   { id: 'a_dark_absorb',  name: '흡수의 술',       icon: '🌀', desc: '검은 흡수 첫 발동',   check: (s) => (s.stats.darkAbsorbs || 0) >= 1 },
   { id: 'a_autosell',     name: '자동화의 시작',   icon: '🤖', desc: '자동 매도 첫 활성',   check: (s) => !!s.autoSellEnabled || (s.stats.autoSells || 0) >= 1 },
   { id: 'a_split',        name: '분할의 수',       icon: '🔱', desc: '표창 분할 첫 사용',   check: (s) => (s.stats.splitsUsed || 0) >= 1 },
+  { id: 'a_attend_60',    name: '한 갑(甲)의 수행',icon: '🏯', desc: '60일 연속 출석',      check: (s) => (s.attendStreak || 0) >= 60 },
+  { id: 'a_attend_100',   name: '백 일의 정진',    icon: '🌌', desc: '100일 연속 출석',     check: (s) => (s.attendStreak || 0) >= 100 },
 ];
 
 // Q-Leap 41: Daily quest templates. Generator picks 3 each day (seeded by date).
@@ -3325,6 +3328,8 @@ function updateHUD() {
   if (scEl) scEl.textContent = heldCount;
   if (smEl) smEl.textContent = totalSlots;
   if (biEl) biEl.textContent = '×' + getSpawnBatch();
+  const nslEl = document.getElementById('next-spawn-lv');
+  if (nslEl) nslEl.textContent = getSpawnStartLevel();
   // Time-based generator UI — bar reflects actual progress,
   // so it visibly resets after each spawn (even immediate-from-queue spawns).
   const empties = emptySlots().length;
@@ -5425,17 +5430,28 @@ function processAttendance() {
   // Reward scales with streak (capped). gem every streak; bonus gem at 7-day milestones.
   const gems = 1 + Math.min(4, Math.floor(streak / 3)); // 1..5 gems
   const bonusGem = (streak % 7 === 0) ? 5 : 0;
-  const totalGems = gems + bonusGem;
+  // Q-Leap 68: major milestone bonuses (one-shot, persists per achievement-style)
+  let milestoneGem = 0, milestoneEnlight = 0, milestoneLabel = '';
+  state.stats.attendMilestones = state.stats.attendMilestones || {};
+  if (streak === 7  && !state.stats.attendMilestones[7])  { milestoneGem = 10; milestoneEnlight = 0; milestoneLabel = '🌱 7일 마일스톤';  state.stats.attendMilestones[7]  = true; }
+  if (streak === 14 && !state.stats.attendMilestones[14]) { milestoneGem = 20; milestoneEnlight = 2; milestoneLabel = '🌿 14일 마일스톤'; state.stats.attendMilestones[14] = true; }
+  if (streak === 30 && !state.stats.attendMilestones[30]) { milestoneGem = 50; milestoneEnlight = 5; milestoneLabel = '🌳 30일 마일스톤'; state.stats.attendMilestones[30] = true; }
+  if (streak === 60 && !state.stats.attendMilestones[60]) { milestoneGem = 100;milestoneEnlight = 10;milestoneLabel = '🏯 60일 마일스톤'; state.stats.attendMilestones[60] = true; }
+  if (streak === 100&& !state.stats.attendMilestones[100]){ milestoneGem = 200;milestoneEnlight = 25;milestoneLabel = '🌌 100일 마일스톤';state.stats.attendMilestones[100]= true; }
+  const totalGems = gems + bonusGem + milestoneGem;
   state.gem += totalGems;
+  if (milestoneEnlight) state.enlightenment = (state.enlightenment || 0) + milestoneEnlight;
   // gold bonus = passive rate × streak × 60s equivalent (small kickstart)
   const goldBonus = Math.floor(getPassiveGoldRate() * streak * 30);
   state.gold += goldBonus;
   state.stats.totalGoldEarned = (state.stats.totalGoldEarned || 0) + goldBonus;
   // show modal
-  document.getElementById('attend-streak').textContent = `${streak}일 연속 출석`;
+  document.getElementById('attend-streak').textContent = `${streak}일 연속 출석${milestoneLabel ? ' · ' + milestoneLabel : ''}`;
   document.getElementById('attend-reward').innerHTML =
-    `💎 +${totalGems}${bonusGem ? ` <span style="color:#ffd966">(7일 보너스 +5)</span>` : ''}` +
+    `💎 +${totalGems}${bonusGem ? ` <span style="color:#ffd966">(7일 +5)</span>` : ''}${milestoneGem ? ` <span style="color:#ff88ff">(마일 +${milestoneGem})</span>` : ''}` +
+    (milestoneEnlight ? `<br>🌌 깨달음 +${milestoneEnlight}` : '') +
     (goldBonus > 0 ? `<br>💰 +${fmt(goldBonus)}` : '');
+  if (milestoneLabel) { addEvent('milestone', milestoneLabel); flashJumpScreen(5); }
   document.getElementById('attend-modal').classList.add('show');
   save();
 }
