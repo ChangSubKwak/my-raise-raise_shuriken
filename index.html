@@ -254,6 +254,25 @@
   }
   .prestige-confirm:active { transform: scale(0.96); }
 
+  /* Q-Leap 60: floating aura particles for Lv 30+ cells */
+  .cell .aura-particle {
+    position: absolute;
+    width: 4px; height: 4px;
+    border-radius: 50%;
+    pointer-events: none;
+    z-index: 1;
+    filter: blur(0.5px);
+    animation: auraFloat 3.4s ease-in-out infinite;
+  }
+  .cell.tier-mystic .aura-particle { box-shadow: 0 0 6px currentColor; }
+  @keyframes auraFloat {
+    0%   { transform: translate(0, 0) scale(0.5); opacity: 0.3; }
+    25%  { transform: translate(var(--tx), var(--ty)) scale(1); opacity: 0.9; }
+    50%  { transform: translate(calc(var(--tx) * 0.4), calc(var(--ty) * -0.6)) scale(0.8); opacity: 0.7; }
+    75%  { transform: translate(calc(var(--tx) * -0.7), calc(var(--ty) * 0.3)) scale(0.9); opacity: 0.8; }
+    100% { transform: translate(0, 0) scale(0.5); opacity: 0.3; }
+  }
+
   /* Q-Leap 58: DOM particle burst from grid cells */
   .cell-burst {
     position: fixed; width: 7px; height: 7px;
@@ -476,6 +495,34 @@
     background: #2a2a3a; color: #777; cursor: default;
   }
   .shop-item .si-buy:not(:disabled):active { transform: scale(0.95); }
+  /* Q-Leap 59: auto-sell controls in shop modal */
+  .shop-divider { border-top: 1px dashed #4a3848; margin: 10px 0 8px; }
+  .auto-sell-box {
+    background: rgba(255,255,255,0.04); border: 1px solid #3a2848;
+    border-radius: 10px; padding: 10px 12px; margin-bottom: 8px;
+  }
+  .auto-sell-title { font-size: 12px; font-weight: 800; color: #ffaadd; margin-bottom: 8px; }
+  .auto-sell-row { display: flex; gap: 8px; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+  .auto-sell-toggle {
+    padding: 6px 14px; border-radius: 8px; cursor: pointer;
+    background: #2a2a3a; border: 1px solid #4a4a5a; color: #aaa;
+    font-family: inherit; font-weight: 800; font-size: 12px; min-width: 50px;
+  }
+  .auto-sell-toggle.on { background: linear-gradient(180deg, #66ff99, #44cc66); color: #0a2a14; border-color: #66ff99; }
+  .auto-sell-threshold { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 700; color: #ddd; }
+  .auto-sell-threshold button {
+    width: 26px; height: 26px; border-radius: 6px; cursor: pointer;
+    background: #2a2a3a; border: 1px solid #4a4a5a; color: #ddd;
+    font-family: inherit; font-weight: 800; font-size: 14px;
+  }
+  .auto-sell-threshold button:active { transform: scale(0.94); }
+  #auto-sell-val { min-width: 22px; text-align: center; color: #ffd966; font-weight: 800; }
+  .auto-sell-run {
+    width: 100%; padding: 8px; border-radius: 8px; cursor: pointer;
+    background: #2a2a3a; border: 1px solid #4a4a5a; color: #ddd;
+    font-family: inherit; font-weight: 700; font-size: 11px;
+  }
+  .auto-sell-run:active { transform: scale(0.98); }
 
   /* Quest modal — Q-Leap 41 */
   #quest-modal {
@@ -1345,6 +1392,20 @@
     <div class="shop-sub">보석으로 일회성 효과 구매. 가격이 자연 제한이라 자유 사용.</div>
     <div class="shop-gem" id="shop-gem">💎 0</div>
     <div class="shop-list" id="shop-list"></div>
+    <div class="shop-divider"></div>
+    <div class="auto-sell-box">
+      <div class="auto-sell-title">🤖 자동 매도 <span style="color:#888;font-size:10px;font-weight:400;">(잠금/변종 보호)</span></div>
+      <div class="auto-sell-row">
+        <button class="auto-sell-toggle" id="auto-sell-toggle">OFF</button>
+        <div class="auto-sell-threshold">
+          <span>Lv ≤</span>
+          <button id="auto-sell-down">−</button>
+          <span id="auto-sell-val">1</span>
+          <button id="auto-sell-up">+</button>
+        </div>
+      </div>
+      <button id="auto-sell-run" class="auto-sell-run">즉시 1회 실행</button>
+    </div>
     <button class="codex-close" id="shop-close">닫기</button>
   </div>
 </div>
@@ -1633,6 +1694,9 @@ function defaultState() {
     // Q-Leap 54: 일일 도전 — date-seeded daily modifier
     dailyChallengeId: '',     // template id
     dailyChallengeDate: '',
+    // Q-Leap 59: 자동 매도 — auto-sell shuriken at or below threshold
+    autoSellEnabled: false,
+    autoSellThreshold: 1,     // Lv ≤ this → auto-sell (golden/star/dark/locked excluded)
     // Q-Leap 43: 윤회 도전 (Trial) — 60s after prestige, time×2, target Lv → +5 enlightenment
     trialActive: false,
     trialTimer: 0,        // seconds remaining
@@ -1735,6 +1799,7 @@ const ACHIEVEMENTS = [
   { id: 'a_combo_milestone_5', name: '연쇄의 달인', icon: '🔥', desc: '콤보 마일스톤 5회',  check: (s) => (s.stats.comboMilestones || 0) >= 5 },
   { id: 'a_dark_1',       name: '어둠의 발견',     icon: '🌑', desc: '검은 표창 첫 획득',   check: (s) => (s.stats.darkSpawned || 0) >= 1 },
   { id: 'a_dark_absorb',  name: '흡수의 술',       icon: '🌀', desc: '검은 흡수 첫 발동',   check: (s) => (s.stats.darkAbsorbs || 0) >= 1 },
+  { id: 'a_autosell',     name: '자동화의 시작',   icon: '🤖', desc: '자동 매도 첫 활성',   check: (s) => !!s.autoSellEnabled || (s.stats.autoSells || 0) >= 1 },
 ];
 
 // Q-Leap 41: Daily quest templates. Generator picks 3 each day (seeded by date).
@@ -2214,6 +2279,8 @@ function load() {
     state.eventLog = Array.isArray(s.eventLog) ? s.eventLog.slice(-30) : [];
     state.dailyChallengeId = s.dailyChallengeId || '';
     state.dailyChallengeDate = s.dailyChallengeDate || '';
+    state.autoSellEnabled = !!s.autoSellEnabled;
+    state.autoSellThreshold = s.autoSellThreshold || 1;
     return true;
   } catch (e) { return false; }
 }
@@ -2361,6 +2428,13 @@ function spawnShuriken() {
   sfx('spawn');
   renderGrid();
   checkAchievements();
+  // Q-Leap 59: auto-sell newly-spawned if eligible (defer to end of tick to avoid recursion)
+  if (state.autoSellEnabled && state.grid[idx] && state.grid[idx].level <= (state.autoSellThreshold || 1)) {
+    const piece = state.grid[idx];
+    if (!piece.locked && !piece.golden && !piece.star && !piece.dark) {
+      setTimeout(() => sellShuriken(idx), 0);
+    }
+  }
   return true;
 }
 // Instant spawn (gem-paid premium). Skips waiting.
@@ -2973,7 +3047,10 @@ function update(dt) {
       }
     }
   }
-  _prevFullState = currentlyFull;
+  // Bug fix: re-check current state at end (grid may have been mutated mid-frame
+  // via autoMergeStep or spawn loop). Stale capture caused _prevFullState to
+  // sometimes hold a wrong value, breaking the next-frame transition reset.
+  _prevFullState = emptySlots().length === 0;
 
   // Passive gold: each shuriken contributes exponentially by level
   // Lv1 = 0.5 / sec, Lv2 = 1, Lv3 = 2, Lv5 = 8, Lv10 = 256, etc.
@@ -3107,6 +3184,16 @@ function updateHUD() {
   // so it visibly resets after each spawn (even immediate-from-queue spawns).
   const empties = emptySlots().length;
   const isFull = empties === 0;
+  // Defensive sync in the render path: if the grid is not full but _prevFullState
+  // says it was full and spawnProgress is still high (paused value), reset NOW.
+  // Belt-and-suspenders to the renderGrid sync — catches any path that mutated
+  // grid without going through renderGrid.
+  if (!isFull && _prevFullState && state.spawnProgress > 0.1) {
+    state.spawnProgress = 0;
+    _prevFullState = false;
+  } else if (isFull) {
+    _prevFullState = true;
+  }
   const fillPct = Math.min(100, state.spawnProgress * 100);
   document.getElementById('spawn-progress-fill').style.width = fillPct + '%';
   const pctEl = document.getElementById('spawn-progress-pct');
@@ -3251,6 +3338,29 @@ function renderGrid() {
         dm.textContent = '🌑';
         cell.appendChild(dm);
       }
+      // Q-Leap 60: Lv 30+ cells get floating aura particles (more for higher tier)
+      if (c.level >= 30) {
+        const tier = levelTier(c.level);
+        if (tier.id === 'mystic') cell.classList.add('tier-mystic');
+        const auraCount = c.level >= 50 ? 4 : c.level >= 40 ? 3 : 2;
+        const color = levelColor(c.level);
+        for (let p = 0; p < auraCount; p++) {
+          const dot = document.createElement('div');
+          dot.className = 'aura-particle';
+          const angle = (p / auraCount) * Math.PI * 2;
+          const radius = 14 + (p % 2) * 4;
+          const tx = Math.cos(angle) * radius;
+          const ty = Math.sin(angle) * radius;
+          dot.style.left = '50%';
+          dot.style.top = '50%';
+          dot.style.background = color;
+          dot.style.color = color;
+          dot.style.setProperty('--tx', tx + 'px');
+          dot.style.setProperty('--ty', ty + 'px');
+          dot.style.animationDelay = (p * 0.4) + 's';
+          cell.appendChild(dot);
+        }
+      }
       cell.title = `Lv ${c.level} · ${levelName(c.level)}${c.locked ? ' 🔒' : ''}${c.golden ? ' ✦ 황금 (판매 5x · 합성 +1 점프)' : ''}${c.star ? ' ★ 별 (그리드에 있으면 spawn ×1.43)' : ''}${c.dark ? ' 🌑 검은 (합성 시 인접 흡수)' : ''}`;
       // Tier-scaled ambient halo around the cell (subtle for low Lv, strong for high)
       const tier = levelTier(c.level);
@@ -3286,6 +3396,9 @@ function renderGrid() {
   }
   // Q-Leap 51: update ritual badge after any grid change
   refreshRitualBadge();
+  // Bug fix: sync spawn gauge state after every grid mutation (renderGrid is the
+  // single choke point — called by tryMerge/sell/ritual/autoMerge/etc.).
+  syncSpawnGaugeAfterMutation();
 }
 
 // Drag-or-tap detection: pointermove >5px → drag flow, else → tap flow on release
@@ -3950,6 +4063,20 @@ function spawnGoldPopup(x, y, amount) {
 }
 
 // Jump-merge celebratory screen flash. Color/intensity scales with jump tier.
+// Q-Leap 59: auto-sell pass — checks every grid cell and sells eligible ones
+// Eligible = level ≤ threshold AND not locked AND not golden/star/dark
+function autoSellPass() {
+  if (!state.autoSellEnabled) return;
+  const threshold = state.autoSellThreshold || 1;
+  for (let i = 0; i < state.grid.length; i++) {
+    const c = state.grid[i];
+    if (!c) continue;
+    if (c.locked || c.golden || c.star || c.dark) continue;
+    if (c.level > threshold) continue;
+    sellShuriken(i);
+  }
+}
+
 // Q-Leap 58: DOM particle burst from a grid cell (used for variant merges)
 function spawnCellBurst(idx, color, count = 12) {
   const cell = document.querySelector(`[data-idx="${idx}"]`);
@@ -4181,9 +4308,12 @@ function refreshUI() {
   renderAchievements();
   renderPrestige();
   renderSkillTree();
-  // Bug fix: keep _prevFullState in sync with current grid state, so that
-  // any mutation (merge/sell/sort/etc.) that frees space immediately resets
-  // the spawn gauge — without waiting for the next gameLoop tick.
+  // bug fix: keep HUD in sync (also force spawn-bar refresh)
+  updateHUD();
+}
+// Single source of truth for "grid just got freed" detection.
+// Call from every grid mutation path; renderGrid is the natural choke point.
+function syncSpawnGaugeAfterMutation() {
   const nowFull = emptySlots().length === 0;
   if (!nowFull && _prevFullState) {
     state.spawnProgress = 0;     // visible reset on full → not-full transition
@@ -4191,8 +4321,6 @@ function refreshUI() {
   } else if (nowFull) {
     _prevFullState = true;
   }
-  // also refresh the HUD spawn bar widget so users see the change instantly
-  updateHUD();
 }
 function fmtPlaytime(sec) {
   if (sec < 60) return sec + '초';
@@ -4599,10 +4727,47 @@ function renderShop() {
     });
   });
 }
+function refreshAutoSellUI() {
+  const tog = document.getElementById('auto-sell-toggle');
+  const val = document.getElementById('auto-sell-val');
+  if (tog) { tog.textContent = state.autoSellEnabled ? 'ON' : 'OFF'; tog.classList.toggle('on', state.autoSellEnabled); }
+  if (val) val.textContent = state.autoSellThreshold || 1;
+}
 document.getElementById('shop-btn').addEventListener('click', () => {
   getAudio();
   renderShop();
+  refreshAutoSellUI();
   document.getElementById('shop-modal').classList.add('show');
+});
+document.getElementById('auto-sell-toggle').addEventListener('click', () => {
+  getAudio();
+  state.autoSellEnabled = !state.autoSellEnabled;
+  refreshAutoSellUI();
+  if (state.autoSellEnabled) { toast(`🤖 자동 매도 ON (Lv ≤ ${state.autoSellThreshold})`); autoSellPass(); }
+  else toast('자동 매도 OFF');
+  save();
+});
+document.getElementById('auto-sell-up').addEventListener('click', () => {
+  getAudio();
+  state.autoSellThreshold = Math.min(20, (state.autoSellThreshold || 1) + 1);
+  refreshAutoSellUI();
+  if (state.autoSellEnabled) autoSellPass();
+  save();
+});
+document.getElementById('auto-sell-down').addEventListener('click', () => {
+  getAudio();
+  state.autoSellThreshold = Math.max(1, (state.autoSellThreshold || 1) - 1);
+  refreshAutoSellUI();
+  save();
+});
+document.getElementById('auto-sell-run').addEventListener('click', () => {
+  getAudio();
+  // run a single pass regardless of toggle (one-shot cleanup)
+  const wasOn = state.autoSellEnabled;
+  state.autoSellEnabled = true;
+  autoSellPass();
+  state.autoSellEnabled = wasOn;
+  toast('🤖 자동 매도 1회 실행');
 });
 document.getElementById('shop-close').addEventListener('click', () => {
   document.getElementById('shop-modal').classList.remove('show');
