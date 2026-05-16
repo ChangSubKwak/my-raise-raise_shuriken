@@ -1524,6 +1524,19 @@
         </div>
       </div>
     </div>
+    <div class="auto-sell-box">
+      <div class="auto-sell-title">✨ 자동 의식 <span style="color:#888;font-size:10px;font-weight:400;">(3+ 그룹 자동 발동)</span></div>
+      <div class="auto-sell-row">
+        <button class="auto-sell-toggle" id="auto-ritual-toggle">OFF</button>
+      </div>
+    </div>
+    <div class="auto-sell-box" id="prestige-speed-box">
+      <div class="auto-sell-title">⚡ 윤회 가속 <span id="prestige-speed-note" style="color:#888;font-size:10px;font-weight:400;">(윤회 5회+ 시 해금)</span></div>
+      <div class="auto-sell-row">
+        <button class="auto-sell-toggle" id="prestige-speed-toggle" disabled>OFF</button>
+        <span style="font-size:11px;color:#aaa;">spawn ×1.43</span>
+      </div>
+    </div>
     <button class="codex-close" id="shop-close">닫기</button>
   </div>
 </div>
@@ -1819,6 +1832,10 @@ function defaultState() {
     // Q-Leap 71: 자동 잠금 — Lv ≥ threshold 자동 잠금
     autoLockEnabled: false,
     autoLockThreshold: 15,
+    // Q-Leap 72: 자동 의식 — auto-fire ritual when available
+    autoRitualEnabled: false,
+    // Q-Leap 73: 윤회 가속 모드 — toggleable spawn speed × 0.7 (only if prestige >= 5)
+    prestigeSpeedEnabled: false,
     // Q-Leap 59: 자동 매도 — auto-sell shuriken at or below threshold
     autoSellEnabled: false,
     autoSellThreshold: 1,     // Lv ≤ this → auto-sell (golden/star/dark/locked excluded)
@@ -2448,6 +2465,8 @@ function load() {
     state.autoMergePriority = s.autoMergePriority || 'low';
     state.autoLockEnabled = !!s.autoLockEnabled;
     state.autoLockThreshold = s.autoLockThreshold || 15;
+    state.autoRitualEnabled = !!s.autoRitualEnabled;
+    state.prestigeSpeedEnabled = !!s.prestigeSpeedEnabled;
     return true;
   } catch (e) { return false; }
 }
@@ -2507,7 +2526,8 @@ function getSpawnInterval() {
   const trialBoost = state.trialActive ? 0.5 : 1; // Q-Leap 43: trial time×2
   const starBoost = Math.pow(0.7, countStars()); // Q-Leap 47: each star × 0.7
   const chalBoost = isChallenge('spawnFast') ? 0.5 : 1; // Q-Leap 54
-  return Math.max(0.4, base * Math.pow(0.95, state.upgrades.spawnRate) * burnMul * skillMul * shopBoost * trialBoost * starBoost * chalBoost);
+  const prestigeSpeed = (state.prestigeSpeedEnabled && state.prestigeCount >= 5) ? 0.7 : 1; // Q-Leap 73
+  return Math.max(0.4, base * Math.pow(0.95, state.upgrades.spawnRate) * burnMul * skillMul * shopBoost * trialBoost * starBoost * chalBoost * prestigeSpeed);
 }
 
 const BURNING_DURATION = 30;
@@ -3211,6 +3231,7 @@ function gameLoop(now) {
 }
 
 let autoMergeTimer = 0;
+let autoRitualTimer = 0;
 let goldFractional = 0; // accumulator for sub-1 gold/sec
 let playTimeFractional = 0; // accumulator for sub-1 second playtime
 let _prevFullState = false; // tracks emptySlots()===0 across frames for transition detection
@@ -3327,6 +3348,15 @@ function update(dt) {
     if (autoMergeTimer <= 0) {
       autoMergeTimer = 0.5;
       autoMergeStep();
+    }
+  }
+  // Q-Leap 72: auto-ritual — fire when 3+ group exists
+  if (state.autoRitualEnabled) {
+    autoRitualTimer -= dt;
+    if (autoRitualTimer <= 0) {
+      autoRitualTimer = 1.5; // throttle
+      const groups = findRitualGroups();
+      if (groups.length > 0) doRitualMerge();
     }
   }
 }
@@ -5036,6 +5066,23 @@ function refreshAutoLockUI() {
   document.querySelectorAll('.prio-btn').forEach(btn => {
     btn.classList.toggle('active', btn.dataset.prio === (state.autoMergePriority || 'low'));
   });
+  // Q-Leap 72: auto-ritual
+  const arTog = document.getElementById('auto-ritual-toggle');
+  if (arTog) { arTog.textContent = state.autoRitualEnabled ? 'ON' : 'OFF'; arTog.classList.toggle('on', state.autoRitualEnabled); }
+  // Q-Leap 73: prestige speed (gated by prestige count)
+  const psTog = document.getElementById('prestige-speed-toggle');
+  const psNote = document.getElementById('prestige-speed-note');
+  const unlocked = (state.prestigeCount || 0) >= 5;
+  if (psTog) {
+    psTog.disabled = !unlocked;
+    psTog.textContent = state.prestigeSpeedEnabled ? 'ON' : 'OFF';
+    psTog.classList.toggle('on', state.prestigeSpeedEnabled && unlocked);
+  }
+  if (psNote) {
+    psNote.textContent = unlocked
+      ? `(윤회 ${state.prestigeCount}회 · 활성)`
+      : `(윤회 5회+ 시 해금 — 현재 ${state.prestigeCount || 0}회)`;
+  }
 }
 document.querySelectorAll('.prio-btn').forEach(btn => {
   btn.addEventListener('click', () => {
@@ -5066,6 +5113,21 @@ document.getElementById('auto-lock-down').addEventListener('click', () => {
   state.autoLockThreshold = Math.max(2, (state.autoLockThreshold || 15) - 1);
   refreshAutoLockUI();
   if (state.autoLockEnabled) { autoLockPass(); renderGrid(); }
+  save();
+});
+document.getElementById('auto-ritual-toggle').addEventListener('click', () => {
+  getAudio();
+  state.autoRitualEnabled = !state.autoRitualEnabled;
+  refreshAutoLockUI();
+  toast(state.autoRitualEnabled ? '✨ 자동 의식 ON' : '자동 의식 OFF');
+  save();
+});
+document.getElementById('prestige-speed-toggle').addEventListener('click', () => {
+  if ((state.prestigeCount || 0) < 5) { toast('윤회 5회 도달 후 해금됩니다'); return; }
+  getAudio();
+  state.prestigeSpeedEnabled = !state.prestigeSpeedEnabled;
+  refreshAutoLockUI();
+  toast(state.prestigeSpeedEnabled ? '⚡ 윤회 가속 ON (spawn ×1.43)' : '윤회 가속 OFF');
   save();
 });
 document.getElementById('shop-close').addEventListener('click', () => {
