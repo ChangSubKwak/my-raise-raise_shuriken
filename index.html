@@ -620,6 +620,22 @@
     0%,100% { opacity: 0.85; transform: scale(1); }
     50%     { opacity: 1; transform: scale(1.15); }
   }
+  /* Q-Leap 44: adjacency synergy — dot DOM element top-right (avoids ::before conflict with locked/blessed) */
+  .cell .synergy-dot {
+    position: absolute; top: 14px; right: 3px;
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    z-index: 2; pointer-events: none;
+    animation: synergyDot 1.6s ease-in-out infinite;
+  }
+  .cell .synergy-dot.s1 { background: radial-gradient(circle, #88ddff, #4488cc); box-shadow: 0 0 6px #88ddffaa; }
+  .cell .synergy-dot.s2 { background: radial-gradient(circle, #88ffaa, #44cc66); box-shadow: 0 0 8px #88ffaacc; width: 9px; height: 9px; }
+  .cell .synergy-dot.s3 { background: radial-gradient(circle, #ffcc66, #cc8833); box-shadow: 0 0 10px #ffcc66dd; width: 10px; height: 10px; }
+  .cell .synergy-dot.s4 { background: radial-gradient(circle, #ff88ff, #aa44aa); box-shadow: 0 0 14px #ff88ffee; width: 11px; height: 11px; }
+  @keyframes synergyDot {
+    0%,100% { transform: scale(0.92); opacity: 0.85; }
+    50%     { transform: scale(1.08); opacity: 1; }
+  }
   .cell:active { transform: scale(0.97); }
   .cell .lv-label {
     position: absolute; top: 2px; left: 4px; font-size: 10px; font-weight: 800;
@@ -1278,6 +1294,12 @@ function defaultState() {
     // Q-Leap 42: 보석 상점 — short-lived buffs / instant effects
     timeBoostTimer: 0,    // seconds; while > 0, spawn interval × 0.5
     luckyHandCharges: 0,  // next N merges get +1 jump (consumed)
+    // Q-Leap 43: 윤회 도전 (Trial) — 60s after prestige, time×2, target Lv → +5 enlightenment
+    trialActive: false,
+    trialTimer: 0,        // seconds remaining
+    trialGoalLv: 0,       // target level
+    trialStartBestLv: 1,  // run-best at trial start (for goal calc)
+    trialReward: 5,
     // Daily attendance
     lastAttendDate: '',   // 'YYYY-M-D' of last claimed day
     attendStreak: 0,      // consecutive-day streak
@@ -1357,6 +1379,8 @@ const ACHIEVEMENTS = [
   { id: 'a_quest_30',     name: '꾸준한 수행',     icon: '🏆', desc: '일일 미션 30개 완료', check: (s) => (s.stats.questsCompleted || 0) >= 30 },
   { id: 'a_shop_1',       name: '첫 거래',         icon: '🛒', desc: '상점 첫 이용',        check: (s) => (s.stats.shopUses || 0) >= 1 },
   { id: 'a_shop_25',      name: '단골 손님',       icon: '🛍', desc: '상점 25회 이용',      check: (s) => (s.stats.shopUses || 0) >= 25 },
+  { id: 'a_trial_1',      name: '첫 도전',         icon: '⚔', desc: '윤회 도전 첫 성공',   check: (s) => (s.stats.trialsWon || 0) >= 1 },
+  { id: 'a_trial_10',     name: '도전의 길',       icon: '🏆', desc: '윤회 도전 10회 성공', check: (s) => (s.stats.trialsWon || 0) >= 10 },
 ];
 
 // Q-Leap 41: Daily quest templates. Generator picks 3 each day (seeded by date).
@@ -1551,6 +1575,40 @@ const SHOP_ITEMS = [
   },
 ];
 
+// ---------- Q-Leap 43: 윤회 도전 (Trial) ----------
+const TRIAL_DURATION = 60;
+function startTrial() {
+  state.trialActive = true;
+  state.trialTimer = TRIAL_DURATION;
+  state.trialStartBestLv = state.runBestLevel || 1;
+  // goal: reach (startBestLv + 3) within 60s. minimum goal = 5.
+  state.trialGoalLv = Math.max(5, (state.runBestLevel || 1) + 3);
+  state.trialReward = 5 + Math.floor(state.prestigeCount / 3); // scale with prestige depth
+  toast(`⚔ 도전 시작! 60초 안에 Lv ${state.trialGoalLv} 달성 → 깨달음(悟) +${state.trialReward}`);
+  sfx('merge');
+}
+function endTrial(success) {
+  if (!state.trialActive) return;
+  state.trialActive = false;
+  state.trialTimer = 0;
+  if (success) {
+    state.enlightenment = (state.enlightenment || 0) + state.trialReward;
+    state.stats.trialsWon = (state.stats.trialsWon || 0) + 1;
+    toast(`🏆 도전 성공! 깨달음(悟) +${state.trialReward}`);
+    sfx('mergeGold');
+    flashJumpScreen(5);
+  } else {
+    toast('⏱ 도전 시간 종료 — 다음 윤회 때 다시');
+    sfx('move');
+  }
+  refreshUI();
+  save();
+}
+function checkTrialProgress() {
+  if (!state.trialActive) return;
+  if ((state.runBestLevel || 1) >= state.trialGoalLv) endTrial(true);
+}
+
 function buyShopItem(id) {
   const item = SHOP_ITEMS.find(it => it.id === id);
   if (!item) return;
@@ -1605,6 +1663,11 @@ function load() {
     state.lastQuestDate = s.lastQuestDate || '';
     state.timeBoostTimer = s.timeBoostTimer || 0;
     state.luckyHandCharges = s.luckyHandCharges || 0;
+    state.trialActive = !!s.trialActive;
+    state.trialTimer = s.trialTimer || 0;
+    state.trialGoalLv = s.trialGoalLv || 0;
+    state.trialStartBestLv = s.trialStartBestLv || 1;
+    state.trialReward = s.trialReward || 5;
     return true;
   } catch (e) { return false; }
 }
@@ -1656,7 +1719,8 @@ function getSpawnInterval() {
   const burnMul = isBurning() ? (1 / 3) : 1; // 3× faster when burning
   const skillMul = Math.pow(0.96, getSkillLv('swiftHands')); // −4%/Lv
   const shopBoost = (state.timeBoostTimer || 0) > 0 ? 0.5 : 1; // Q-Leap 42 shop item
-  return Math.max(0.4, base * Math.pow(0.95, state.upgrades.spawnRate) * burnMul * skillMul * shopBoost);
+  const trialBoost = state.trialActive ? 0.5 : 1; // Q-Leap 43: trial time×2
+  return Math.max(0.4, base * Math.pow(0.95, state.upgrades.spawnRate) * burnMul * skillMul * shopBoost * trialBoost);
 }
 
 const BURNING_DURATION = 30;
@@ -1872,6 +1936,8 @@ function tryMerge(fromIdx, toIdx) {
       setTimeout(() => showRecordOverlay(newLv), 720);
     }
     if (newLv > state.runBestLevel) state.runBestLevel = newLv;
+    // Q-Leap 43: trial — check if goal reached
+    if (state.trialActive) checkTrialProgress();
     // Q-Leap 39: codex — first reach of this level grants 깨달음 +1 permanently
     if (!state.codex) state.codex = {};
     if (!state.codex[newLv]) {
@@ -2286,9 +2352,22 @@ function update(dt) {
 
   // Passive gold: each shuriken contributes exponentially by level
   // Lv1 = 0.5 / sec, Lv2 = 1, Lv3 = 2, Lv5 = 8, Lv10 = 256, etc.
+  // Q-Leap 44: adjacency synergy — same-Lv 4-neighbors grant +20% each (max +80%)
   let goldRate = 0;
-  for (const c of state.grid) {
-    if (c) goldRate += 0.5 * Math.pow(2, c.level - 1);
+  const _cols = getGridCols();
+  const _gsize = state.grid.length;
+  for (let i = 0; i < _gsize; i++) {
+    const c = state.grid[i];
+    if (!c) continue;
+    let adj = 0;
+    const row = Math.floor(i / _cols);
+    const col = i % _cols;
+    if (col > 0          && state.grid[i - 1]     && state.grid[i - 1].level     === c.level) adj++;
+    if (col < _cols - 1  && state.grid[i + 1]     && state.grid[i + 1].level     === c.level) adj++;
+    if (row > 0          && state.grid[i - _cols] && state.grid[i - _cols].level === c.level) adj++;
+    if (i + _cols < _gsize && state.grid[i + _cols] && state.grid[i + _cols].level === c.level) adj++;
+    const synergyMul = 1 + adj * 0.2;
+    goldRate += 0.5 * Math.pow(2, c.level - 1) * synergyMul;
   }
   goldRate *= getGoldMul();
   // Combo timer tick — resets count when expired
@@ -2320,6 +2399,11 @@ function update(dt) {
       state.timeBoostTimer = 0;
       toast('⏱ 시간 가속 종료');
     }
+  }
+  // Q-Leap 43: trial timer
+  if (state.trialActive) {
+    state.trialTimer -= dt;
+    if (state.trialTimer <= 0) endTrial(false);
   }
   goldFractional += goldRate * dt;
   if (goldFractional >= 1) {
@@ -2363,8 +2447,13 @@ function render() {
 function updateHUD() {
   document.getElementById('gold').textContent = fmt(state.gold);
   document.getElementById('gem').textContent = state.gem;
-  document.getElementById('stage-name').textContent =
-    `${levelName(state.bestLevel)} (Lv ${state.bestLevel})`;
+  if (state.trialActive) {
+    document.getElementById('stage-name').textContent =
+      `⚔ 도전 ${Math.ceil(state.trialTimer)}s · 목표 Lv ${state.trialGoalLv} (현재 ${state.runBestLevel})`;
+  } else {
+    document.getElementById('stage-name').textContent =
+      `${levelName(state.bestLevel)} (Lv ${state.bestLevel})`;
+  }
   // shuriken count / max display
   const totalSlots = state.grid.length;
   const heldCount = totalSlots - emptySlots().length;
@@ -2481,6 +2570,20 @@ function renderGrid() {
     if (c) {
       if (c.locked) cell.classList.add('locked-piece');
       if (c.golden) cell.classList.add('golden-piece');
+      // Q-Leap 44: adjacency synergy visual — count same-Lv 4-neighbors
+      let _adj = 0;
+      const _row = Math.floor(i / cols);
+      const _col = i % cols;
+      if (_col > 0         && state.grid[i - 1]    && state.grid[i - 1].level    === c.level) _adj++;
+      if (_col < cols - 1  && state.grid[i + 1]    && state.grid[i + 1].level    === c.level) _adj++;
+      if (_row > 0         && state.grid[i - cols] && state.grid[i - cols].level === c.level) _adj++;
+      if (i + cols < size  && state.grid[i + cols] && state.grid[i + cols].level === c.level) _adj++;
+      if (_adj > 0) {
+        const dot = document.createElement('div');
+        dot.className = 'synergy-dot s' + _adj;
+        dot.title = `인접 시너지 +${_adj * 20}% 골드`;
+        cell.appendChild(dot);
+      }
       if (freshSpawnIds.has(c.id)) {
         cell.classList.add('spawn-drop');
         freshSpawnIds.delete(c.id);
@@ -3559,6 +3662,8 @@ function renderPrestige() {
       state.blessedIdx = -1;
       state.blessedTimer = 0;
       startStage();
+      // Q-Leap 43: start trial round immediately after prestige
+      startTrial();
       checkAchievements();
       refreshUI();
       save();
