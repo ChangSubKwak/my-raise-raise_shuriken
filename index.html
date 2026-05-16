@@ -1121,6 +1121,30 @@
     background: rgba(102, 255, 153, 0.25);
     border-color: #66ff99; color: #afe;
   }
+  /* Q-Leap 77: Frenzy button states */
+  #frenzy-btn.ready {
+    background: linear-gradient(90deg, #ff8800, #ffcc00, #ff5577);
+    background-size: 200% 100%;
+    animation: frenzyPulse 1.0s linear infinite;
+    color: #fff; border-color: #ffd966; box-shadow: 0 0 12px #ffaa44cc;
+  }
+  #frenzy-btn.active {
+    background: rgba(255, 100, 50, 0.4); border-color: #ff6644; color: #fff;
+  }
+  @keyframes frenzyPulse {
+    0% { background-position: 0% 50%; transform: scale(1); }
+    50% { background-position: 100% 50%; transform: scale(1.05); }
+    100% { background-position: 0% 50%; transform: scale(1); }
+  }
+  body.frenzy-active::before {
+    content: ''; position: fixed; inset: 0; pointer-events: none; z-index: 91;
+    box-shadow: inset 0 0 80px 14px #ff885566;
+    animation: frenzyAura 0.7s ease-in-out infinite;
+  }
+  @keyframes frenzyAura {
+    0%, 100% { opacity: 0.5; }
+    50% { opacity: 1; }
+  }
   #sell-btn.on {
     background: rgba(255, 170, 50, 0.25);
     border-color: #ffaa33; color: #ffd966;
@@ -1136,6 +1160,14 @@
   .cell.hint-pair {
     box-shadow: 0 0 6px #ffd96677, inset 0 0 4px #ffd96622 !important;
     border-color: #ffd96688 !important;
+  }
+  /* Q-Leap 79: predicted next auto-merge pair — subtle cyan pulse, distinct from hint */
+  .cell.auto-predict {
+    animation: autoPredictPulse 1.3s ease-in-out infinite;
+  }
+  @keyframes autoPredictPulse {
+    0%, 100% { box-shadow: 0 0 4px #88ddff66, inset 0 0 4px #88ddff33; }
+    50%      { box-shadow: 0 0 12px #88ddffcc, inset 0 0 8px #88ddff88; }
   }
   /* Q-Leap 64: combo aura — screen-edge glow when comboCount >= 5 */
   body.combo-aura-lo::after {
@@ -1343,6 +1375,7 @@
         <button id="help-btn" class="grid-action-btn" title="도움말 — 게임 시스템 가이드">❓ 도움말</button>
         <button id="storage-btn" class="grid-action-btn" title="보관소 — 그리드 외 3칸 보관">📦 보관 <span id="storage-count">0/3</span></button>
         <button id="meditation-btn" class="grid-action-btn" title="명상 모드 — 모든 자동화 ON">🧘 명상</button>
+        <button id="frenzy-btn" class="grid-action-btn" title="폭주 — 합성으로 충전, 가득 차면 발동 시 30s spawn ×2">⚡ 폭주 <span id="frenzy-count">0/100</span></button>
       </div>
       <div id="grid"></div>
       <div style="font-size:10px;color:#888;text-align:center;">
@@ -1881,6 +1914,9 @@ function defaultState() {
     storage: [],
     // Q-Leap 75: 명상 모드 — toggles all auto-features simultaneously
     meditationMode: false,
+    // Q-Leap 77: 폭주 게이지 — fills 1 per merge up to 100, then user activates 30s ×2 spawn boost
+    frenzyCharge: 0,
+    frenzyTimer: 0,
     // Q-Leap 59: 자동 매도 — auto-sell shuriken at or below threshold
     autoSellEnabled: false,
     autoSellThreshold: 1,     // Lv ≤ this → auto-sell (golden/star/dark/locked excluded)
@@ -1993,6 +2029,9 @@ const ACHIEVEMENTS = [
   { id: 'a_storage_1',    name: '보관의 시작',     icon: '📦', desc: '보관소 첫 사용',     check: (s) => Array.isArray(s.storage) && s.storage.length >= 1 },
   { id: 'a_meditation',   name: '명상의 길',       icon: '🧘', desc: '명상 모드 첫 활성',  check: (s) => !!s.meditationMode || ((s.stats || {}).meditationsUsed || 0) >= 1 },
   { id: 'a_merge_5000',   name: '오천 번의 합',    icon: '🏵', desc: '합체 5,000회',        check: (s) => ((s.stats || {}).totalMerges || 0) >= 5000 },
+  { id: 'a_frenzy_1',     name: '폭주 입문',       icon: '⚡', desc: '폭주 첫 발동',         check: (s) => ((s.stats || {}).frenzyActivations || 0) >= 1 },
+  { id: 'a_divine_1',     name: '신성한 합',       icon: '✨', desc: '신성 합체 첫 발동 (0.5%)', check: (s) => ((s.stats || {}).divineMerges || 0) >= 1 },
+  { id: 'a_divine_10',    name: '신성의 손',       icon: '🌌', desc: '신성 합체 10회',        check: (s) => ((s.stats || {}).divineMerges || 0) >= 10 },
 ];
 
 // Q-Leap 41: Daily quest templates. Generator picks 3 each day (seeded by date).
@@ -2517,6 +2556,10 @@ function load() {
     state.prestigeSpeedEnabled = !!s.prestigeSpeedEnabled;
     state.storage = Array.isArray(s.storage) ? s.storage.slice(0, 3) : [];
     state.meditationMode = !!s.meditationMode;
+    // Q-Leap 77: Frenzy state persists
+    state.frenzyCharge = Math.max(0, Math.min(FRENZY_MAX, +s.frenzyCharge || 0));
+    state.frenzyTimer = Math.max(0, +s.frenzyTimer || 0);
+    if (state.frenzyTimer > 0) document.body.classList.add('frenzy-active');
     return true;
   } catch (e) { return false; }
 }
@@ -2577,8 +2620,13 @@ function getSpawnInterval() {
   const starBoost = Math.pow(0.7, countStars()); // Q-Leap 47: each star × 0.7
   const chalBoost = isChallenge('spawnFast') ? 0.5 : 1; // Q-Leap 54
   const prestigeSpeed = (state.prestigeSpeedEnabled && state.prestigeCount >= 5) ? 0.7 : 1; // Q-Leap 73
-  return Math.max(0.4, base * Math.pow(0.95, state.upgrades.spawnRate) * burnMul * skillMul * shopBoost * trialBoost * starBoost * chalBoost * prestigeSpeed);
+  const frenzyMul = (state.frenzyTimer || 0) > 0 ? 0.5 : 1; // Q-Leap 77: 폭주 ×2 spawn
+  return Math.max(0.4, base * Math.pow(0.95, state.upgrades.spawnRate) * burnMul * skillMul * shopBoost * trialBoost * starBoost * chalBoost * prestigeSpeed * frenzyMul);
 }
+
+// Q-Leap 77: Frenzy constants
+const FRENZY_MAX = 100;
+const FRENZY_DURATION = 30;
 
 const BURNING_DURATION = 30;
 const BURNING_COST = 10;
@@ -2733,6 +2781,13 @@ function tryMerge(fromIdx, toIdx) {
     }
     // Q-Leap 54: jumpBonus challenge — +1 to every merge
     if (isChallenge('jumpBonus')) jump += 1;
+    // Q-Leap 78: 신성 합체 — 0.5% chance for +1 (independent of luck), tracked separately
+    let divineProc = false;
+    if (Math.random() < 0.005) {
+      jump += 1;
+      divineProc = true;
+      state.stats.divineMerges = (state.stats.divineMerges || 0) + 1;
+    }
     jump = Math.min(jump, 8); // hard cap
     const newLv = a.level + jump;
     // Child golden inheritance: 2 parents=100%, 1 parent=50%, 0 parents=0.5% spontaneous
@@ -2830,6 +2885,21 @@ function tryMerge(fromIdx, toIdx) {
     state.gold += mergeGold;
     state.stats.totalMerges = (state.stats.totalMerges || 0) + 1;
     state.stats.totalGoldEarned = (state.stats.totalGoldEarned || 0) + mergeGold;
+    // Q-Leap 77: 폭주 게이지 충전 (캡 도달 시 알림은 한 번만)
+    if ((state.frenzyCharge || 0) < FRENZY_MAX) {
+      state.frenzyCharge = (state.frenzyCharge || 0) + 1;
+      if (state.frenzyCharge === FRENZY_MAX) {
+        setTimeout(() => toast('⚡ 폭주 게이지 가득참 — 클릭하여 발동!'), 350);
+        addEvent('milestone', '폭주 게이지 충전 완료');
+        flashJumpScreen(2);
+      }
+    }
+    // Q-Leap 78: divine proc toast (after merge effects)
+    if (divineProc) {
+      setTimeout(() => toast(`✨ 신성 합체! Lv ${newLv} (+1 도약)`), 320);
+      addEvent('lucky', `신성 합체 → Lv ${newLv}`);
+      flashJumpScreen(4);
+    }
     // Q-Leap 76: cumulative merge milestones — one-shot gem bonus
     state.stats.mergeMilestones = state.stats.mergeMilestones || {};
     const mm = state.stats.totalMerges;
@@ -2937,35 +3007,35 @@ function tryMerge(fromIdx, toIdx) {
     return 'swap';
   }
 }
-function autoMergeStep() {
-  // find any same-level pair (respecting cap + lock + Q-Leap 70 priority)
+// Q-Leap 79: extracted — finds the next pair autoMergeStep would consume, or null
+function findNextAutoMergePair() {
   const cap = state.autoMergeCap || 99;
   const priority = state.autoMergePriority || 'low';
-  // collect candidate pieces (non-locked, not above cap)
   const candidates = [];
   for (let i = 0; i < state.grid.length; i++) {
     const c = state.grid[i];
     if (!c) continue;
     if (c.locked) continue;
     if (c.level > cap) continue;
-    // 'preserve' mode: skip variants from auto-merge (they're better saved)
     if (priority === 'preserve' && (c.golden || c.star || c.dark)) continue;
     candidates.push(i);
   }
-  // sort by priority — low (asc) or high (desc) Lv first
   if (priority === 'high') candidates.sort((a, b) => state.grid[b].level - state.grid[a].level);
   else                     candidates.sort((a, b) => state.grid[a].level - state.grid[b].level);
   const seen = new Map();
   for (const i of candidates) {
     const c = state.grid[i];
-    if (seen.has(c.level)) {
-      tryMerge(i, seen.get(c.level));
-      renderGrid();
-      return true;
-    }
+    if (seen.has(c.level)) return [i, seen.get(c.level)];
     seen.set(c.level, i);
   }
-  return false;
+  return null;
+}
+function autoMergeStep() {
+  const pair = findNextAutoMergePair();
+  if (!pair) return false;
+  tryMerge(pair[0], pair[1]);
+  renderGrid();
+  return true;
 }
 
 // ---------- Enemy (DEAD — kept defined for legacy, never instantiated) ----------
@@ -3368,6 +3438,15 @@ function update(dt) {
       toast('🔥 버닝 종료');
     }
   }
+  // Q-Leap 77: Frenzy spawn boost timer
+  if ((state.frenzyTimer || 0) > 0) {
+    state.frenzyTimer -= dt;
+    if (state.frenzyTimer <= 0) {
+      state.frenzyTimer = 0;
+      toast('⚡ 폭주 종료');
+      document.body.classList.remove('frenzy-active');
+    }
+  }
   // Q-Leap 38: blessed cell — reroll every 30s (+ blessTime skill)
   state.blessedTimer = (state.blessedTimer || 0) - dt;
   if (state.blessedTimer <= 0) {
@@ -3473,6 +3552,19 @@ function updateHUD() {
   // Q-Leap 74: storage count
   const stcEl = document.getElementById('storage-count');
   if (stcEl) stcEl.textContent = `${(state.storage || []).length}/3`;
+  // Q-Leap 77: Frenzy display
+  const frCountEl = document.getElementById('frenzy-count');
+  const frBtn = document.getElementById('frenzy-btn');
+  const fc = state.frenzyCharge || 0;
+  const ft = state.frenzyTimer || 0;
+  if (frCountEl) {
+    if (ft > 0) frCountEl.textContent = `${Math.ceil(ft)}s`;
+    else        frCountEl.textContent = `${fc}/${FRENZY_MAX}`;
+  }
+  if (frBtn) {
+    frBtn.classList.toggle('ready', fc >= FRENZY_MAX && ft <= 0);
+    frBtn.classList.toggle('active', ft > 0);
+  }
   // Time-based generator UI — bar reflects actual progress,
   // so it visibly resets after each spawn (even immediate-from-queue spawns).
   const empties = emptySlots().length;
@@ -3583,6 +3675,13 @@ function renderGrid() {
     }
     if (bestA >= 0) { bestPairSet.add(bestA); bestPairSet.add(bestB); }
   }
+  // Q-Leap 79: predict next auto-merge pair when autoMerge is active
+  const autoActive = (state.autoMerge && state.autoMergeUnlocked) || isBurning();
+  const autoPairSet = new Set();
+  if (autoActive) {
+    const p = findNextAutoMergePair();
+    if (p) { autoPairSet.add(p[0]); autoPairSet.add(p[1]); }
+  }
   // reuse cells if possible
   gridEl.innerHTML = '';
   for (let i = 0; i < size; i++) {
@@ -3606,6 +3705,8 @@ function renderGrid() {
       cell.classList.add('hint-pair');
       if (bestPairSet.has(i)) cell.classList.add('best-pair');
     }
+    // Q-Leap 79: predicted next auto-merge pair
+    if (selectedIdx < 0 && autoPairSet.has(i)) cell.classList.add('auto-predict');
     if (c) {
       if (c.locked) cell.classList.add('locked-piece');
       if (c.golden) cell.classList.add('golden-piece');
@@ -5449,6 +5550,28 @@ document.getElementById('storage-close').addEventListener('click', () => {
 });
 document.getElementById('storage-modal').addEventListener('click', (e) => {
   if (e.target.id === 'storage-modal') document.getElementById('storage-modal').classList.remove('show');
+});
+// Q-Leap 77: frenzy activation
+document.getElementById('frenzy-btn').addEventListener('click', () => {
+  getAudio();
+  if ((state.frenzyTimer || 0) > 0) {
+    toast(`⚡ 폭주 진행 중 (${Math.ceil(state.frenzyTimer)}s)`);
+    return;
+  }
+  if ((state.frenzyCharge || 0) < FRENZY_MAX) {
+    toast(`⚡ 폭주 게이지 ${state.frenzyCharge || 0}/${FRENZY_MAX}`);
+    return;
+  }
+  state.frenzyCharge = 0;
+  state.frenzyTimer = FRENZY_DURATION;
+  state.stats.frenzyActivations = (state.stats.frenzyActivations || 0) + 1;
+  document.body.classList.add('frenzy-active');
+  toast(`⚡ 폭주 ${FRENZY_DURATION}s — spawn ×2!`);
+  sfx('mergeMystic');
+  flashJumpScreen(4);
+  addEvent('milestone', '폭주 발동');
+  refreshUI();
+  save();
 });
 // Q-Leap 75: meditation mode — turn all auto-features ON at once
 document.getElementById('meditation-btn').addEventListener('click', () => {
