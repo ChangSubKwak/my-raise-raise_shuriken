@@ -483,6 +483,27 @@
     0%,100% { transform: translateY(0); opacity: 0.85; }
     50%     { transform: translateY(-1px); opacity: 1; }
   }
+  /* Q-Leap 40: golden shuriken — radiant gold outline + ✦ marker */
+  .cell.golden-piece {
+    border-color: #ffcc33 !important;
+    box-shadow: 0 0 14px #ffcc33aa, inset 0 0 10px #ffcc3344 !important;
+    animation: goldenShimmer 1.8s ease-in-out infinite;
+  }
+  .cell .golden-mark {
+    position: absolute; bottom: 1px; right: 4px;
+    font-size: 11px; color: #ffe066;
+    text-shadow: 0 0 4px #ffaa00, 0 1px 2px rgba(0,0,0,0.9);
+    z-index: 3; pointer-events: none;
+    animation: goldenPulse 1.4s ease-in-out infinite;
+  }
+  @keyframes goldenShimmer {
+    0%,100% { filter: brightness(1) hue-rotate(0deg); }
+    50%     { filter: brightness(1.15) hue-rotate(8deg); }
+  }
+  @keyframes goldenPulse {
+    0%,100% { opacity: 0.85; transform: scale(1); }
+    50%     { opacity: 1; transform: scale(1.15); }
+  }
   .cell:active { transform: scale(0.97); }
   .cell .lv-label {
     position: absolute; top: 2px; left: 4px; font-size: 10px; font-weight: 800;
@@ -1185,6 +1206,9 @@ const ACHIEVEMENTS = [
   { id: 'a_codex_10',     name: '도감 수집가',     icon: '📖', desc: '도감 10개 발견',      check: (s) => Object.keys(s.codex || {}).length >= 10 },
   { id: 'a_codex_25',     name: '도감 학자',       icon: '📚', desc: '도감 25개 발견',      check: (s) => Object.keys(s.codex || {}).length >= 25 },
   { id: 'a_codex_full',   name: '도(道)의 도감',   icon: '🌌', desc: '도감 40개 모두',     check: (s) => Object.keys(s.codex || {}).length >= 40 },
+  { id: 'a_golden_1',     name: '황금의 발견',     icon: '✦', desc: '황금 표창 첫 획득',   check: (s) => (s.stats.goldenSpawned || 0) >= 1 },
+  { id: 'a_golden_10',    name: '황금 수확가',     icon: '💰', desc: '황금 표창 10개 획득', check: (s) => (s.stats.goldenSpawned || 0) >= 10 },
+  { id: 'a_golden_sell',  name: '황금 환금',       icon: '👑', desc: '황금 표창 판매',     check: (s) => (s.stats.goldenSold || 0) >= 1 },
 ];
 let state = defaultState();
 
@@ -1399,12 +1423,28 @@ function tryMerge(fromIdx, toIdx) {
     // Q-Leap 38: blessed cell guarantees +1 to jump (stacks with natural roll)
     const blessed = consumeBlessing(fromIdx, toIdx);
     if (blessed) {
-      jump = Math.min(jump + 1, 6);
+      jump += 1;
       state.stats.blessedMerges = (state.stats.blessedMerges || 0) + 1;
     }
+    // Q-Leap 40: golden parents grant +1 jump each (consumed in merge)
+    const goldensIn = (a.golden ? 1 : 0) + (b.golden ? 1 : 0);
+    if (goldensIn > 0) {
+      jump += goldensIn;
+      state.stats.goldenMerges = (state.stats.goldenMerges || 0) + 1;
+    }
+    jump = Math.min(jump, 8); // hard cap — 5 natural + 1 blessed + 2 golden
     const newLv = a.level + jump;
-    state.grid[toIdx] = { id: state.nextShurikenId++, level: newLv, fireTimer: rand(0, getFireInterval()) };
+    // Child golden inheritance: 2 parents=100%, 1 parent=50%, 0 parents=0.5% spontaneous
+    let childGolden = false;
+    if (goldensIn === 2) childGolden = true;
+    else if (goldensIn === 1) childGolden = Math.random() < 0.5;
+    else childGolden = Math.random() < 0.005;
+    state.grid[toIdx] = { id: state.nextShurikenId++, level: newLv, fireTimer: rand(0, getFireInterval()), golden: childGolden };
     state.grid[fromIdx] = null;
+    if (childGolden) {
+      state.stats.goldenSpawned = (state.stats.goldenSpawned || 0) + 1;
+      if (goldensIn === 0) setTimeout(() => toast('✦ 황금 표창 자연 발생!'), 350);
+    }
     // Combo: chain merges within 2.5s → escalating bonus
     state.comboCount = (state.comboCount || 0) + 1;
     state.comboTimer = 2.5;
@@ -1416,7 +1456,9 @@ function tryMerge(fromIdx, toIdx) {
                    : jump === 3 ? 6
                    : jump === 4 ? 12
                    : jump === 5 ? 20
-                                : 40; // jump 6 — only via blessed +5
+                   : jump === 6 ? 40
+                   : jump === 7 ? 80
+                                : 160; // jump 8 = max via blessed + 2 goldens
     if (blessed) {
       state.comboCount = (state.comboCount || 0) + 1; // extra combo step from blessing
     }
@@ -1426,7 +1468,9 @@ function tryMerge(fromIdx, toIdx) {
     state.stats.totalGoldEarned = (state.stats.totalGoldEarned || 0) + mergeGold;
     if (jump >= 2) {
       state.stats.luckyMerges = (state.stats.luckyMerges || 0) + 1;
-      const label = jump >= 6 ? '🌌 신화 합성! +6' :
+      const label = jump >= 8 ? '👑 천상의 합성! +8' :
+                    jump === 7 ? '🌠 초신성 합성! +7' :
+                    jump === 6 ? '🌌 신화 합성! +6' :
                     jump === 5 ? '🌟 전설 합성! +5' :
                     jump === 4 ? '💫 대박 합성! +4' :
                     jump === 3 ? '✨ 대박 합성! +3' :
@@ -2049,6 +2093,7 @@ function renderGrid() {
     }
     if (c) {
       if (c.locked) cell.classList.add('locked-piece');
+      if (c.golden) cell.classList.add('golden-piece');
       if (freshSpawnIds.has(c.id)) {
         cell.classList.add('spawn-drop');
         freshSpawnIds.delete(c.id);
@@ -2058,7 +2103,13 @@ function renderGrid() {
       lvLabel.textContent = 'Lv' + c.level;
       lvLabel.style.color = levelColor(c.level);
       cell.appendChild(lvLabel);
-      cell.title = `Lv ${c.level} · ${levelName(c.level)}${c.locked ? ' 🔒' : ''}`;
+      if (c.golden) {
+        const gm = document.createElement('div');
+        gm.className = 'golden-mark';
+        gm.textContent = '✦';
+        cell.appendChild(gm);
+      }
+      cell.title = `Lv ${c.level} · ${levelName(c.level)}${c.locked ? ' 🔒' : ''}${c.golden ? ' ✦ 황금 (판매 5x · 합성 +1 점프)' : ''}`;
       // Tier-scaled ambient halo around the cell (subtle for low Lv, strong for high)
       const tier = levelTier(c.level);
       const cellGlow = c.level < 4 ? 0
@@ -3236,7 +3287,9 @@ function sellShuriken(idx) {
   const c = state.grid[idx];
   if (!c) return false;
   if (c.locked) { toast('🔒 잠긴 표창은 팔 수 없습니다'); return false; }
-  const value = Math.floor(Math.pow(2, c.level) * getGoldMul() * 0.5);
+  const baseValue = Math.pow(2, c.level) * getGoldMul() * 0.5;
+  const value = Math.floor(c.golden ? baseValue * 5 : baseValue);
+  if (c.golden) state.stats.goldenSold = (state.stats.goldenSold || 0) + 1;
   state.gold += value;
   state.stats.totalGoldEarned = (state.stats.totalGoldEarned || 0) + value;
   state.stats.totalSold = (state.stats.totalSold || 0) + 1;
