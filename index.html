@@ -254,6 +254,38 @@
   }
   .prestige-confirm:active { transform: scale(0.96); }
 
+  /* Q-Leap 66: Lv 60+ cosmic background — rotating galaxy gradient */
+  .cell.cosmic {
+    background: radial-gradient(ellipse at center,
+      rgba(150,80,200,0.25) 0%,
+      rgba(80,40,140,0.18) 30%,
+      rgba(20,10,60,0.4) 70%,
+      rgba(10,5,30,0.6) 100%) !important;
+    animation: cosmicSpin 8s linear infinite;
+    overflow: hidden;
+  }
+  .cell.cosmic::after {
+    content: '';
+    position: absolute; inset: -10%;
+    background:
+      radial-gradient(circle 2px at 20% 30%, #ffe0ff 100%, transparent),
+      radial-gradient(circle 1px at 80% 60%, #aaccff 100%, transparent),
+      radial-gradient(circle 1.5px at 50% 80%, #ffaaaa 100%, transparent),
+      radial-gradient(circle 1px at 30% 70%, #ffffff 100%, transparent),
+      radial-gradient(circle 2px at 70% 20%, #ccaaff 100%, transparent);
+    animation: starsTwinkle 3.5s ease-in-out infinite;
+    pointer-events: none;
+    z-index: 1;
+  }
+  @keyframes cosmicSpin {
+    from { background-position: 0% 0%; }
+    to   { background-position: 100% 100%; }
+  }
+  @keyframes starsTwinkle {
+    0%,100% { opacity: 0.6; transform: rotate(0deg); }
+    50%     { opacity: 1; transform: rotate(180deg); }
+  }
+
   /* Q-Leap 60: floating aura particles for Lv 30+ cells */
   .cell .aura-particle {
     position: absolute;
@@ -1752,6 +1784,8 @@ function defaultState() {
     // Q-Leap 54: 일일 도전 — date-seeded daily modifier
     dailyChallengeId: '',     // template id
     dailyChallengeDate: '',
+    // Q-Leap 67: 일일 첫 합성 보너스 — daily first merge gem reward
+    lastFirstMergeDate: '',
     // Q-Leap 59: 자동 매도 — auto-sell shuriken at or below threshold
     autoSellEnabled: false,
     autoSellThreshold: 1,     // Lv ≤ this → auto-sell (golden/star/dark/locked excluded)
@@ -2375,6 +2409,7 @@ function load() {
     state.dailyChallengeDate = s.dailyChallengeDate || '';
     state.autoSellEnabled = !!s.autoSellEnabled;
     state.autoSellThreshold = s.autoSellThreshold || 1;
+    state.lastFirstMergeDate = s.lastFirstMergeDate || '';
     return true;
   } catch (e) { return false; }
 }
@@ -2687,6 +2722,15 @@ function tryMerge(fromIdx, toIdx) {
     state.gold += mergeGold;
     state.stats.totalMerges = (state.stats.totalMerges || 0) + 1;
     state.stats.totalGoldEarned = (state.stats.totalGoldEarned || 0) + mergeGold;
+    // Q-Leap 67: daily first merge bonus (per-day, persists through prestige)
+    const today = todayString();
+    if (state.lastFirstMergeDate !== today) {
+      state.lastFirstMergeDate = today;
+      state.gem += 3;
+      setTimeout(() => toast('🌅 오늘의 첫 합성 · 💎 +3'), 200);
+      flashJumpScreen(2);
+      addEvent('lucky', '일일 첫 합성 보너스');
+    }
     // Q-Leap 41: quest progress hooks
     addQuestProgress('merges', 1);
     addQuestProgress('gold', mergeGold);
@@ -3460,6 +3504,8 @@ function renderGrid() {
         dm.textContent = '🌑';
         cell.appendChild(dm);
       }
+      // Q-Leap 66: Lv 60+ cells get cosmic background
+      if (c.level >= 60) cell.classList.add('cosmic');
       // Q-Leap 60: Lv 30+ cells get floating aura particles (more for higher tier)
       if (c.level >= 30) {
         const tier = levelTier(c.level);
