@@ -414,6 +414,26 @@
   @keyframes mergePulse {
     50% { box-shadow: 0 0 16px #66ff99cc, inset 0 0 12px #66ff9966; }
   }
+  /* Q-Leap 38: blessed cell — radiant gold halo with slow pulse */
+  .cell.blessed {
+    border-color: #ffd966;
+    box-shadow: 0 0 18px #ffd966cc, inset 0 0 16px #ffd96644;
+    animation: blessedGlow 2.2s ease-in-out infinite;
+  }
+  .cell.blessed::before {
+    content: '🙏';
+    position: absolute; top: 2px; right: 3px; font-size: 11px;
+    z-index: 2; filter: drop-shadow(0 1px 2px rgba(0,0,0,0.9));
+    animation: blessedFloat 2.2s ease-in-out infinite;
+  }
+  @keyframes blessedGlow {
+    0%,100% { box-shadow: 0 0 12px #ffd96688, inset 0 0 8px #ffd96622; }
+    50%     { box-shadow: 0 0 24px #ffd966ee, inset 0 0 20px #ffd96666; }
+  }
+  @keyframes blessedFloat {
+    0%,100% { transform: translateY(0); opacity: 0.85; }
+    50%     { transform: translateY(-1px); opacity: 1; }
+  }
   .cell:active { transform: scale(0.97); }
   .cell .lv-label {
     position: absolute; top: 2px; left: 4px; font-size: 10px; font-weight: 800;
@@ -1050,6 +1070,9 @@ function defaultState() {
     comboTimer: 0,
     // Burning mode — temporary boosted state
     burningTimer: 0,
+    // Blessed cell — Q-Leap 38: random grid cell becomes blessed every 30s, grants merge bonuses
+    blessedIdx: -1,
+    blessedTimer: 0, // seconds until reroll; 0 → pick new immediately
     // ── Lifetime stats (survive prestige; visible in stats panel) ─────
     stats: {
       totalMerges: 0,
@@ -1094,6 +1117,8 @@ const ACHIEVEMENTS = [
   { id: 'a_attend_30',    name: '한 달의 수행',    icon: '🗓', desc: '30일 연속 출석',      check: (s) => (s.attendStreak || 0) >= 30 },
   { id: 'a_prestige_10',  name: '십회의 윤회',     icon: '🔄', desc: '윤회 10회',           check: (s) => (s.prestigeCount || 0) >= 10 },
   { id: 'a_lv40',         name: '도(道)의 표창',   icon: '🌌', desc: 'Lv 40 도달',          check: (s) => (s.bestLevel || 0) >= 40 },
+  { id: 'a_blessed_1',    name: '축복의 손길',     icon: '🙏', desc: '축복 칸에서 첫 합성', check: (s) => (s.stats.blessedMerges || 0) >= 1 },
+  { id: 'a_blessed_25',   name: '축복의 달인',     icon: '🌟', desc: '축복 합성 25회',      check: (s) => (s.stats.blessedMerges || 0) >= 25 },
 ];
 let state = defaultState();
 
@@ -1146,6 +1171,28 @@ function getFireInterval() {
   return Math.max(0.25, base * Math.pow(0.95, state.upgrades.firerate));
 }
 function isBurning() { return (state.burningTimer || 0) > 0; }
+// Q-Leap 38: blessed cell — picks a random non-locked cell. Empty cells are preferred to
+// surface the bonus visually; falls back to any cell if grid is empty.
+function rerollBlessedCell() {
+  const size = getGridSize();
+  const candidates = [];
+  for (let i = 0; i < size; i++) {
+    const c = state.grid[i];
+    if (c && c.locked) continue; // skip locked cells
+    candidates.push(i);
+  }
+  if (candidates.length === 0) { state.blessedIdx = -1; return; }
+  state.blessedIdx = candidates[Math.floor(Math.random() * candidates.length)];
+  renderGrid();
+}
+// Returns true and consumes the blessing if the merge happened on the blessed cell.
+function consumeBlessing(fromIdx, toIdx) {
+  if (state.blessedIdx < 0) return false;
+  if (state.blessedIdx !== fromIdx && state.blessedIdx !== toIdx) return false;
+  state.blessedIdx = -1;
+  state.blessedTimer = 30; // reroll in 30s
+  return true;
+}
 function getSpawnInterval() {
   const base = 12.0;
   const burnMul = isBurning() ? (1 / 3) : 1; // 3× faster when burning
@@ -1277,6 +1324,12 @@ function tryMerge(fromIdx, toIdx) {
     if      (r < pJump5) jump = 5;
     else if (r < pJump3) jump = 3;
     else if (r < pJump2) jump = 2;
+    // Q-Leap 38: blessed cell guarantees +1 to jump (stacks with natural roll)
+    const blessed = consumeBlessing(fromIdx, toIdx);
+    if (blessed) {
+      jump = Math.min(jump + 1, 6);
+      state.stats.blessedMerges = (state.stats.blessedMerges || 0) + 1;
+    }
     const newLv = a.level + jump;
     state.grid[toIdx] = { id: state.nextShurikenId++, level: newLv, fireTimer: rand(0, getFireInterval()) };
     state.grid[fromIdx] = null;
@@ -1286,22 +1339,33 @@ function tryMerge(fromIdx, toIdx) {
     if (state.comboCount > (state.stats.bestCombo || 0)) state.stats.bestCombo = state.comboCount;
     const comboMult = 1 + (state.comboCount - 1) * 0.2;
     // Jump bonus on gold reward (skipping tiers yields disproportionate gold)
-    const jumpMult = jump === 1 ? 1 : (jump === 2 ? 2.5 : jump === 3 ? 6 : 20);
+    const jumpMult = jump === 1 ? 1
+                   : jump === 2 ? 2.5
+                   : jump === 3 ? 6
+                   : jump === 4 ? 12
+                   : jump === 5 ? 20
+                                : 40; // jump 6 — only via blessed +5
+    if (blessed) {
+      state.comboCount = (state.comboCount || 0) + 1; // extra combo step from blessing
+    }
     const mergeGold = Math.floor(Math.pow(2, newLv) * getGoldMul() * comboMult * jumpMult);
     state.gold += mergeGold;
     state.stats.totalMerges = (state.stats.totalMerges || 0) + 1;
     state.stats.totalGoldEarned = (state.stats.totalGoldEarned || 0) + mergeGold;
     if (jump >= 2) {
       state.stats.luckyMerges = (state.stats.luckyMerges || 0) + 1;
-      const label = jump === 5 ? '🌟 전설 합성! +5' :
+      const label = jump >= 6 ? '🌌 신화 합성! +6' :
+                    jump === 5 ? '🌟 전설 합성! +5' :
+                    jump === 4 ? '💫 대박 합성! +4' :
                     jump === 3 ? '✨ 대박 합성! +3' :
                                  '⚡ 행운 합성! +2';
       toast(`${label} (Lv ${newLv}, 골드 ×${jumpMult})`);
       sfx('merge');
       if (jump >= 3) setTimeout(() => sfx('spawn'), 90);
-      if (jump === 5) setTimeout(() => sfx('merge'), 180);
+      if (jump >= 5) setTimeout(() => sfx('merge'), 180);
       // golden flash overlay on jump
       flashJumpScreen(jump);
+      if (blessed) setTimeout(() => toast('🙏 축복 효과 발동'), 280);
     }
     if (state.comboCount >= 3) showComboToast(state.comboCount, comboMult);
     const isNewRecord = newLv > state.bestLevel;
@@ -1740,6 +1804,12 @@ function update(dt) {
       toast('🔥 버닝 종료');
     }
   }
+  // Q-Leap 38: blessed cell — reroll every 30s
+  state.blessedTimer = (state.blessedTimer || 0) - dt;
+  if (state.blessedTimer <= 0) {
+    rerollBlessedCell();
+    state.blessedTimer = 30; // next reroll in 30s
+  }
   goldFractional += goldRate * dt;
   if (goldFractional >= 1) {
     const earn = Math.floor(goldFractional);
@@ -1884,6 +1954,7 @@ function renderGrid() {
     const c = state.grid[i];
     if (!c) cell.classList.add('empty');
     if (selectedIdx === i) cell.classList.add('selected');
+    if (state.blessedIdx === i) cell.classList.add('blessed');
     // highlight cells that can merge with the selected one + preview result
     if (selectedIdx >= 0 && selectedIdx !== i) {
       const selCell = state.grid[selectedIdx];
@@ -2966,6 +3037,9 @@ function renderPrestige() {
       }
       state.grid = new Array(getGridSize()).fill(null);
       kept.forEach((c, i) => { state.grid[i] = { id: state.nextShurikenId++, level: c.level, fireTimer: 0 }; });
+      // reset blessed cell — new run, fresh blessing
+      state.blessedIdx = -1;
+      state.blessedTimer = 0;
       startStage();
       checkAchievements();
       refreshUI();
