@@ -254,6 +254,55 @@
   }
   .prestige-confirm:active { transform: scale(0.96); }
 
+  /* Codex modal — Q-Leap 39 */
+  #codex-modal {
+    position: fixed; inset: 0; z-index: 248;
+    display: none; align-items: center; justify-content: center;
+    background: rgba(0,0,0,0.85);
+  }
+  #codex-modal.show { display: flex; }
+  .codex-box {
+    background: linear-gradient(180deg, #1a1830 0%, #0a0814 100%);
+    border: 2px solid #88a8ff; border-radius: 18px;
+    padding: 18px 22px; max-width: 380px; width: 90%;
+    box-shadow: 0 0 40px rgba(136,168,255,0.35);
+    max-height: 80vh; overflow-y: auto;
+  }
+  .codex-title {
+    font-size: 20px; font-weight: 900; color: #a8c8ff;
+    text-align: center; letter-spacing: 4px; margin-bottom: 6px;
+    text-shadow: 0 0 12px #88a8ff66;
+  }
+  .codex-sub { font-size: 11px; color: #88a; text-align: center; margin-bottom: 10px; line-height: 1.4; }
+  .codex-progress { font-size: 12px; color: #ffd966; text-align: center; font-weight: 700; margin-bottom: 12px; }
+  .codex-grid {
+    display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; margin-bottom: 14px;
+  }
+  .codex-slot {
+    aspect-ratio: 1; border-radius: 7px;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    font-size: 9px; font-weight: 700; padding: 2px;
+    border: 1px solid #2a2a3e;
+  }
+  .codex-slot.found {
+    background: rgba(255,217,102,0.12);
+    border-color: #ffd96677;
+    color: #ffe999;
+    box-shadow: inset 0 0 6px rgba(255,217,102,0.2);
+  }
+  .codex-slot.empty {
+    background: rgba(30,30,46,0.4);
+    color: #444;
+  }
+  .codex-slot .cs-lv { font-size: 11px; font-weight: 800; }
+  .codex-slot .cs-name { font-size: 8px; opacity: 0.85; line-height: 1.1; text-align: center; }
+  .codex-close {
+    width: 100%; padding: 10px; border-radius: 10px;
+    background: #2a2a3a; border: 1px solid #4a4a5a; color: #ddd;
+    font-family: inherit; font-weight: 800; font-size: 13px; cursor: pointer;
+  }
+  .codex-close:active { transform: scale(0.96); }
+
   /* Daily attendance modal */
   #attend-modal {
     position: fixed; inset: 0; z-index: 242;
@@ -716,6 +765,7 @@
         <button id="sell-btn" class="grid-action-btn" title="판매 모드 — 표창을 탭하면 골드로 환전">💸 판매</button>
         <button id="merge-all-btn" class="grid-action-btn" title="가능한 모든 같은 Lv 페어를 즉시 합치기 (잠금/상한 적용)">⚡ 모두</button>
         <button id="sort-btn" class="grid-action-btn" title="레벨 순으로 자동 정렬">↕ 정렬</button>
+        <button id="codex-btn" class="grid-action-btn" title="표창 도감 — 처음 도달한 레벨이 영구 기록됩니다">📖 도감</button>
       </div>
       <div id="grid"></div>
       <div style="font-size:10px;color:#888;text-align:center;">
@@ -837,6 +887,16 @@
       <button class="prestige-cancel" id="prestige-cancel">취소</button>
       <button class="prestige-confirm" id="prestige-confirm">윤회</button>
     </div>
+  </div>
+</div>
+
+<div id="codex-modal">
+  <div class="codex-box">
+    <div class="codex-title">📖 표창 도감</div>
+    <div class="codex-sub" id="codex-sub">처음 도달한 레벨이 영구 기록됩니다 (윤회 무관 보존). 신규 등록 시 깨달음(悟) +1.</div>
+    <div class="codex-progress" id="codex-progress">0 / 40 발견</div>
+    <div class="codex-grid" id="codex-grid"></div>
+    <button class="codex-close" id="codex-close">닫기</button>
   </div>
 </div>
 
@@ -1050,6 +1110,9 @@ function defaultState() {
     // 깨달음(悟) — earned per prestige, spent on permanent skill nodes
     enlightenment: 0,
     skills: { goldMastery: 0, swiftHands: 0, fate: 0, masterSmith: 0, inheritance: 0 },
+    // Q-Leap 39: 표창 도감 — first-reach record of each level; persists through prestige.
+    // Each new entry grants +1 깨달음 (extra enlightenment source).
+    codex: {},
     // Daily attendance
     lastAttendDate: '',   // 'YYYY-M-D' of last claimed day
     attendStreak: 0,      // consecutive-day streak
@@ -1119,6 +1182,9 @@ const ACHIEVEMENTS = [
   { id: 'a_lv40',         name: '도(道)의 표창',   icon: '🌌', desc: 'Lv 40 도달',          check: (s) => (s.bestLevel || 0) >= 40 },
   { id: 'a_blessed_1',    name: '축복의 손길',     icon: '🙏', desc: '축복 칸에서 첫 합성', check: (s) => (s.stats.blessedMerges || 0) >= 1 },
   { id: 'a_blessed_25',   name: '축복의 달인',     icon: '🌟', desc: '축복 합성 25회',      check: (s) => (s.stats.blessedMerges || 0) >= 25 },
+  { id: 'a_codex_10',     name: '도감 수집가',     icon: '📖', desc: '도감 10개 발견',      check: (s) => Object.keys(s.codex || {}).length >= 10 },
+  { id: 'a_codex_25',     name: '도감 학자',       icon: '📚', desc: '도감 25개 발견',      check: (s) => Object.keys(s.codex || {}).length >= 25 },
+  { id: 'a_codex_full',   name: '도(道)의 도감',   icon: '🌌', desc: '도감 40개 모두',     check: (s) => Object.keys(s.codex || {}).length >= 40 },
 ];
 let state = defaultState();
 
@@ -1147,6 +1213,12 @@ function load() {
     state.skills = Object.assign({ goldMastery:0, swiftHands:0, fate:0, masterSmith:0, inheritance:0 }, s.skills || {});
     state.lastAttendDate = s.lastAttendDate || '';
     state.attendStreak = s.attendStreak || 0;
+    state.codex = s.codex || {};
+    // Migration: if codex is empty but player has prior progress, backfill 1..bestLevel
+    // as "discovered" (no enlightenment grant — prevents farming old levels for free 悟)
+    if (Object.keys(state.codex).length === 0 && (state.bestLevel || 0) > 1) {
+      for (let lv = 1; lv <= state.bestLevel; lv++) state.codex[lv] = true;
+    }
     return true;
   } catch (e) { return false; }
 }
@@ -1377,6 +1449,14 @@ function tryMerge(fromIdx, toIdx) {
       setTimeout(() => showRecordOverlay(newLv), 720);
     }
     if (newLv > state.runBestLevel) state.runBestLevel = newLv;
+    // Q-Leap 39: codex — first reach of this level grants 깨달음 +1 permanently
+    if (!state.codex) state.codex = {};
+    if (!state.codex[newLv]) {
+      state.codex[newLv] = true;
+      state.enlightenment = (state.enlightenment || 0) + 1;
+      setTimeout(() => toast(`📖 도감 신규 등록: Lv ${newLv} · 깨달음(悟) +1`), 400);
+      sfx('spawn');
+    }
     flashCell(toIdx);
     // Floating +N gold popup at target cell center
     const popCell = gridEl.querySelector(`[data-idx="${toIdx}"]`);
@@ -3079,6 +3159,40 @@ document.getElementById('burn-btn').addEventListener('click', () => {
 document.getElementById('sort-btn').addEventListener('click', () => {
   getAudio();
   sortGridByLevel();
+});
+// Q-Leap 39: Codex modal
+function renderCodex() {
+  const grid = document.getElementById('codex-grid');
+  if (!grid) return;
+  if (!state.codex) state.codex = {};
+  const MAX_LV = 40;
+  let found = 0;
+  let html = '';
+  for (let lv = 1; lv <= MAX_LV; lv++) {
+    const got = !!state.codex[lv];
+    if (got) found++;
+    const name = lv < LEVEL_NAMES.length ? LEVEL_NAMES[lv] : `Lv ${lv}`;
+    const color = got ? levelColor(lv) : '#666';
+    if (got) {
+      html += `<div class="codex-slot found" title="${name}" style="border-color:${color}88;color:${color};">`
+            + `<div class="cs-lv">${lv}</div><div class="cs-name">${name}</div></div>`;
+    } else {
+      html += `<div class="codex-slot empty" title="미발견"><div class="cs-lv">?</div><div class="cs-name">—</div></div>`;
+    }
+  }
+  grid.innerHTML = html;
+  document.getElementById('codex-progress').textContent = `${found} / ${MAX_LV} 발견`;
+}
+document.getElementById('codex-btn').addEventListener('click', () => {
+  getAudio();
+  renderCodex();
+  document.getElementById('codex-modal').classList.add('show');
+});
+document.getElementById('codex-close').addEventListener('click', () => {
+  document.getElementById('codex-modal').classList.remove('show');
+});
+document.getElementById('codex-modal').addEventListener('click', (e) => {
+  if (e.target.id === 'codex-modal') document.getElementById('codex-modal').classList.remove('show');
 });
 document.getElementById('hint-btn').addEventListener('click', () => {
   getAudio();
