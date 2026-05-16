@@ -1342,6 +1342,7 @@
         <button id="log-btn" class="grid-action-btn" title="활동 로그 — 최근 30개 사건">📜 로그</button>
         <button id="help-btn" class="grid-action-btn" title="도움말 — 게임 시스템 가이드">❓ 도움말</button>
         <button id="storage-btn" class="grid-action-btn" title="보관소 — 그리드 외 3칸 보관">📦 보관 <span id="storage-count">0/3</span></button>
+        <button id="meditation-btn" class="grid-action-btn" title="명상 모드 — 모든 자동화 ON">🧘 명상</button>
       </div>
       <div id="grid"></div>
       <div style="font-size:10px;color:#888;text-align:center;">
@@ -1878,6 +1879,8 @@ function defaultState() {
     prestigeSpeedEnabled: false,
     // Q-Leap 74: 표창 보관소 — store up to 3 shurikens outside the grid
     storage: [],
+    // Q-Leap 75: 명상 모드 — toggles all auto-features simultaneously
+    meditationMode: false,
     // Q-Leap 59: 자동 매도 — auto-sell shuriken at or below threshold
     autoSellEnabled: false,
     autoSellThreshold: 1,     // Lv ≤ this → auto-sell (golden/star/dark/locked excluded)
@@ -1988,6 +1991,8 @@ const ACHIEVEMENTS = [
   { id: 'a_attend_60',    name: '한 갑(甲)의 수행',icon: '🏯', desc: '60일 연속 출석',      check: (s) => (s.attendStreak || 0) >= 60 },
   { id: 'a_attend_100',   name: '백 일의 정진',    icon: '🌌', desc: '100일 연속 출석',     check: (s) => (s.attendStreak || 0) >= 100 },
   { id: 'a_storage_1',    name: '보관의 시작',     icon: '📦', desc: '보관소 첫 사용',     check: (s) => Array.isArray(s.storage) && s.storage.length >= 1 },
+  { id: 'a_meditation',   name: '명상의 길',       icon: '🧘', desc: '명상 모드 첫 활성',  check: (s) => !!s.meditationMode || ((s.stats || {}).meditationsUsed || 0) >= 1 },
+  { id: 'a_merge_5000',   name: '오천 번의 합',    icon: '🏵', desc: '합체 5,000회',        check: (s) => ((s.stats || {}).totalMerges || 0) >= 5000 },
 ];
 
 // Q-Leap 41: Daily quest templates. Generator picks 3 each day (seeded by date).
@@ -2511,6 +2516,7 @@ function load() {
     state.autoRitualEnabled = !!s.autoRitualEnabled;
     state.prestigeSpeedEnabled = !!s.prestigeSpeedEnabled;
     state.storage = Array.isArray(s.storage) ? s.storage.slice(0, 3) : [];
+    state.meditationMode = !!s.meditationMode;
     return true;
   } catch (e) { return false; }
 }
@@ -2824,6 +2830,17 @@ function tryMerge(fromIdx, toIdx) {
     state.gold += mergeGold;
     state.stats.totalMerges = (state.stats.totalMerges || 0) + 1;
     state.stats.totalGoldEarned = (state.stats.totalGoldEarned || 0) + mergeGold;
+    // Q-Leap 76: cumulative merge milestones — one-shot gem bonus
+    state.stats.mergeMilestones = state.stats.mergeMilestones || {};
+    const mm = state.stats.totalMerges;
+    const milestones = { 100: 5, 500: 15, 1000: 30, 5000: 100, 10000: 250 };
+    if (milestones[mm] && !state.stats.mergeMilestones[mm]) {
+      state.stats.mergeMilestones[mm] = true;
+      state.gem += milestones[mm];
+      setTimeout(() => toast(`🏵 합성 ${mm}회 마일스톤 · 💎+${milestones[mm]}`), 300);
+      addEvent('milestone', `합성 ${mm}회 · 💎+${milestones[mm]}`);
+      flashJumpScreen(3);
+    }
     // Q-Leap 67: daily first merge bonus (per-day, persists through prestige)
     const today = todayString();
     if (state.lastFirstMergeDate !== today) {
@@ -5432,6 +5449,27 @@ document.getElementById('storage-close').addEventListener('click', () => {
 });
 document.getElementById('storage-modal').addEventListener('click', (e) => {
   if (e.target.id === 'storage-modal') document.getElementById('storage-modal').classList.remove('show');
+});
+// Q-Leap 75: meditation mode — turn all auto-features ON at once
+document.getElementById('meditation-btn').addEventListener('click', () => {
+  getAudio();
+  state.meditationMode = !state.meditationMode;
+  document.getElementById('meditation-btn').classList.toggle('on', state.meditationMode);
+  if (state.meditationMode) {
+    // turn everything auto on (requires unlocks)
+    if (state.autoMergeUnlocked) state.autoMerge = true;
+    state.autoSellEnabled = true;
+    state.autoRitualEnabled = true;
+    state.autoLockEnabled = true;
+    if ((state.prestigeCount || 0) >= 5) state.prestigeSpeedEnabled = true;
+    toast('🧘 명상 모드 ON — 모든 자동화 활성');
+    sfx('mergeMystic');
+    flashJumpScreen(3);
+  } else {
+    toast('명상 모드 OFF (개별 자동화는 유지)');
+  }
+  refreshUI();
+  save();
 });
 // Q-Leap 57: help / guide modal
 const HELP_SECTIONS = {
