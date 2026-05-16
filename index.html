@@ -696,6 +696,28 @@
     0%,100% { opacity: 0.85; transform: scale(1); }
     50%     { opacity: 1; transform: scale(1.15); }
   }
+  /* Q-Leap 47: star shuriken — rainbow gradient outline + ★ marker */
+  .cell.star-piece {
+    border-color: #cc66ff !important;
+    box-shadow: 0 0 16px #cc66ffcc, inset 0 0 12px #cc66ff44 !important;
+    animation: starShimmer 2.2s linear infinite;
+  }
+  .cell .star-mark {
+    position: absolute; bottom: 1px; left: 4px;
+    font-size: 11px; color: #ddaaff;
+    text-shadow: 0 0 5px #cc66ff, 0 1px 2px rgba(0,0,0,0.9);
+    z-index: 3; pointer-events: none;
+    animation: starSpin 3s linear infinite;
+  }
+  @keyframes starShimmer {
+    0%   { filter: hue-rotate(0deg)   brightness(1.05); }
+    50%  { filter: hue-rotate(180deg) brightness(1.2); }
+    100% { filter: hue-rotate(360deg) brightness(1.05); }
+  }
+  @keyframes starSpin {
+    0%,100% { transform: scale(1) rotate(0deg); }
+    50%     { transform: scale(1.2) rotate(180deg); }
+  }
   /* Q-Leap 44: adjacency synergy — dot DOM element top-right (avoids ::before conflict with locked/blessed) */
   .cell .synergy-dot {
     position: absolute; top: 14px; right: 3px;
@@ -1163,7 +1185,7 @@
   <div class="codex-box">
     <div class="codex-title">📖 표창 도감</div>
     <div class="codex-sub" id="codex-sub">처음 도달한 레벨이 영구 기록됩니다 (윤회 무관 보존). 신규 등록 시 깨달음(悟) +1.</div>
-    <div class="codex-progress" id="codex-progress">0 / 40 발견</div>
+    <div class="codex-progress" id="codex-progress">0 / 60 발견</div>
     <div class="codex-grid" id="codex-grid"></div>
     <button class="codex-close" id="codex-close">닫기</button>
   </div>
@@ -1310,6 +1332,26 @@ const LEVEL_NAMES = [
   '태극창(太極槍)',      // 38
   '무명창(無名槍)',      // 39
   '도(道)',              // 40
+  '진(眞)',              // 41 — beyond 道
+  '묘(妙)',              // 42
+  '신(神)',              // 43
+  '격(格)',              // 44
+  '명(明)',              // 45
+  '통(通)',              // 46
+  '화(化)',              // 47
+  '무(無)',              // 48
+  '공(空)',              // 49
+  '천(天)',              // 50
+  '지(地)',              // 51
+  '인(人)',              // 52
+  '만(萬)',              // 53
+  '영(永)',              // 54
+  '무극(無極)',          // 55
+  '태극(太極)',          // 56
+  '음양(陰陽)',          // 57
+  '오행(五行)',          // 58
+  '절대(絶對)',          // 59
+  '무한(無限)',          // 60
 ];
 function levelName(lv) {
   if (lv <= 0) return '미상';
@@ -1468,7 +1510,8 @@ const ACHIEVEMENTS = [
   { id: 'a_blessed_25',   name: '축복의 달인',     icon: '🌟', desc: '축복 합성 25회',      check: (s) => (s.stats.blessedMerges || 0) >= 25 },
   { id: 'a_codex_10',     name: '도감 수집가',     icon: '📖', desc: '도감 10개 발견',      check: (s) => Object.keys(s.codex || {}).length >= 10 },
   { id: 'a_codex_25',     name: '도감 학자',       icon: '📚', desc: '도감 25개 발견',      check: (s) => Object.keys(s.codex || {}).length >= 25 },
-  { id: 'a_codex_full',   name: '도(道)의 도감',   icon: '🌌', desc: '도감 40개 모두',     check: (s) => Object.keys(s.codex || {}).length >= 40 },
+  { id: 'a_codex_full',   name: '도(道)에 이르는 도감', icon: '🌌', desc: '도감 40개 도달',  check: (s) => Object.keys(s.codex || {}).length >= 40 },
+  { id: 'a_codex_max',    name: '무한(無限) 도감', icon: '♾', desc: '도감 60개 완성',     check: (s) => Object.keys(s.codex || {}).length >= 60 },
   { id: 'a_golden_1',     name: '황금의 발견',     icon: '✦', desc: '황금 표창 첫 획득',   check: (s) => (s.stats.goldenSpawned || 0) >= 1 },
   { id: 'a_golden_10',    name: '황금 수확가',     icon: '💰', desc: '황금 표창 10개 획득', check: (s) => (s.stats.goldenSpawned || 0) >= 10 },
   { id: 'a_golden_sell',  name: '황금 환금',       icon: '👑', desc: '황금 표창 판매',     check: (s) => (s.stats.goldenSold || 0) >= 1 },
@@ -1480,6 +1523,10 @@ const ACHIEVEMENTS = [
   { id: 'a_trial_10',     name: '도전의 길',       icon: '🏆', desc: '윤회 도전 10회 성공', check: (s) => (s.stats.trialsWon || 0) >= 10 },
   { id: 'a_weekly_1',     name: '주간의 시작',     icon: '🏅', desc: '주간 미션 첫 완료',   check: (s) => (s.stats.weeklyCompleted || 0) >= 1 },
   { id: 'a_weekly_10',    name: '한결같음',        icon: '👑', desc: '주간 미션 10회 완료', check: (s) => (s.stats.weeklyCompleted || 0) >= 10 },
+  { id: 'a_star_1',       name: '별의 탄생',       icon: '★', desc: '별 표창 첫 획득',     check: (s) => (s.stats.starSpawned || 0) >= 1 },
+  { id: 'a_star_5',       name: '별의 수집가',     icon: '🌟', desc: '별 표창 5개 획득',    check: (s) => (s.stats.starSpawned || 0) >= 5 },
+  { id: 'a_lv50',         name: '천(天)에 이르다', icon: '☁', desc: 'Lv 50 도달',          check: (s) => (s.bestLevel || 0) >= 50 },
+  { id: 'a_lv60',         name: '무한(無限)',      icon: '♾', desc: 'Lv 60 도달',          check: (s) => (s.bestLevel || 0) >= 60 },
 ];
 
 // Q-Leap 41: Daily quest templates. Generator picks 3 each day (seeded by date).
@@ -1873,13 +1920,19 @@ function consumeBlessing(fromIdx, toIdx) {
   state.blessedTimer = 30; // reroll in 30s
   return true;
 }
+function countStars() {
+  let n = 0;
+  for (const c of state.grid) if (c && c.star) n++;
+  return n;
+}
 function getSpawnInterval() {
   const base = 12.0;
   const burnMul = isBurning() ? (1 / 3) : 1; // 3× faster when burning
   const skillMul = Math.pow(0.96, getSkillLv('swiftHands')); // −4%/Lv
   const shopBoost = (state.timeBoostTimer || 0) > 0 ? 0.5 : 1; // Q-Leap 42 shop item
   const trialBoost = state.trialActive ? 0.5 : 1; // Q-Leap 43: trial time×2
-  return Math.max(0.4, base * Math.pow(0.95, state.upgrades.spawnRate) * burnMul * skillMul * shopBoost * trialBoost);
+  const starBoost = Math.pow(0.7, countStars()); // Q-Leap 47: each star × 0.7
+  return Math.max(0.4, base * Math.pow(0.95, state.upgrades.spawnRate) * burnMul * skillMul * shopBoost * trialBoost * starBoost);
 }
 
 const BURNING_DURATION = 30;
@@ -2033,11 +2086,21 @@ function tryMerge(fromIdx, toIdx) {
     if (goldensIn === 2) childGolden = true;
     else if (goldensIn === 1) childGolden = Math.random() < 0.5;
     else childGolden = Math.random() < 0.005;
-    state.grid[toIdx] = { id: state.nextShurikenId++, level: newLv, fireTimer: rand(0, getFireInterval()), golden: childGolden };
+    // Q-Leap 47: child star inheritance (rarer: 0.25% spontaneous, can co-occur with golden)
+    const starsIn = (a.star ? 1 : 0) + (b.star ? 1 : 0);
+    let childStar = false;
+    if (starsIn === 2) childStar = true;
+    else if (starsIn === 1) childStar = Math.random() < 0.5;
+    else childStar = Math.random() < 0.0025;
+    state.grid[toIdx] = { id: state.nextShurikenId++, level: newLv, fireTimer: rand(0, getFireInterval()), golden: childGolden, star: childStar };
     state.grid[fromIdx] = null;
     if (childGolden) {
       state.stats.goldenSpawned = (state.stats.goldenSpawned || 0) + 1;
       if (goldensIn === 0) setTimeout(() => toast('✦ 황금 표창 자연 발생!'), 350);
+    }
+    if (childStar) {
+      state.stats.starSpawned = (state.stats.starSpawned || 0) + 1;
+      if (starsIn === 0) setTimeout(() => toast('★ 별 표창 자연 발생! (spawn 가속)'), 480);
     }
     // Combo: chain merges within 2.5s → escalating bonus
     state.comboCount = (state.comboCount || 0) + 1;
@@ -2758,7 +2821,14 @@ function renderGrid() {
         gm.textContent = '✦';
         cell.appendChild(gm);
       }
-      cell.title = `Lv ${c.level} · ${levelName(c.level)}${c.locked ? ' 🔒' : ''}${c.golden ? ' ✦ 황금 (판매 5x · 합성 +1 점프)' : ''}`;
+      if (c.star) {
+        cell.classList.add('star-piece');
+        const sm = document.createElement('div');
+        sm.className = 'star-mark';
+        sm.textContent = '★';
+        cell.appendChild(sm);
+      }
+      cell.title = `Lv ${c.level} · ${levelName(c.level)}${c.locked ? ' 🔒' : ''}${c.golden ? ' ✦ 황금 (판매 5x · 합성 +1 점프)' : ''}${c.star ? ' ★ 별 (그리드에 있으면 spawn ×1.43)' : ''}`;
       // Tier-scaled ambient halo around the cell (subtle for low Lv, strong for high)
       const tier = levelTier(c.level);
       const cellGlow = c.level < 4 ? 0
@@ -3867,7 +3937,7 @@ function renderCodex() {
   const grid = document.getElementById('codex-grid');
   if (!grid) return;
   if (!state.codex) state.codex = {};
-  const MAX_LV = 40;
+  const MAX_LV = 60;
   let found = 0;
   let html = '';
   for (let lv = 1; lv <= MAX_LV; lv++) {
@@ -4033,7 +4103,7 @@ function renderTrophy() {
       ['💎 윤회 횟수',       state.prestigeCount || 0],
       ['🌌 깨달음(悟)',      state.enlightenment || 0],
       ['🏔 최고 Lv',         state.bestLevel || 1],
-      ['📖 도감',           `${Object.keys(state.codex || {}).length} / 40`],
+      ['📖 도감',           `${Object.keys(state.codex || {}).length} / 60`],
       ['✨ 누적 합체',       s.totalMerges || 0],
       ['🏭 누적 생성',       s.totalSpawned || 0],
       ['💸 누적 판매',       s.totalSold || 0],
@@ -4118,8 +4188,12 @@ function sellShuriken(idx) {
   if (!c) return false;
   if (c.locked) { toast('🔒 잠긴 표창은 팔 수 없습니다'); return false; }
   const baseValue = Math.pow(2, c.level) * getGoldMul() * 0.5;
-  const value = Math.floor(c.golden ? baseValue * 5 : baseValue);
+  let mul = 1;
+  if (c.golden) mul *= 5;
+  if (c.star)   mul *= 5; // star also sells for 5x; both = 25x
+  const value = Math.floor(baseValue * mul);
   if (c.golden) state.stats.goldenSold = (state.stats.goldenSold || 0) + 1;
+  if (c.star)   state.stats.starSold   = (state.stats.starSold   || 0) + 1;
   state.gold += value;
   state.stats.totalGoldEarned = (state.stats.totalGoldEarned || 0) + value;
   state.stats.totalSold = (state.stats.totalSold || 0) + 1;
