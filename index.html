@@ -1068,6 +1068,16 @@
     box-shadow: 0 0 6px #ffd96677, inset 0 0 4px #ffd96622 !important;
     border-color: #ffd96688 !important;
   }
+  /* Q-Leap 62: best-pair — strongest visual (green strong glow + pulse) */
+  .cell.best-pair {
+    box-shadow: 0 0 14px #66ff99dd, inset 0 0 10px #66ff9944 !important;
+    border-color: #66ff99 !important;
+    animation: bestPairPulse 1.3s ease-in-out infinite;
+  }
+  @keyframes bestPairPulse {
+    0%,100% { box-shadow: 0 0 10px #66ff99aa, inset 0 0 8px #66ff9933; }
+    50%     { box-shadow: 0 0 20px #66ff99ee, inset 0 0 14px #66ff9966; }
+  }
   #burn-btn {
     flex: 0.85; padding: 8px 6px;
     background: linear-gradient(180deg, #ff5533, #aa2200);
@@ -1347,6 +1357,10 @@
       <div class="prestige-line keep"><span class="pl-k">유지: 명예 · 도감 · 통계 · 깨달음 스킬</span><span class="pl-v">∞</span></div>
       <div class="prestige-line keep"><span class="pl-k">유지: 최대 표창 · 제작 최대치 · 합성술</span><span class="pl-v">자본</span></div>
       <div class="prestige-line lose"><span class="pl-k">초기화: 골드 · 그리드 · 그 외 강화</span><span class="pl-v">0</span></div>
+    </div>
+    <div style="border-top: 1px dashed #4a3a5a; margin: 8px 0; padding-top: 8px;">
+      <div style="font-size:11px; color:#cc88ff; font-weight:800; margin-bottom:6px; text-align:center;">이번 런 결산</div>
+      <div id="run-summary" style="display:flex;flex-direction:column;gap:3px;font-size:11px;"></div>
     </div>
     <div class="prestige-actions">
       <button class="prestige-cancel" id="prestige-cancel">취소</button>
@@ -3307,7 +3321,9 @@ function renderGrid() {
   gridEl.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
   gridEl.style.gridTemplateRows = `repeat(${Math.ceil(size / cols)}, 1fr)`;
   // Hint mode: pre-compute set of indexes that have at least one same-level twin
+  // Q-Leap 62: also identify the BEST pair via value scoring (highest Lv + variant bonus)
   const hintPairSet = new Set();
+  const bestPairSet = new Set();
   if (state.hintMode) {
     const levelToIdxs = new Map();
     for (let j = 0; j < state.grid.length; j++) {
@@ -3319,6 +3335,24 @@ function renderGrid() {
     for (const idxs of levelToIdxs.values()) {
       if (idxs.length >= 2) for (const k of idxs) hintPairSet.add(k);
     }
+    // best-pair = highest score across all pairs
+    let bestScore = -1, bestA = -1, bestB = -1;
+    for (const idxs of levelToIdxs.values()) {
+      if (idxs.length < 2) continue;
+      for (let i = 0; i < idxs.length - 1; i++) {
+        for (let j = i + 1; j < idxs.length; j++) {
+          const a = state.grid[idxs[i]];
+          const b = state.grid[idxs[j]];
+          let score = a.level * 100;
+          if (a.golden || b.golden) score += 30;
+          if (a.star || b.star)   score += 20;
+          if (a.dark || b.dark)   score += 25;
+          if (a.locked || b.locked) score -= 1000; // locked = don't suggest
+          if (score > bestScore) { bestScore = score; bestA = idxs[i]; bestB = idxs[j]; }
+        }
+      }
+    }
+    if (bestA >= 0) { bestPairSet.add(bestA); bestPairSet.add(bestB); }
   }
   // reuse cells if possible
   gridEl.innerHTML = '';
@@ -3341,6 +3375,7 @@ function renderGrid() {
     // Hint mode (only when nothing selected, to avoid overlap with mergeable highlight)
     if (state.hintMode && selectedIdx < 0 && hintPairSet.has(i)) {
       cell.classList.add('hint-pair');
+      if (bestPairSet.has(i)) cell.classList.add('best-pair');
     }
     if (c) {
       if (c.locked) cell.classList.add('locked-piece');
@@ -4576,6 +4611,26 @@ function renderPrestige() {
         `골드 +50% · 깨달음(悟) +${getEnlightenmentGain()}`;
       document.getElementById('prestige-modal-sub').textContent =
         '진행을 끝맺고 다음 주기를 시작합니다. 깨달음으로 영구 스킬을 강화하세요.';
+      // Q-Leap 63: populate run-summary with this run's accomplishments
+      const summary = document.getElementById('run-summary');
+      if (summary) {
+        let goldenCount = 0, starCount = 0, darkCount = 0;
+        for (const c of state.grid) if (c) {
+          if (c.golden) goldenCount++;
+          if (c.star)   starCount++;
+          if (c.dark)   darkCount++;
+        }
+        const rows = [
+          ['이번 run 최고 Lv', `${state.runBestLevel || 1} (${levelName(state.runBestLevel || 1)})`],
+          ['보유 표창 수',     `${state.grid.length - emptySlots().length} / ${state.grid.length}`],
+          ['보유 황금/별/검은', `${goldenCount}✦ · ${starCount}★ · ${darkCount}🌑`],
+          ['윤회 도전',         state.trialActive ? `${Math.ceil(state.trialTimer)}초 남음` : '미진행'],
+          ['콤보 최고',         (state.stats.bestCombo || 0) + 'x'],
+        ];
+        summary.innerHTML = rows.map(([k, v]) =>
+          `<div style="display:flex;justify-content:space-between;"><span style="color:#aaa;">${k}</span><span style="color:#fff;font-weight:700;">${v}</span></div>`
+        ).join('');
+      }
       document.getElementById('prestige-modal').classList.add('show');
     };
     // confirm path → executes the actual prestige
@@ -5066,7 +5121,7 @@ document.getElementById('hint-btn').addEventListener('click', () => {
   getAudio();
   state.hintMode = !state.hintMode;
   document.getElementById('hint-btn').classList.toggle('on', state.hintMode);
-  toast(state.hintMode ? '💡 힌트 ON — 합칠 수 있는 페어 강조' : '힌트 OFF');
+  toast(state.hintMode ? '💡 힌트 ON — 페어 강조 (녹색 = 최적 추천)' : '힌트 OFF');
   renderGrid();
   save();
 });
