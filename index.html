@@ -3025,17 +3025,18 @@ let playTimeFractional = 0; // accumulator for sub-1 second playtime
 let _prevFullState = false; // tracks emptySlots()===0 across frames for transition detection
 
 function update(dt) {
-  // Time-based shuriken generator.
-  //   While full          → gauge pauses (no progress accumulation)
-  //   Full → not-full     → gauge resets to 0 (visible "restart")
-  //   While not full      → normal tick + spawn at 1.0
-  const currentlyFull = emptySlots().length === 0;
-  if (currentlyFull) {
-    // pause: keep current progress as-is, do nothing
+  // SIMPLIFIED DESIGN (v2.65 final fix):
+  //   While full     → spawnProgress FORCED to 0. Bar shows 0% + "⏸ 일시정지" label.
+  //   While not full → tick 0→1, spawn at 1, repeat.
+  // No _prevFullState transition tracking, no race conditions, no stale captures.
+  // When grid frees, tick simply resumes from 0 — single source of truth.
+  const isFull = emptySlots().length === 0;
+  if (isFull) {
+    state.spawnProgress = 0; // forced — never accumulates while paused
   } else {
+    // Visible "resume" toast on full → not-full transition (once per transition)
     if (_prevFullState) {
-      // Transition: visible restart of the gauge from 0
-      state.spawnProgress = 0;
+      toast('▶ 게이지 재개');
     }
     state.spawnProgress += dt / getSpawnInterval();
     while (state.spawnProgress >= 1 && emptySlots().length > 0) {
@@ -3047,9 +3048,7 @@ function update(dt) {
       }
     }
   }
-  // Bug fix: re-check current state at end (grid may have been mutated mid-frame
-  // via autoMergeStep or spawn loop). Stale capture caused _prevFullState to
-  // sometimes hold a wrong value, breaking the next-frame transition reset.
+  // Track for transition toast (NOT for spawn logic — that's purely full-check based)
   _prevFullState = emptySlots().length === 0;
 
   // Passive gold: each shuriken contributes exponentially by level
@@ -3184,16 +3183,9 @@ function updateHUD() {
   // so it visibly resets after each spawn (even immediate-from-queue spawns).
   const empties = emptySlots().length;
   const isFull = empties === 0;
-  // Defensive sync in the render path: if the grid is not full but _prevFullState
-  // says it was full and spawnProgress is still high (paused value), reset NOW.
-  // Belt-and-suspenders to the renderGrid sync — catches any path that mutated
-  // grid without going through renderGrid.
-  if (!isFull && _prevFullState && state.spawnProgress > 0.1) {
-    state.spawnProgress = 0;
-    _prevFullState = false;
-  } else if (isFull) {
-    _prevFullState = true;
-  }
+  // v2.65 simplification: under "force 0 while full" model, spawnProgress is
+  // already guaranteed correct here — no defensive sync needed. Just render.
+  if (isFull) state.spawnProgress = 0; // final safety net (no-op if update ran)
   const fillPct = Math.min(100, state.spawnProgress * 100);
   document.getElementById('spawn-progress-fill').style.width = fillPct + '%';
   const pctEl = document.getElementById('spawn-progress-pct');
@@ -4311,16 +4303,11 @@ function refreshUI() {
   // bug fix: keep HUD in sync (also force spawn-bar refresh)
   updateHUD();
 }
-// Single source of truth for "grid just got freed" detection.
-// Call from every grid mutation path; renderGrid is the natural choke point.
+// v2.65 simplification: under the new "force 0 while full" model, no transition
+// reset is needed here. Kept as no-op so renderGrid callers don't break.
+// (If grid is now full, force spawnProgress = 0 immediately so bar shows 0%.)
 function syncSpawnGaugeAfterMutation() {
-  const nowFull = emptySlots().length === 0;
-  if (!nowFull && _prevFullState) {
-    state.spawnProgress = 0;     // visible reset on full → not-full transition
-    _prevFullState = false;
-  } else if (nowFull) {
-    _prevFullState = true;
-  }
+  if (emptySlots().length === 0) state.spawnProgress = 0;
 }
 function fmtPlaytime(sec) {
   if (sec < 60) return sec + '초';
