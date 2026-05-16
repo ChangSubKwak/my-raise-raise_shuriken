@@ -984,6 +984,20 @@
   #spawn-progress-fill {
     height: 100%; width: 0%; background: linear-gradient(90deg, #2a4a8e, #4a8eef);
     transition: width 0.08s linear;
+    position: relative;
+  }
+  /* v2.67: animated "active" indicator — scanline sweeping right across the entire bar */
+  #spawn-progress-bar:not(.full)::after {
+    content: '';
+    position: absolute; top: 0; left: 0; height: 100%; width: 30px;
+    background: linear-gradient(90deg, transparent, rgba(170,220,255,0.4), transparent);
+    animation: scanSweep 1.8s ease-in-out infinite;
+    pointer-events: none;
+    z-index: 2;
+  }
+  @keyframes scanSweep {
+    0%   { left: -30px; }
+    100% { left: 100%; }
   }
   #spawn-progress-pct {
     position: absolute; inset: 0;
@@ -3014,8 +3028,9 @@ let lastTime = 0;
 function gameLoop(now) {
   const dt = Math.min(0.05, (now - lastTime) / 1000) || 0;
   lastTime = now;
-  update(dt);
-  render();
+  try { update(dt); } catch (e) { console.error('update() error:', e); }
+  try { render(); } catch (e) { console.error('render() error:', e); }
+  // v2.67: ALWAYS schedule next frame even if errors occurred — prevents game freeze
   requestAnimationFrame(gameLoop);
 }
 
@@ -3025,21 +3040,28 @@ let playTimeFractional = 0; // accumulator for sub-1 second playtime
 let _prevFullState = false; // tracks emptySlots()===0 across frames for transition detection
 
 function update(dt) {
-  // FINAL DESIGN (v2.66) — pent-up + visible reset:
+  // FINAL DESIGN (v2.67) — pent-up + visible reset + numeric safety:
   //   While full     → spawnProgress FORCED to 1.0 (bar at 100% orange "pent-up").
   //   Full → not full → spawnProgress RESET to 0 (bar drops from 100% → 0%, clear visual).
   //   While not full → tick 0→1, spawn at 1, repeat.
-  // EVERY FRAME enforces: isFull ⇒ progress=1. Race-free.
+  // v2.67: defensive — coerce to number, clamp, guard against NaN.
+  if (typeof state.spawnProgress !== 'number' || isNaN(state.spawnProgress)) {
+    state.spawnProgress = 0;
+  }
   const isFull = emptySlots().length === 0;
   if (isFull) {
-    state.spawnProgress = 1; // pent-up indicator — bar visible at full
+    state.spawnProgress = 1;
   } else {
-    // Transition from full → not full: reset to 0 (visible drop) + toast
     if (_prevFullState) {
       state.spawnProgress = 0;
       toast('▶ 게이지 재개');
     }
-    state.spawnProgress += dt / getSpawnInterval();
+    const interval = getSpawnInterval();
+    if (interval > 0 && dt > 0) {
+      state.spawnProgress += dt / interval;
+    }
+    // safety clamp — never above 1 (would never spawn otherwise)
+    if (state.spawnProgress > 1.5) state.spawnProgress = 1;
     while (state.spawnProgress >= 1 && emptySlots().length > 0) {
       state.spawnProgress -= 1;
       const batch = getSpawnBatch();
