@@ -254,6 +254,49 @@
   }
   .prestige-confirm:active { transform: scale(0.96); }
 
+  /* Shop modal — Q-Leap 42 */
+  #shop-modal {
+    position: fixed; inset: 0; z-index: 250;
+    display: none; align-items: center; justify-content: center;
+    background: rgba(0,0,0,0.85);
+  }
+  #shop-modal.show { display: flex; }
+  .shop-box {
+    background: linear-gradient(180deg, #2a1830 0%, #100614 100%);
+    border: 2px solid #ff88cc; border-radius: 18px;
+    padding: 18px 22px; max-width: 380px; width: 90%;
+    box-shadow: 0 0 40px rgba(255,136,204,0.35);
+    max-height: 85vh; overflow-y: auto;
+  }
+  .shop-title {
+    font-size: 20px; font-weight: 900; color: #ffaadd;
+    text-align: center; letter-spacing: 4px; margin-bottom: 4px;
+    text-shadow: 0 0 12px #ff88cc66;
+  }
+  .shop-sub { font-size: 11px; color: #c89; text-align: center; margin-bottom: 8px; }
+  .shop-gem { text-align: center; color: #ffd966; font-weight: 800; margin-bottom: 12px; }
+  .shop-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
+  .shop-item {
+    background: rgba(255,255,255,0.04); border: 1px solid #3a2848;
+    border-radius: 10px; padding: 8px 10px;
+    display: flex; align-items: center; gap: 10px;
+  }
+  .shop-item .si-icon { font-size: 26px; }
+  .shop-item .si-body { flex: 1; display: flex; flex-direction: column; gap: 2px; }
+  .shop-item .si-name { font-size: 13px; font-weight: 800; color: #fff; }
+  .shop-item .si-desc { font-size: 10px; color: #aab; line-height: 1.3; }
+  .shop-item .si-buy {
+    padding: 7px 11px; border-radius: 8px; cursor: pointer;
+    font-family: inherit; font-weight: 800; font-size: 12px;
+    background: linear-gradient(180deg, #ff88cc, #cc4488);
+    border: none; color: #fff;
+    white-space: nowrap;
+  }
+  .shop-item .si-buy:disabled {
+    background: #2a2a3a; color: #777; cursor: default;
+  }
+  .shop-item .si-buy:not(:disabled):active { transform: scale(0.95); }
+
   /* Quest modal — Q-Leap 41 */
   #quest-modal {
     position: fixed; inset: 0; z-index: 249;
@@ -861,6 +904,7 @@
         <button id="sort-btn" class="grid-action-btn" title="레벨 순으로 자동 정렬">↕ 정렬</button>
         <button id="codex-btn" class="grid-action-btn" title="표창 도감 — 처음 도달한 레벨이 영구 기록됩니다">📖 도감</button>
         <button id="quest-btn" class="grid-action-btn" title="일일 미션 — 매일 3개의 목표, 보석 보상">📋 미션</button>
+        <button id="shop-btn" class="grid-action-btn" title="보석 상점 — 일회성 효과 구매">🛒 상점</button>
       </div>
       <div id="grid"></div>
       <div style="font-size:10px;color:#888;text-align:center;">
@@ -982,6 +1026,16 @@
       <button class="prestige-cancel" id="prestige-cancel">취소</button>
       <button class="prestige-confirm" id="prestige-confirm">윤회</button>
     </div>
+  </div>
+</div>
+
+<div id="shop-modal">
+  <div class="shop-box">
+    <div class="shop-title">🛒 보석 상점</div>
+    <div class="shop-sub">보석으로 일회성 효과 구매. 가격이 자연 제한이라 자유 사용.</div>
+    <div class="shop-gem" id="shop-gem">💎 0</div>
+    <div class="shop-list" id="shop-list"></div>
+    <button class="codex-close" id="shop-close">닫기</button>
   </div>
 </div>
 
@@ -1221,6 +1275,9 @@ function defaultState() {
     // Q-Leap 41: 일일 미션 — date-seeded 3 quests/day, gem rewards
     dailyQuests: [],
     lastQuestDate: '',
+    // Q-Leap 42: 보석 상점 — short-lived buffs / instant effects
+    timeBoostTimer: 0,    // seconds; while > 0, spawn interval × 0.5
+    luckyHandCharges: 0,  // next N merges get +1 jump (consumed)
     // Daily attendance
     lastAttendDate: '',   // 'YYYY-M-D' of last claimed day
     attendStreak: 0,      // consecutive-day streak
@@ -1298,6 +1355,8 @@ const ACHIEVEMENTS = [
   { id: 'a_golden_sell',  name: '황금 환금',       icon: '👑', desc: '황금 표창 판매',     check: (s) => (s.stats.goldenSold || 0) >= 1 },
   { id: 'a_quest_3',      name: '도전자',          icon: '📋', desc: '일일 미션 3개 완료',  check: (s) => (s.stats.questsCompleted || 0) >= 3 },
   { id: 'a_quest_30',     name: '꾸준한 수행',     icon: '🏆', desc: '일일 미션 30개 완료', check: (s) => (s.stats.questsCompleted || 0) >= 30 },
+  { id: 'a_shop_1',       name: '첫 거래',         icon: '🛒', desc: '상점 첫 이용',        check: (s) => (s.stats.shopUses || 0) >= 1 },
+  { id: 'a_shop_25',      name: '단골 손님',       icon: '🛍', desc: '상점 25회 이용',      check: (s) => (s.stats.shopUses || 0) >= 25 },
 ];
 
 // Q-Leap 41: Daily quest templates. Generator picks 3 each day (seeded by date).
@@ -1410,6 +1469,105 @@ function refreshQuestBadge() {
   btn.textContent = claimable > 0 ? `📋 미션 (${claimable}!)` : '📋 미션';
 }
 
+// ---------- Q-Leap 42: 보석 상점 ----------
+const SHOP_ITEMS = [
+  {
+    id: 'shuffle', icon: '🔀', name: '그리드 셔플', cost: 5,
+    desc: '모든 표창을 무작위 재배치 (잠긴 표창 포함)',
+    effect: () => {
+      const pieces = state.grid.filter(c => c);
+      const size = getGridSize();
+      const idxs = [];
+      for (let i = 0; i < size; i++) idxs.push(i);
+      // Fisher-Yates
+      for (let i = idxs.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [idxs[i], idxs[j]] = [idxs[j], idxs[i]];
+      }
+      state.grid = new Array(size).fill(null);
+      pieces.forEach((p, k) => { state.grid[idxs[k]] = p; });
+      renderGrid();
+      sfx('move');
+      return true;
+    },
+  },
+  {
+    id: 'rebless', icon: '🙏', name: '축복 재배치', cost: 3,
+    desc: '축복 칸을 즉시 새 위치로 (타이머 리셋)',
+    effect: () => {
+      rerollBlessedCell();
+      state.blessedTimer = 30;
+      sfx('spawn');
+      return true;
+    },
+  },
+  {
+    id: 'timeBoost', icon: '⏱', name: '시간 가속', cost: 8,
+    desc: '30초 동안 표창 생성 속도 2배',
+    effect: () => {
+      state.timeBoostTimer = Math.max(state.timeBoostTimer || 0, 30);
+      toast('⏱ 시간 가속 30초');
+      sfx('spawn');
+      return true;
+    },
+  },
+  {
+    id: 'luckyHand', icon: '🌟', name: '행운의 손', cost: 10,
+    desc: '다음 합성 3회 +1 점프 보장',
+    effect: () => {
+      state.luckyHandCharges = (state.luckyHandCharges || 0) + 3;
+      toast(`🌟 행운의 손 ×${state.luckyHandCharges}`);
+      sfx('merge');
+      return true;
+    },
+  },
+  {
+    id: 'upgrade1', icon: '✨', name: '표창 강화', cost: 20,
+    desc: '가장 낮은 Lv 표창 1개를 +1 Lv로',
+    effect: () => {
+      let minIdx = -1, minLv = Infinity;
+      for (let i = 0; i < state.grid.length; i++) {
+        const c = state.grid[i];
+        if (c && c.level < minLv) { minLv = c.level; minIdx = i; }
+      }
+      if (minIdx < 0) { toast('표창이 없습니다'); return false; }
+      state.grid[minIdx].level += 1;
+      state.grid[minIdx].id = state.nextShurikenId++; // new id forces sprite repaint
+      if (state.grid[minIdx].level > state.bestLevel) state.bestLevel = state.grid[minIdx].level;
+      if (state.grid[minIdx].level > state.runBestLevel) state.runBestLevel = state.grid[minIdx].level;
+      flashCell(minIdx);
+      renderGrid();
+      sfx('mergeGold');
+      // codex check (same as merge path)
+      if (!state.codex) state.codex = {};
+      const lv = state.grid[minIdx].level;
+      if (!state.codex[lv]) {
+        state.codex[lv] = true;
+        state.enlightenment = (state.enlightenment || 0) + 1;
+        setTimeout(() => toast(`📖 도감 신규 등록: Lv ${lv} · 깨달음(悟) +1`), 400);
+      }
+      return true;
+    },
+  },
+];
+
+function buyShopItem(id) {
+  const item = SHOP_ITEMS.find(it => it.id === id);
+  if (!item) return;
+  if (state.gem < item.cost) { toast(`💎 ${item.cost} 필요 (현재 ${state.gem})`); sfx('move'); return; }
+  state.gem -= item.cost;
+  state.stats.shopUses = (state.stats.shopUses || 0) + 1;
+  if (item.effect() === false) {
+    state.gem += item.cost; // refund on no-op
+    state.stats.shopUses -= 1;
+    return;
+  }
+  refreshUI();
+  renderShop();
+  checkAchievements();
+  save();
+}
+
 let state = defaultState();
 
 // ---------- Save / Load ----------
@@ -1445,6 +1603,8 @@ function load() {
     }
     state.dailyQuests = Array.isArray(s.dailyQuests) ? s.dailyQuests : [];
     state.lastQuestDate = s.lastQuestDate || '';
+    state.timeBoostTimer = s.timeBoostTimer || 0;
+    state.luckyHandCharges = s.luckyHandCharges || 0;
     return true;
   } catch (e) { return false; }
 }
@@ -1495,7 +1655,8 @@ function getSpawnInterval() {
   const base = 12.0;
   const burnMul = isBurning() ? (1 / 3) : 1; // 3× faster when burning
   const skillMul = Math.pow(0.96, getSkillLv('swiftHands')); // −4%/Lv
-  return Math.max(0.4, base * Math.pow(0.95, state.upgrades.spawnRate) * burnMul * skillMul);
+  const shopBoost = (state.timeBoostTimer || 0) > 0 ? 0.5 : 1; // Q-Leap 42 shop item
+  return Math.max(0.4, base * Math.pow(0.95, state.upgrades.spawnRate) * burnMul * skillMul * shopBoost);
 }
 
 const BURNING_DURATION = 30;
@@ -1635,7 +1796,14 @@ function tryMerge(fromIdx, toIdx) {
       jump += goldensIn;
       state.stats.goldenMerges = (state.stats.goldenMerges || 0) + 1;
     }
-    jump = Math.min(jump, 8); // hard cap — 5 natural + 1 blessed + 2 golden
+    // Q-Leap 42: 행운의 손 charge — consumes one per merge, +1 jump
+    let luckyHandUsed = false;
+    if ((state.luckyHandCharges || 0) > 0) {
+      state.luckyHandCharges -= 1;
+      jump += 1;
+      luckyHandUsed = true;
+    }
+    jump = Math.min(jump, 8); // hard cap — 5 natural + 1 blessed + 2 golden + 1 luckyHand→clamped
     const newLv = a.level + jump;
     // Child golden inheritance: 2 parents=100%, 1 parent=50%, 0 parents=0.5% spontaneous
     let childGolden = false;
@@ -1692,6 +1860,7 @@ function tryMerge(fromIdx, toIdx) {
       // golden flash overlay on jump
       flashJumpScreen(jump);
       if (blessed) setTimeout(() => toast('🙏 축복 효과 발동'), 280);
+      if (luckyHandUsed) setTimeout(() => toast(`🌟 행운의 손 (남은 ${state.luckyHandCharges})`), 360);
     }
     if (state.comboCount >= 3) showComboToast(state.comboCount, comboMult);
     const isNewRecord = newLv > state.bestLevel;
@@ -2143,6 +2312,14 @@ function update(dt) {
   if (state.blessedTimer <= 0) {
     rerollBlessedCell();
     state.blessedTimer = 30; // next reroll in 30s
+  }
+  // Q-Leap 42: time-boost timer (shop item)
+  if ((state.timeBoostTimer || 0) > 0) {
+    state.timeBoostTimer -= dt;
+    if (state.timeBoostTimer <= 0) {
+      state.timeBoostTimer = 0;
+      toast('⏱ 시간 가속 종료');
+    }
   }
   goldFractional += goldRate * dt;
   if (goldFractional >= 1) {
@@ -3501,6 +3678,45 @@ document.getElementById('quest-claim-all').addEventListener('click', () => {
   getAudio();
   const n = claimQuestRewards();
   if (n > 0) renderQuests();
+});
+// Q-Leap 42: shop modal wiring
+function renderShop() {
+  const list = document.getElementById('shop-list');
+  if (!list) return;
+  document.getElementById('shop-gem').textContent = `💎 ${state.gem}`;
+  let html = '';
+  for (const it of SHOP_ITEMS) {
+    let extra = '';
+    if (it.id === 'timeBoost' && (state.timeBoostTimer || 0) > 0) extra = ` <span style="color:#88ddff">활성 ${Math.ceil(state.timeBoostTimer)}s</span>`;
+    if (it.id === 'luckyHand' && (state.luckyHandCharges || 0) > 0) extra = ` <span style="color:#ffd966">충전 ×${state.luckyHandCharges}</span>`;
+    const disabled = state.gem < it.cost ? 'disabled' : '';
+    html += `<div class="shop-item">
+      <span class="si-icon">${it.icon}</span>
+      <div class="si-body">
+        <div class="si-name">${it.name}${extra}</div>
+        <div class="si-desc">${it.desc}</div>
+      </div>
+      <button class="si-buy" data-id="${it.id}" ${disabled}>💎 ${it.cost}</button>
+    </div>`;
+  }
+  list.innerHTML = html;
+  list.querySelectorAll('.si-buy').forEach(btn => {
+    btn.addEventListener('click', () => {
+      getAudio();
+      buyShopItem(btn.dataset.id);
+    });
+  });
+}
+document.getElementById('shop-btn').addEventListener('click', () => {
+  getAudio();
+  renderShop();
+  document.getElementById('shop-modal').classList.add('show');
+});
+document.getElementById('shop-close').addEventListener('click', () => {
+  document.getElementById('shop-modal').classList.remove('show');
+});
+document.getElementById('shop-modal').addEventListener('click', (e) => {
+  if (e.target.id === 'shop-modal') document.getElementById('shop-modal').classList.remove('show');
 });
 document.getElementById('hint-btn').addEventListener('click', () => {
   getAudio();
