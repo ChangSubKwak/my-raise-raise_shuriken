@@ -555,6 +555,13 @@
     font-family: inherit; font-weight: 700; font-size: 11px;
   }
   .auto-sell-run:active { transform: scale(0.98); }
+  .prio-btn {
+    flex: 1; padding: 6px 4px; border-radius: 7px; cursor: pointer;
+    background: #2a2a3a; border: 1px solid #4a4a5a; color: #aaa;
+    font-family: inherit; font-weight: 700; font-size: 10px;
+  }
+  .prio-btn.active { background: linear-gradient(180deg, #66ccff, #2288cc); color: #fff; border-color: #66ccff; }
+  .prio-btn:active { transform: scale(0.95); }
 
   /* Quest modal — Q-Leap 41 */
   #quest-modal {
@@ -1497,6 +1504,26 @@
       </div>
       <button id="auto-sell-run" class="auto-sell-run">즉시 1회 실행</button>
     </div>
+    <div class="auto-sell-box">
+      <div class="auto-sell-title">🎚 자동 합치기 우선순위</div>
+      <div class="auto-sell-row" style="gap:4px;">
+        <button class="prio-btn" data-prio="low">낮은 Lv 우선</button>
+        <button class="prio-btn" data-prio="high">높은 Lv 우선</button>
+        <button class="prio-btn" data-prio="preserve">변종 보존</button>
+      </div>
+    </div>
+    <div class="auto-sell-box">
+      <div class="auto-sell-title">🛡 자동 잠금 <span style="color:#888;font-size:10px;font-weight:400;">(상위 Lv 보호)</span></div>
+      <div class="auto-sell-row">
+        <button class="auto-sell-toggle" id="auto-lock-toggle">OFF</button>
+        <div class="auto-sell-threshold">
+          <span>Lv ≥</span>
+          <button id="auto-lock-down">−</button>
+          <span id="auto-lock-val">15</span>
+          <button id="auto-lock-up">+</button>
+        </div>
+      </div>
+    </div>
     <button class="codex-close" id="shop-close">닫기</button>
   </div>
 </div>
@@ -1787,6 +1814,11 @@ function defaultState() {
     dailyChallengeDate: '',
     // Q-Leap 67: 일일 첫 합성 보너스 — daily first merge gem reward
     lastFirstMergeDate: '',
+    // Q-Leap 70: 자동 합치기 우선순위 — 'low' (default), 'high', 'preserve'
+    autoMergePriority: 'low',
+    // Q-Leap 71: 자동 잠금 — Lv ≥ threshold 자동 잠금
+    autoLockEnabled: false,
+    autoLockThreshold: 15,
     // Q-Leap 59: 자동 매도 — auto-sell shuriken at or below threshold
     autoSellEnabled: false,
     autoSellThreshold: 1,     // Lv ≤ this → auto-sell (golden/star/dark/locked excluded)
@@ -2413,6 +2445,9 @@ function load() {
     state.autoSellEnabled = !!s.autoSellEnabled;
     state.autoSellThreshold = s.autoSellThreshold || 1;
     state.lastFirstMergeDate = s.lastFirstMergeDate || '';
+    state.autoMergePriority = s.autoMergePriority || 'low';
+    state.autoLockEnabled = !!s.autoLockEnabled;
+    state.autoLockThreshold = s.autoLockThreshold || 15;
     return true;
   } catch (e) { return false; }
 }
@@ -2774,6 +2809,8 @@ function tryMerge(fromIdx, toIdx) {
       triggerMilestone(newLv);
     }
     if (newLv > state.runBestLevel) state.runBestLevel = newLv;
+    // Q-Leap 71: auto-lock high-Lv pieces if enabled
+    autoLockPass();
     // Q-Leap 43: trial — check if goal reached
     if (state.trialActive) checkTrialProgress();
     // Q-Leap 39: codex — first reach of this level grants 깨달음 +1 permanently
@@ -2820,14 +2857,26 @@ function tryMerge(fromIdx, toIdx) {
   }
 }
 function autoMergeStep() {
-  // find any same-level pair (respecting cap + lock) and merge once
+  // find any same-level pair (respecting cap + lock + Q-Leap 70 priority)
   const cap = state.autoMergeCap || 99;
-  const seen = new Map();
+  const priority = state.autoMergePriority || 'low';
+  // collect candidate pieces (non-locked, not above cap)
+  const candidates = [];
   for (let i = 0; i < state.grid.length; i++) {
     const c = state.grid[i];
     if (!c) continue;
-    if (c.locked) continue;        // locked pieces are protected
+    if (c.locked) continue;
     if (c.level > cap) continue;
+    // 'preserve' mode: skip variants from auto-merge (they're better saved)
+    if (priority === 'preserve' && (c.golden || c.star || c.dark)) continue;
+    candidates.push(i);
+  }
+  // sort by priority — low (asc) or high (desc) Lv first
+  if (priority === 'high') candidates.sort((a, b) => state.grid[b].level - state.grid[a].level);
+  else                     candidates.sort((a, b) => state.grid[a].level - state.grid[b].level);
+  const seen = new Map();
+  for (const i of candidates) {
+    const c = state.grid[i];
     if (seen.has(c.level)) {
       tryMerge(i, seen.get(c.level));
       renderGrid();
@@ -4236,6 +4285,19 @@ function spawnGoldPopup(x, y, amount) {
 }
 
 // Jump-merge celebratory screen flash. Color/intensity scales with jump tier.
+// Q-Leap 71: auto-lock — apply lock to any piece with Lv >= threshold (variants only)
+function autoLockPass() {
+  if (!state.autoLockEnabled) return;
+  const threshold = state.autoLockThreshold || 15;
+  for (let i = 0; i < state.grid.length; i++) {
+    const c = state.grid[i];
+    if (!c || c.locked) continue;
+    if (c.level < threshold) continue;
+    c.locked = true;
+    state.stats.locksUsed = (state.stats.locksUsed || 0) + 1;
+  }
+}
+
 // Q-Leap 59: auto-sell pass — checks every grid cell and sells eligible ones
 // Eligible = level ≤ threshold AND not locked AND not golden/star/dark
 function autoSellPass() {
@@ -4932,6 +4994,7 @@ document.getElementById('shop-btn').addEventListener('click', () => {
   getAudio();
   renderShop();
   refreshAutoSellUI();
+  refreshAutoLockUI();
   document.getElementById('shop-modal').classList.add('show');
 });
 document.getElementById('auto-sell-toggle').addEventListener('click', () => {
@@ -4963,6 +5026,47 @@ document.getElementById('auto-sell-run').addEventListener('click', () => {
   autoSellPass();
   state.autoSellEnabled = wasOn;
   toast('🤖 자동 매도 1회 실행');
+});
+// Q-Leap 70: priority buttons + Q-Leap 71: auto-lock controls
+function refreshAutoLockUI() {
+  const tog = document.getElementById('auto-lock-toggle');
+  const val = document.getElementById('auto-lock-val');
+  if (tog) { tog.textContent = state.autoLockEnabled ? 'ON' : 'OFF'; tog.classList.toggle('on', state.autoLockEnabled); }
+  if (val) val.textContent = state.autoLockThreshold || 15;
+  document.querySelectorAll('.prio-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.prio === (state.autoMergePriority || 'low'));
+  });
+}
+document.querySelectorAll('.prio-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    getAudio();
+    state.autoMergePriority = btn.dataset.prio;
+    refreshAutoLockUI();
+    const labels = { low: '낮은 Lv', high: '높은 Lv', preserve: '변종 보존' };
+    toast(`🎚 자동 합치기: ${labels[btn.dataset.prio]}`);
+    save();
+  });
+});
+document.getElementById('auto-lock-toggle').addEventListener('click', () => {
+  getAudio();
+  state.autoLockEnabled = !state.autoLockEnabled;
+  refreshAutoLockUI();
+  if (state.autoLockEnabled) { toast(`🛡 자동 잠금 ON (Lv ≥ ${state.autoLockThreshold})`); autoLockPass(); renderGrid(); }
+  else toast('자동 잠금 OFF');
+  save();
+});
+document.getElementById('auto-lock-up').addEventListener('click', () => {
+  getAudio();
+  state.autoLockThreshold = Math.min(40, (state.autoLockThreshold || 15) + 1);
+  refreshAutoLockUI();
+  save();
+});
+document.getElementById('auto-lock-down').addEventListener('click', () => {
+  getAudio();
+  state.autoLockThreshold = Math.max(2, (state.autoLockThreshold || 15) - 1);
+  refreshAutoLockUI();
+  if (state.autoLockEnabled) { autoLockPass(); renderGrid(); }
+  save();
 });
 document.getElementById('shop-close').addEventListener('click', () => {
   document.getElementById('shop-modal').classList.remove('show');
