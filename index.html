@@ -254,6 +254,62 @@
   }
   .prestige-confirm:active { transform: scale(0.96); }
 
+  /* Trophy modal — Q-Leap 45 */
+  #trophy-modal {
+    position: fixed; inset: 0; z-index: 251;
+    display: none; align-items: center; justify-content: center;
+    background: rgba(0,0,0,0.85);
+  }
+  #trophy-modal.show { display: flex; }
+  .trophy-box {
+    background: linear-gradient(180deg, #2a2618 0%, #100c08 100%);
+    border: 2px solid #ffaa44; border-radius: 18px;
+    padding: 18px 22px; max-width: 420px; width: 92%;
+    box-shadow: 0 0 40px rgba(255,170,68,0.35);
+    max-height: 85vh; overflow-y: auto;
+  }
+  .trophy-title {
+    font-size: 20px; font-weight: 900; color: #ffd966;
+    text-align: center; letter-spacing: 4px; margin-bottom: 8px;
+    text-shadow: 0 0 12px #ffaa4466;
+  }
+  .trophy-tabs { display: flex; gap: 6px; margin-bottom: 8px; }
+  .trophy-tab {
+    flex: 1; padding: 6px; border-radius: 7px;
+    background: rgba(255,255,255,0.05); border: 1px solid #443a28;
+    color: #aaa; font-family: inherit; font-weight: 700; font-size: 12px; cursor: pointer;
+  }
+  .trophy-tab.active {
+    background: linear-gradient(180deg, #ffd966, #cc8833);
+    color: #2a1a00; border-color: #ffd966;
+  }
+  .trophy-progress { font-size: 11px; color: #ffd966; text-align: center; margin-bottom: 8px; font-weight: 700; }
+  .trophy-content { margin-bottom: 12px; }
+  .ach-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; }
+  .ach-slot {
+    aspect-ratio: 1; border-radius: 8px;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    font-size: 18px; padding: 3px;
+    border: 1px solid #2a2a3e; position: relative;
+  }
+  .ach-slot.locked { background: rgba(20,20,30,0.5); opacity: 0.45; filter: grayscale(0.8); }
+  .ach-slot.unlocked {
+    background: linear-gradient(135deg, rgba(255,217,102,0.18), rgba(204,136,51,0.1));
+    border-color: #ffd96677;
+    box-shadow: inset 0 0 8px rgba(255,217,102,0.18);
+  }
+  .ach-slot .ach-icon { font-size: 18px; }
+  .ach-slot .ach-name { font-size: 8px; color: #ffd966; line-height: 1.1; text-align: center; margin-top: 1px; font-weight: 700; }
+  .ach-slot.locked .ach-name { color: #555; }
+  .stats-table { display: flex; flex-direction: column; gap: 4px; }
+  .stats-row {
+    display: flex; justify-content: space-between; padding: 7px 11px;
+    background: rgba(255,255,255,0.04); border-radius: 8px;
+    font-size: 12px;
+  }
+  .stats-row .st-key { color: #ccc; }
+  .stats-row .st-val { font-weight: 800; color: #ffd966; }
+
   /* Shop modal — Q-Leap 42 */
   #shop-modal {
     position: fixed; inset: 0; z-index: 250;
@@ -359,6 +415,26 @@
     background: #2a2a3a; color: #666; cursor: default;
   }
   .quest-claim-all:not(:disabled):active { transform: scale(0.96); }
+  .quest-weekly-divider { border-top: 1px dashed #3a4a60; margin-top: 12px; }
+  .weekly-card {
+    background: linear-gradient(180deg, rgba(255,170,68,0.12), rgba(204,136,51,0.04));
+    border: 1px solid #ffaa44aa; border-radius: 10px;
+    padding: 10px 12px; margin-bottom: 8px;
+    display: flex; flex-direction: column; gap: 6px;
+  }
+  .weekly-card.claimed { opacity: 0.5; }
+  .weekly-card .wk-head { display: flex; align-items: center; gap: 8px; font-weight: 800; font-size: 14px; color: #ffd966; }
+  .weekly-card .wk-rew { font-size: 11px; color: #fff; }
+  .weekly-card .wk-bar { height: 9px; background: rgba(0,0,0,0.5); border-radius: 4px; overflow: hidden; position: relative; }
+  .weekly-card .wk-bar-fill { height: 100%; background: linear-gradient(90deg, #ffd966, #ee9933); transition: width 0.3s; }
+  .weekly-card .wk-bar-label { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 9px; font-weight: 800; color: #fff; text-shadow: 0 1px 2px #000; }
+  .weekly-card .wk-claim {
+    padding: 8px; border-radius: 8px; border: none; cursor: pointer;
+    background: linear-gradient(180deg, #ffd966, #ee9933); color: #2a1a00;
+    font-family: inherit; font-weight: 900; font-size: 12px;
+  }
+  .weekly-card .wk-claim:disabled { background: #2a2a3a; color: #777; cursor: default; }
+  .weekly-card .wk-claim:not(:disabled):active { transform: scale(0.96); }
   /* Quest button badge state (has claimable rewards) */
   #quest-btn.has-reward {
     background: linear-gradient(180deg, #ffd966, #ee9933);
@@ -921,6 +997,7 @@
         <button id="codex-btn" class="grid-action-btn" title="표창 도감 — 처음 도달한 레벨이 영구 기록됩니다">📖 도감</button>
         <button id="quest-btn" class="grid-action-btn" title="일일 미션 — 매일 3개의 목표, 보석 보상">📋 미션</button>
         <button id="shop-btn" class="grid-action-btn" title="보석 상점 — 일회성 효과 구매">🛒 상점</button>
+        <button id="trophy-btn" class="grid-action-btn" title="명예 & 통계 — 도달한 명예와 일생 통계 확인">🏆 명예</button>
       </div>
       <div id="grid"></div>
       <div style="font-size:10px;color:#888;text-align:center;">
@@ -1045,6 +1122,19 @@
   </div>
 </div>
 
+<div id="trophy-modal">
+  <div class="trophy-box">
+    <div class="trophy-title">🏆 명예 & 통계</div>
+    <div class="trophy-tabs">
+      <button class="trophy-tab active" data-tab="achievements">명예</button>
+      <button class="trophy-tab" data-tab="stats">통계</button>
+    </div>
+    <div class="trophy-progress" id="trophy-progress">0 / 0</div>
+    <div class="trophy-content" id="trophy-content"></div>
+    <button class="codex-close" id="trophy-close">닫기</button>
+  </div>
+</div>
+
 <div id="shop-modal">
   <div class="shop-box">
     <div class="shop-title">🛒 보석 상점</div>
@@ -1061,6 +1151,10 @@
     <div class="quest-sub">매일 자정 새 미션 3개가 생성됩니다. 클리어 후 [받기]로 보석 획득.</div>
     <div class="quest-list" id="quest-list"></div>
     <button class="quest-claim-all" id="quest-claim-all">완료 미션 모두 받기</button>
+    <div class="quest-weekly-divider"></div>
+    <div class="quest-title" style="font-size:16px;margin-top:8px;">🏅 주간 미션</div>
+    <div class="quest-sub">매주 월요일 자정 갱신. 큰 도전, 큰 보상.</div>
+    <div id="weekly-quest-box"></div>
     <button class="codex-close" id="quest-close">닫기</button>
   </div>
 </div>
@@ -1294,6 +1388,9 @@ function defaultState() {
     // Q-Leap 42: 보석 상점 — short-lived buffs / instant effects
     timeBoostTimer: 0,    // seconds; while > 0, spawn interval × 0.5
     luckyHandCharges: 0,  // next N merges get +1 jump (consumed)
+    // Q-Leap 46: 일주일 미션 — single weekly challenge, gem + enlightenment reward
+    weeklyQuest: null,        // { type, target, baseline, claimed, reward }
+    weekStartDate: '',
     // Q-Leap 43: 윤회 도전 (Trial) — 60s after prestige, time×2, target Lv → +5 enlightenment
     trialActive: false,
     trialTimer: 0,        // seconds remaining
@@ -1381,6 +1478,8 @@ const ACHIEVEMENTS = [
   { id: 'a_shop_25',      name: '단골 손님',       icon: '🛍', desc: '상점 25회 이용',      check: (s) => (s.stats.shopUses || 0) >= 25 },
   { id: 'a_trial_1',      name: '첫 도전',         icon: '⚔', desc: '윤회 도전 첫 성공',   check: (s) => (s.stats.trialsWon || 0) >= 1 },
   { id: 'a_trial_10',     name: '도전의 길',       icon: '🏆', desc: '윤회 도전 10회 성공', check: (s) => (s.stats.trialsWon || 0) >= 10 },
+  { id: 'a_weekly_1',     name: '주간의 시작',     icon: '🏅', desc: '주간 미션 첫 완료',   check: (s) => (s.stats.weeklyCompleted || 0) >= 1 },
+  { id: 'a_weekly_10',    name: '한결같음',        icon: '👑', desc: '주간 미션 10회 완료', check: (s) => (s.stats.weeklyCompleted || 0) >= 10 },
 ];
 
 // Q-Leap 41: Daily quest templates. Generator picks 3 each day (seeded by date).
@@ -1489,6 +1588,8 @@ function refreshQuestBadge() {
   for (const q of state.dailyQuests || []) {
     if (q.progress >= q.target && !q.claimed) claimable++;
   }
+  // include weekly claimable
+  if (state.weeklyQuest && !state.weeklyQuest.claimed && getWeeklyProgress() >= state.weeklyQuest.target) claimable++;
   btn.classList.toggle('has-reward', claimable > 0);
   btn.textContent = claimable > 0 ? `📋 미션 (${claimable}!)` : '📋 미션';
 }
@@ -1574,6 +1675,62 @@ const SHOP_ITEMS = [
     },
   },
 ];
+
+// ---------- Q-Leap 46: 일주일 미션 (Weekly Quest) ----------
+const WEEKLY_TEMPLATES = [
+  { type: 'totalMerges',     target: 300, icon: '✨', name: '주간 합체 300회',     reward: { gem: 30, enlightenment: 2 } },
+  { type: 'totalSpawned',    target: 200, icon: '🏭', name: '주간 표창 200개 생성', reward: { gem: 25, enlightenment: 2 } },
+  { type: 'questsCompleted', target: 15,  icon: '📋', name: '일일 미션 15개 완료',  reward: { gem: 40, enlightenment: 3 } },
+  { type: 'goldenSpawned',   target: 3,   icon: '✦', name: '황금 표창 3개 획득',  reward: { gem: 35, enlightenment: 3 } },
+  { type: 'trialsWon',       target: 3,   icon: '⚔', name: '윤회 도전 3회 성공',   reward: { gem: 35, enlightenment: 4 } },
+  { type: 'blessedMerges',   target: 20,  icon: '🙏', name: '축복 합성 20회',      reward: { gem: 30, enlightenment: 2 } },
+  { type: 'luckyMerges',     target: 25,  icon: '🍀', name: '행운 합성 25회',      reward: { gem: 30, enlightenment: 2 } },
+];
+function mondayOfWeek(date) {
+  const d = date || new Date();
+  const day = d.getDay(); // 0=Sun ... 6=Sat
+  const offset = day === 0 ? -6 : 1 - day; // ISO Monday start
+  const m = new Date(d);
+  m.setDate(d.getDate() + offset);
+  return `${m.getFullYear()}-${m.getMonth() + 1}-${m.getDate()}`;
+}
+function ensureWeeklyQuest() {
+  const wk = mondayOfWeek();
+  if (state.weekStartDate !== wk || !state.weeklyQuest) {
+    const rand = questSeed('w-' + wk);
+    const tpl = WEEKLY_TEMPLATES[Math.floor(rand() * WEEKLY_TEMPLATES.length)];
+    state.weeklyQuest = {
+      type: tpl.type, target: tpl.target, icon: tpl.icon, name: tpl.name,
+      baseline: state.stats[tpl.type] || 0,
+      claimed: false,
+      reward: { ...tpl.reward },
+    };
+    state.weekStartDate = wk;
+    save();
+  }
+}
+function getWeeklyProgress() {
+  if (!state.weeklyQuest) return 0;
+  const cur = state.stats[state.weeklyQuest.type] || 0;
+  return Math.max(0, Math.min(state.weeklyQuest.target, cur - state.weeklyQuest.baseline));
+}
+function claimWeeklyReward() {
+  if (!state.weeklyQuest) return false;
+  const q = state.weeklyQuest;
+  if (q.claimed) return false;
+  if (getWeeklyProgress() < q.target) return false;
+  q.claimed = true;
+  state.gem += q.reward.gem || 0;
+  state.enlightenment = (state.enlightenment || 0) + (q.reward.enlightenment || 0);
+  state.stats.weeklyCompleted = (state.stats.weeklyCompleted || 0) + 1;
+  toast(`🏅 주간 미션 완료 · 💎 +${q.reward.gem} · 깨달음 +${q.reward.enlightenment || 0}`);
+  sfx('mergeGold');
+  flashJumpScreen(3);
+  refreshUI();
+  checkAchievements();
+  save();
+  return true;
+}
 
 // ---------- Q-Leap 43: 윤회 도전 (Trial) ----------
 const TRIAL_DURATION = 60;
@@ -1668,6 +1825,8 @@ function load() {
     state.trialGoalLv = s.trialGoalLv || 0;
     state.trialStartBestLv = s.trialStartBestLv || 1;
     state.trialReward = s.trialReward || 5;
+    state.weeklyQuest = s.weeklyQuest || null;
+    state.weekStartDate = s.weekStartDate || '';
     return true;
   } catch (e) { return false; }
 }
@@ -3767,6 +3926,28 @@ function renderQuests() {
   list.innerHTML = html;
   const claimBtn = document.getElementById('quest-claim-all');
   if (claimBtn) claimBtn.disabled = !anyClaimable;
+  // Q-Leap 46: render weekly quest below
+  ensureWeeklyQuest();
+  const wkBox = document.getElementById('weekly-quest-box');
+  if (wkBox && state.weeklyQuest) {
+    const q = state.weeklyQuest;
+    const prog = getWeeklyProgress();
+    const pct = Math.min(100, (prog / q.target) * 100);
+    const done = prog >= q.target;
+    const cls = q.claimed ? 'claimed' : '';
+    wkBox.innerHTML = `<div class="weekly-card ${cls}">
+      <div class="wk-head"><span>${q.icon}</span><span>${q.name}</span></div>
+      <div class="wk-rew">보상: 💎 ${q.reward.gem} · 깨달음(悟) +${q.reward.enlightenment || 0}</div>
+      <div class="wk-bar"><div class="wk-bar-fill" style="width:${pct}%"></div>
+        <div class="wk-bar-label">${prog} / ${q.target}${q.claimed ? ' ✓' : ''}</div></div>
+      <button class="wk-claim" id="weekly-claim" ${q.claimed || !done ? 'disabled' : ''}>${q.claimed ? '수령 완료' : (done ? '받기' : '진행 중')}</button>
+    </div>`;
+    const claimEl = document.getElementById('weekly-claim');
+    if (claimEl) claimEl.addEventListener('click', () => {
+      getAudio();
+      if (claimWeeklyReward()) renderQuests();
+    });
+  }
 }
 document.getElementById('quest-btn').addEventListener('click', () => {
   getAudio();
@@ -3822,6 +4003,77 @@ document.getElementById('shop-close').addEventListener('click', () => {
 });
 document.getElementById('shop-modal').addEventListener('click', (e) => {
   if (e.target.id === 'shop-modal') document.getElementById('shop-modal').classList.remove('show');
+});
+// Q-Leap 45: trophy & stats modal
+let trophyTab = 'achievements';
+function renderTrophy() {
+  const content = document.getElementById('trophy-content');
+  const progress = document.getElementById('trophy-progress');
+  if (!content) return;
+  // tab active state
+  document.querySelectorAll('.trophy-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === trophyTab));
+  if (trophyTab === 'achievements') {
+    const unlocked = Object.keys(state.achievements || {}).length;
+    progress.textContent = `명예 ${unlocked} / ${ACHIEVEMENTS.length}`;
+    let html = '<div class="ach-grid">';
+    for (const a of ACHIEVEMENTS) {
+      const got = !!(state.achievements && state.achievements[a.id]);
+      const cls = got ? 'unlocked' : 'locked';
+      const title = got ? `${a.name} — ${a.desc}` : `??? — ${a.desc}`;
+      html += `<div class="ach-slot ${cls}" title="${title}">
+        <div class="ach-icon">${got ? a.icon : '🔒'}</div>
+        <div class="ach-name">${got ? a.name : '???'}</div>
+      </div>`;
+    }
+    html += '</div>';
+    content.innerHTML = html;
+  } else {
+    const s = state.stats || {};
+    const rows = [
+      ['💎 윤회 횟수',       state.prestigeCount || 0],
+      ['🌌 깨달음(悟)',      state.enlightenment || 0],
+      ['🏔 최고 Lv',         state.bestLevel || 1],
+      ['📖 도감',           `${Object.keys(state.codex || {}).length} / 40`],
+      ['✨ 누적 합체',       s.totalMerges || 0],
+      ['🏭 누적 생성',       s.totalSpawned || 0],
+      ['💸 누적 판매',       s.totalSold || 0],
+      ['💰 누적 골드',       fmt(s.totalGoldEarned || 0)],
+      ['⚡ 최고 콤보',       s.bestCombo || 0],
+      ['🍀 행운 합성',       s.luckyMerges || 0],
+      ['🙏 축복 합성',       s.blessedMerges || 0],
+      ['✦ 황금 표창 획득',   s.goldenSpawned || 0],
+      ['📋 미션 완료',       s.questsCompleted || 0],
+      ['🛒 상점 이용',       s.shopUses || 0],
+      ['⚔ 도전 성공',        s.trialsWon || 0],
+      ['🔒 잠금 사용',       s.locksUsed || 0],
+      ['🔥 버닝 사용',       s.burnsUsed || 0],
+      ['📅 출석 연속',       state.attendStreak || 0],
+    ];
+    progress.textContent = `${rows.length}개 통계`;
+    let html = '<div class="stats-table">';
+    for (const [k, v] of rows) {
+      html += `<div class="stats-row"><span class="st-key">${k}</span><span class="st-val">${v}</span></div>`;
+    }
+    html += '</div>';
+    content.innerHTML = html;
+  }
+}
+document.getElementById('trophy-btn').addEventListener('click', () => {
+  getAudio();
+  renderTrophy();
+  document.getElementById('trophy-modal').classList.add('show');
+});
+document.getElementById('trophy-close').addEventListener('click', () => {
+  document.getElementById('trophy-modal').classList.remove('show');
+});
+document.getElementById('trophy-modal').addEventListener('click', (e) => {
+  if (e.target.id === 'trophy-modal') document.getElementById('trophy-modal').classList.remove('show');
+});
+document.querySelectorAll('.trophy-tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    trophyTab = tab.dataset.tab;
+    renderTrophy();
+  });
 });
 document.getElementById('hint-btn').addEventListener('click', () => {
   getAudio();
@@ -4089,6 +4341,7 @@ function boot() {
   }
   startStage();
   ensureDailyQuests();
+  ensureWeeklyQuest();
   refreshUI();
   refreshQuestBadge();
   applyMute();
@@ -4102,7 +4355,7 @@ function boot() {
   setInterval(save, 10000);
   setInterval(repaintGridSprites, 100);
   // Q-Leap 41: check daily-quest rollover every minute
-  setInterval(() => { ensureDailyQuests(); refreshQuestBadge(); }, 60000);
+  setInterval(() => { ensureDailyQuests(); ensureWeeklyQuest(); refreshQuestBadge(); }, 60000);
   requestAnimationFrame(gameLoop);
 }
 document.getElementById('offline-claim').addEventListener('click', () => {
