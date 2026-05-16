@@ -254,6 +254,79 @@
   }
   .prestige-confirm:active { transform: scale(0.96); }
 
+  /* Quest modal — Q-Leap 41 */
+  #quest-modal {
+    position: fixed; inset: 0; z-index: 249;
+    display: none; align-items: center; justify-content: center;
+    background: rgba(0,0,0,0.85);
+  }
+  #quest-modal.show { display: flex; }
+  .quest-box {
+    background: linear-gradient(180deg, #1a2030 0%, #0a0e18 100%);
+    border: 2px solid #66ccff; border-radius: 18px;
+    padding: 18px 22px; max-width: 380px; width: 90%;
+    box-shadow: 0 0 40px rgba(102,204,255,0.35);
+    max-height: 85vh; overflow-y: auto;
+  }
+  .quest-title {
+    font-size: 20px; font-weight: 900; color: #88dcff;
+    text-align: center; letter-spacing: 4px; margin-bottom: 6px;
+    text-shadow: 0 0 12px #66ccff66;
+  }
+  .quest-sub { font-size: 11px; color: #88a; text-align: center; margin-bottom: 12px; line-height: 1.4; }
+  .quest-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
+  .quest-item {
+    background: rgba(255,255,255,0.05); border: 1px solid #2a3548;
+    border-radius: 10px; padding: 8px 10px;
+    display: flex; flex-direction: column; gap: 4px;
+  }
+  .quest-item.done {
+    background: rgba(255,217,102,0.12); border-color: #ffd96677;
+  }
+  .quest-item.claimed {
+    opacity: 0.5; background: rgba(100,100,100,0.08); border-color: #444;
+  }
+  .quest-row {
+    display: flex; justify-content: space-between; align-items: center; gap: 8px;
+    font-size: 12px; font-weight: 700;
+  }
+  .quest-icon { font-size: 18px; }
+  .quest-desc { flex: 1; color: #fff; }
+  .quest-reward { color: #ffd966; white-space: nowrap; }
+  .quest-bar {
+    height: 8px; background: rgba(0,0,0,0.5); border-radius: 4px; overflow: hidden;
+    position: relative;
+  }
+  .quest-bar-fill {
+    height: 100%; background: linear-gradient(90deg, #66ccff, #88dcff);
+    transition: width 0.25s;
+  }
+  .quest-item.done .quest-bar-fill { background: linear-gradient(90deg, #ffd966, #ffaa33); }
+  .quest-bar-label {
+    position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+    font-size: 9px; font-weight: 800; color: #fff; text-shadow: 0 1px 2px rgba(0,0,0,0.9);
+  }
+  .quest-claim-all {
+    width: 100%; padding: 10px; margin-bottom: 8px; border-radius: 10px;
+    background: linear-gradient(180deg, #ffd966, #ee9933);
+    border: none; color: #2a1a00;
+    font-family: inherit; font-weight: 900; font-size: 13px; cursor: pointer;
+  }
+  .quest-claim-all:disabled {
+    background: #2a2a3a; color: #666; cursor: default;
+  }
+  .quest-claim-all:not(:disabled):active { transform: scale(0.96); }
+  /* Quest button badge state (has claimable rewards) */
+  #quest-btn.has-reward {
+    background: linear-gradient(180deg, #ffd966, #ee9933);
+    color: #2a1a00; border-color: #ffd966;
+    animation: questPulse 1.2s ease-in-out infinite;
+  }
+  @keyframes questPulse {
+    0%,100% { box-shadow: 0 0 4px #ffd96666; }
+    50%     { box-shadow: 0 0 12px #ffd966cc; }
+  }
+
   /* Codex modal — Q-Leap 39 */
   #codex-modal {
     position: fixed; inset: 0; z-index: 248;
@@ -787,6 +860,7 @@
         <button id="merge-all-btn" class="grid-action-btn" title="가능한 모든 같은 Lv 페어를 즉시 합치기 (잠금/상한 적용)">⚡ 모두</button>
         <button id="sort-btn" class="grid-action-btn" title="레벨 순으로 자동 정렬">↕ 정렬</button>
         <button id="codex-btn" class="grid-action-btn" title="표창 도감 — 처음 도달한 레벨이 영구 기록됩니다">📖 도감</button>
+        <button id="quest-btn" class="grid-action-btn" title="일일 미션 — 매일 3개의 목표, 보석 보상">📋 미션</button>
       </div>
       <div id="grid"></div>
       <div style="font-size:10px;color:#888;text-align:center;">
@@ -908,6 +982,16 @@
       <button class="prestige-cancel" id="prestige-cancel">취소</button>
       <button class="prestige-confirm" id="prestige-confirm">윤회</button>
     </div>
+  </div>
+</div>
+
+<div id="quest-modal">
+  <div class="quest-box">
+    <div class="quest-title">📋 일일 미션</div>
+    <div class="quest-sub">매일 자정 새 미션 3개가 생성됩니다. 클리어 후 [받기]로 보석 획득.</div>
+    <div class="quest-list" id="quest-list"></div>
+    <button class="quest-claim-all" id="quest-claim-all">완료 미션 모두 받기</button>
+    <button class="codex-close" id="quest-close">닫기</button>
   </div>
 </div>
 
@@ -1134,6 +1218,9 @@ function defaultState() {
     // Q-Leap 39: 표창 도감 — first-reach record of each level; persists through prestige.
     // Each new entry grants +1 깨달음 (extra enlightenment source).
     codex: {},
+    // Q-Leap 41: 일일 미션 — date-seeded 3 quests/day, gem rewards
+    dailyQuests: [],
+    lastQuestDate: '',
     // Daily attendance
     lastAttendDate: '',   // 'YYYY-M-D' of last claimed day
     attendStreak: 0,      // consecutive-day streak
@@ -1209,7 +1296,120 @@ const ACHIEVEMENTS = [
   { id: 'a_golden_1',     name: '황금의 발견',     icon: '✦', desc: '황금 표창 첫 획득',   check: (s) => (s.stats.goldenSpawned || 0) >= 1 },
   { id: 'a_golden_10',    name: '황금 수확가',     icon: '💰', desc: '황금 표창 10개 획득', check: (s) => (s.stats.goldenSpawned || 0) >= 10 },
   { id: 'a_golden_sell',  name: '황금 환금',       icon: '👑', desc: '황금 표창 판매',     check: (s) => (s.stats.goldenSold || 0) >= 1 },
+  { id: 'a_quest_3',      name: '도전자',          icon: '📋', desc: '일일 미션 3개 완료',  check: (s) => (s.stats.questsCompleted || 0) >= 3 },
+  { id: 'a_quest_30',     name: '꾸준한 수행',     icon: '🏆', desc: '일일 미션 30개 완료', check: (s) => (s.stats.questsCompleted || 0) >= 30 },
 ];
+
+// Q-Leap 41: Daily quest templates. Generator picks 3 each day (seeded by date).
+const QUEST_TEMPLATES = [
+  { type: 'merges',  target: 50,    icon: '✨', desc: t => `합체 ${t}회`,            reward: { gem: 3 } },
+  { type: 'merges',  target: 150,   icon: '🌟', desc: t => `합체 ${t}회 (어려움)`,   reward: { gem: 6 } },
+  { type: 'spawn',   target: 40,    icon: '🏭', desc: t => `표창 ${t}개 생성`,       reward: { gem: 3 } },
+  { type: 'combo',   target: 6,     icon: '⚡', desc: t => `콤보 ×${t} 달성`,        reward: { gem: 4 } },
+  { type: 'gold',    target: 20000, icon: '💰', desc: t => `골드 ${t.toLocaleString()} 획득`, reward: { gem: 4 } },
+  { type: 'golden',  target: 1,     icon: '✦', desc: t => `황금 표창 ${t}개 획득`,  reward: { gem: 5 } },
+  { type: 'lucky',   target: 3,     icon: '🌠', desc: t => `행운 합성 ${t}회 (+2 이상)`, reward: { gem: 4 } },
+  { type: 'blessed', target: 2,     icon: '🙏', desc: t => `축복 칸 합성 ${t}회`,    reward: { gem: 4 } },
+  { type: 'sell',    target: 10,    icon: '💸', desc: t => `표창 ${t}개 판매`,       reward: { gem: 3 } },
+];
+
+// Mulberry32 — deterministic per-date seed
+function questSeed(dateStr) {
+  let h = 2166136261;
+  for (let i = 0; i < dateStr.length; i++) {
+    h ^= dateStr.charCodeAt(i);
+    h = Math.imul(h, 16777619) >>> 0;
+  }
+  return () => {
+    h = (h + 0x6D2B79F5) >>> 0;
+    let t = h;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+function todayString() {
+  const d = new Date();
+  return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
+}
+function generateDailyQuests(dateStr) {
+  const rand = questSeed(dateStr);
+  // sample 3 distinct templates (by index)
+  const idxs = QUEST_TEMPLATES.map((_, i) => i);
+  for (let i = idxs.length - 1; i > 0; i--) {
+    const j = Math.floor(rand() * (i + 1));
+    [idxs[i], idxs[j]] = [idxs[j], idxs[i]];
+  }
+  return idxs.slice(0, 3).map(i => {
+    const tpl = QUEST_TEMPLATES[i];
+    return { type: tpl.type, target: tpl.target, progress: 0, reward: { ...tpl.reward }, claimed: false };
+  });
+}
+function ensureDailyQuests() {
+  const today = todayString();
+  if (state.lastQuestDate !== today || !state.dailyQuests || state.dailyQuests.length !== 3) {
+    state.dailyQuests = generateDailyQuests(today);
+    state.lastQuestDate = today;
+    save();
+  }
+}
+function addQuestProgress(type, amount = 1) {
+  if (!state.dailyQuests || state.dailyQuests.length === 0) return;
+  let anyComplete = false;
+  for (const q of state.dailyQuests) {
+    if (q.type !== type || q.claimed) continue;
+    const before = q.progress;
+    if (type === 'combo') q.progress = Math.max(q.progress, amount);
+    else q.progress = Math.min(q.target, q.progress + amount);
+    if (before < q.target && q.progress >= q.target) anyComplete = true;
+  }
+  if (anyComplete) {
+    refreshQuestBadge();
+    sfx('spawn');
+  }
+}
+function claimQuestRewards() {
+  let totalGem = 0, count = 0;
+  for (const q of state.dailyQuests || []) {
+    if (q.progress >= q.target && !q.claimed) {
+      q.claimed = true;
+      totalGem += q.reward.gem || 0;
+      count++;
+    }
+  }
+  if (count > 0) {
+    state.gem += totalGem;
+    state.stats.questsCompleted = (state.stats.questsCompleted || 0) + count;
+    toast(`📋 미션 ${count}개 완료 · 💎 +${totalGem}`);
+    sfx('mergeGold');
+    refreshQuestBadge();
+    refreshUI();
+    checkAchievements();
+    save();
+  }
+  return count;
+}
+function getQuestDescFromState(q) {
+  const tpl = QUEST_TEMPLATES.find(t => t.type === q.type && t.target === q.target)
+           || QUEST_TEMPLATES.find(t => t.type === q.type);
+  return tpl ? tpl.desc(q.target) : `${q.type} ${q.target}`;
+}
+function getQuestIconFromState(q) {
+  const tpl = QUEST_TEMPLATES.find(t => t.type === q.type && t.target === q.target)
+           || QUEST_TEMPLATES.find(t => t.type === q.type);
+  return tpl ? tpl.icon : '📋';
+}
+function refreshQuestBadge() {
+  const btn = document.getElementById('quest-btn');
+  if (!btn) return;
+  let claimable = 0;
+  for (const q of state.dailyQuests || []) {
+    if (q.progress >= q.target && !q.claimed) claimable++;
+  }
+  btn.classList.toggle('has-reward', claimable > 0);
+  btn.textContent = claimable > 0 ? `📋 미션 (${claimable}!)` : '📋 미션';
+}
+
 let state = defaultState();
 
 // ---------- Save / Load ----------
@@ -1243,6 +1443,8 @@ function load() {
     if (Object.keys(state.codex).length === 0 && (state.bestLevel || 0) > 1) {
       for (let lv = 1; lv <= state.bestLevel; lv++) state.codex[lv] = true;
     }
+    state.dailyQuests = Array.isArray(s.dailyQuests) ? s.dailyQuests : [];
+    state.lastQuestDate = s.lastQuestDate || '';
     return true;
   } catch (e) { return false; }
 }
@@ -1377,6 +1579,7 @@ function spawnShuriken() {
   state.grid[idx] = { id, level: getSpawnStartLevel(), fireTimer: rand(0, getFireInterval()) };
   freshSpawnIds.add(id);
   state.stats.totalSpawned = (state.stats.totalSpawned || 0) + 1;
+  addQuestProgress('spawn', 1);
   sfx('spawn');
   renderGrid();
   checkAchievements();
@@ -1466,6 +1669,13 @@ function tryMerge(fromIdx, toIdx) {
     state.gold += mergeGold;
     state.stats.totalMerges = (state.stats.totalMerges || 0) + 1;
     state.stats.totalGoldEarned = (state.stats.totalGoldEarned || 0) + mergeGold;
+    // Q-Leap 41: quest progress hooks
+    addQuestProgress('merges', 1);
+    addQuestProgress('gold', mergeGold);
+    addQuestProgress('combo', state.comboCount);
+    if (jump >= 2) addQuestProgress('lucky', 1);
+    if (blessed) addQuestProgress('blessed', 1);
+    if (childGolden) addQuestProgress('golden', 1);
     if (jump >= 2) {
       state.stats.luckyMerges = (state.stats.luckyMerges || 0) + 1;
       const label = jump >= 8 ? '👑 천상의 합성! +8' :
@@ -3245,6 +3455,53 @@ document.getElementById('codex-close').addEventListener('click', () => {
 document.getElementById('codex-modal').addEventListener('click', (e) => {
   if (e.target.id === 'codex-modal') document.getElementById('codex-modal').classList.remove('show');
 });
+// Q-Leap 41: quest modal wiring
+function renderQuests() {
+  ensureDailyQuests();
+  const list = document.getElementById('quest-list');
+  if (!list) return;
+  let html = '';
+  let anyClaimable = false;
+  for (const q of state.dailyQuests) {
+    const done = q.progress >= q.target;
+    const cls = q.claimed ? 'claimed' : (done ? 'done' : '');
+    const pct = Math.min(100, (q.progress / q.target) * 100);
+    const icon = getQuestIconFromState(q);
+    const desc = getQuestDescFromState(q);
+    if (done && !q.claimed) anyClaimable = true;
+    const progressLabel = q.type === 'gold'
+      ? `${Math.floor(q.progress).toLocaleString()} / ${q.target.toLocaleString()}`
+      : `${q.progress} / ${q.target}`;
+    html += `<div class="quest-item ${cls}">
+      <div class="quest-row">
+        <span class="quest-icon">${icon}</span>
+        <span class="quest-desc">${desc}</span>
+        <span class="quest-reward">💎 ${q.reward.gem}${q.claimed ? ' ✓' : ''}</span>
+      </div>
+      <div class="quest-bar"><div class="quest-bar-fill" style="width:${pct}%"></div>
+        <div class="quest-bar-label">${progressLabel}</div></div>
+    </div>`;
+  }
+  list.innerHTML = html;
+  const claimBtn = document.getElementById('quest-claim-all');
+  if (claimBtn) claimBtn.disabled = !anyClaimable;
+}
+document.getElementById('quest-btn').addEventListener('click', () => {
+  getAudio();
+  renderQuests();
+  document.getElementById('quest-modal').classList.add('show');
+});
+document.getElementById('quest-close').addEventListener('click', () => {
+  document.getElementById('quest-modal').classList.remove('show');
+});
+document.getElementById('quest-modal').addEventListener('click', (e) => {
+  if (e.target.id === 'quest-modal') document.getElementById('quest-modal').classList.remove('show');
+});
+document.getElementById('quest-claim-all').addEventListener('click', () => {
+  getAudio();
+  const n = claimQuestRewards();
+  if (n > 0) renderQuests();
+});
 document.getElementById('hint-btn').addEventListener('click', () => {
   getAudio();
   state.hintMode = !state.hintMode;
@@ -3293,6 +3550,8 @@ function sellShuriken(idx) {
   state.gold += value;
   state.stats.totalGoldEarned = (state.stats.totalGoldEarned || 0) + value;
   state.stats.totalSold = (state.stats.totalSold || 0) + 1;
+  addQuestProgress('sell', 1);
+  addQuestProgress('gold', value);
   state.grid[idx] = null;
   // gold popup at the cell
   const cell = gridEl.querySelector(`[data-idx="${idx}"]`);
@@ -3508,7 +3767,9 @@ function boot() {
     state.spawnProgress = 0.6;
   }
   startStage();
+  ensureDailyQuests();
   refreshUI();
+  refreshQuestBadge();
   applyMute();
   // restore hint button visual state after load
   document.getElementById('hint-btn').classList.toggle('on', !!state.hintMode);
@@ -3519,6 +3780,8 @@ function boot() {
   setTimeout(processAttendance, loaded ? 400 : 1200);
   setInterval(save, 10000);
   setInterval(repaintGridSprites, 100);
+  // Q-Leap 41: check daily-quest rollover every minute
+  setInterval(() => { ensureDailyQuests(); refreshQuestBadge(); }, 60000);
   requestAnimationFrame(gameLoop);
 }
 document.getElementById('offline-claim').addEventListener('click', () => {
