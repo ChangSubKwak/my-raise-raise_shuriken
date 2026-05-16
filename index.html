@@ -1814,6 +1814,7 @@ const ACHIEVEMENTS = [
   { id: 'a_dark_1',       name: '어둠의 발견',     icon: '🌑', desc: '검은 표창 첫 획득',   check: (s) => (s.stats.darkSpawned || 0) >= 1 },
   { id: 'a_dark_absorb',  name: '흡수의 술',       icon: '🌀', desc: '검은 흡수 첫 발동',   check: (s) => (s.stats.darkAbsorbs || 0) >= 1 },
   { id: 'a_autosell',     name: '자동화의 시작',   icon: '🤖', desc: '자동 매도 첫 활성',   check: (s) => !!s.autoSellEnabled || (s.stats.autoSells || 0) >= 1 },
+  { id: 'a_split',        name: '분할의 수',       icon: '🔱', desc: '표창 분할 첫 사용',   check: (s) => (s.stats.splitsUsed || 0) >= 1 },
 ];
 
 // Q-Leap 41: Daily quest templates. Generator picks 3 each day (seeded by date).
@@ -2006,6 +2007,41 @@ const SHOP_ITEMS = [
         state.enlightenment = (state.enlightenment || 0) + 1;
         setTimeout(() => toast(`📖 도감 신규 등록: Lv ${lv} · 깨달음(悟) +1`), 400);
       }
+      return true;
+    },
+  },
+  {
+    id: 'split', icon: '🔱', name: '표창 분할', cost: 7,
+    desc: '가장 높은 Lv 표창 1개 → Lv−1 짜리 2개 (빈 슬롯 1개 필요)',
+    effect: () => {
+      // need exactly 1+ empty slot
+      if (emptySlots().length < 1) { toast('빈 슬롯이 필요합니다'); return false; }
+      // find highest-level non-locked, non-protected piece
+      let maxIdx = -1, maxLv = 0;
+      for (let i = 0; i < state.grid.length; i++) {
+        const c = state.grid[i];
+        if (!c || c.locked) continue;
+        if (c.level <= 1) continue; // can't split Lv 1
+        if (c.level > maxLv) { maxLv = c.level; maxIdx = i; }
+      }
+      if (maxIdx < 0) { toast('분할 가능한 표창이 없습니다 (Lv 2+, 잠금 해제)'); return false; }
+      const orig = state.grid[maxIdx];
+      const newLv = orig.level - 1;
+      // first child stays at maxIdx
+      state.grid[maxIdx] = { id: state.nextShurikenId++, level: newLv, fireTimer: rand(0, getFireInterval()),
+                              golden: orig.golden, star: orig.star, dark: orig.dark };
+      // second child goes to a random empty slot
+      const empties = emptySlots();
+      const targetIdx = empties[Math.floor(Math.random() * empties.length)];
+      state.grid[targetIdx] = { id: state.nextShurikenId++, level: newLv, fireTimer: rand(0, getFireInterval()),
+                                 golden: false, star: false, dark: false };
+      state.stats.splitsUsed = (state.stats.splitsUsed || 0) + 1;
+      toast(`🔱 Lv ${orig.level} → Lv ${newLv} 2개로 분할`);
+      addEvent('lucky', `분할 Lv ${orig.level} → Lv ${newLv} ×2`);
+      flashCell(maxIdx);
+      flashCell(targetIdx);
+      sfx('move');
+      setTimeout(() => sfx('spawn'), 80);
       return true;
     },
   },
