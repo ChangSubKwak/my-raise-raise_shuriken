@@ -254,6 +254,37 @@
   }
   .prestige-confirm:active { transform: scale(0.96); }
 
+  /* Q-Leap 55: info modal */
+  #info-modal {
+    position: fixed; inset: 0; z-index: 253;
+    display: none; align-items: center; justify-content: center;
+    background: rgba(0,0,0,0.85);
+  }
+  #info-modal.show { display: flex; }
+  .info-box {
+    background: linear-gradient(180deg, #1a1c20 0%, #08090c 100%);
+    border: 2px solid #aacccc; border-radius: 18px;
+    padding: 18px 22px; max-width: 320px; width: 88%;
+    box-shadow: 0 0 30px rgba(170,204,204,0.25);
+  }
+  .info-title { font-size: 17px; font-weight: 900; color: #ccddee; text-align: center; margin-bottom: 12px; letter-spacing: 2px; }
+  .info-body { display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px; font-size: 12px; }
+  .info-row {
+    display: flex; justify-content: space-between; padding: 6px 9px;
+    background: rgba(255,255,255,0.04); border-radius: 7px;
+  }
+  .info-row .if-k { color: #aab; }
+  .info-row .if-v { font-weight: 700; color: #fff; }
+  .info-traits { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 4px; }
+  .info-trait {
+    padding: 2px 7px; font-size: 10px; border-radius: 6px;
+    background: rgba(255,255,255,0.05); border: 1px solid #4a4a5a;
+  }
+  .info-trait.golden { color: #ffd966; border-color: #ffd96677; background: rgba(255,217,102,0.08); }
+  .info-trait.star { color: #ddaaff; border-color: #cc66ff77; background: rgba(204,102,255,0.08); }
+  .info-trait.dark { color: #cc99ff; border-color: #aa44ff77; background: rgba(170,68,255,0.08); }
+  .info-trait.locked { color: #ffaa44; border-color: #ffaa4488; background: rgba(255,170,68,0.08); }
+
   /* Q-Leap 54: daily challenge banner */
   #daily-challenge-banner {
     width: 100%; max-width: 100%; margin-top: 4px;
@@ -772,6 +803,27 @@
     0%,100% { transform: scale(1) rotate(0deg); }
     50%     { transform: scale(1.2) rotate(180deg); }
   }
+  /* Q-Leap 56: dark shuriken — deep purple outline + 🌑 marker */
+  .cell.dark-piece {
+    border-color: #663388 !important;
+    box-shadow: 0 0 14px #aa44ffcc, inset 0 0 12px #553388aa !important;
+    animation: darkPulse 1.8s ease-in-out infinite;
+  }
+  .cell .dark-mark {
+    position: absolute; top: 14px; right: 14px;
+    font-size: 11px;
+    text-shadow: 0 0 6px #aa44ff, 0 1px 2px rgba(0,0,0,0.9);
+    z-index: 3; pointer-events: none;
+    animation: darkOrbit 2.5s linear infinite;
+  }
+  @keyframes darkPulse {
+    0%,100% { box-shadow: 0 0 10px #aa44ff99, inset 0 0 8px #5533887a; }
+    50%     { box-shadow: 0 0 20px #aa44ffee, inset 0 0 16px #553388cc; }
+  }
+  @keyframes darkOrbit {
+    0%,100% { transform: scale(1) rotate(0deg); }
+    50%     { transform: scale(1.1); }
+  }
   /* Q-Leap 44: adjacency synergy — dot DOM element top-right (avoids ::before conflict with locked/blessed) */
   .cell .synergy-dot {
     position: absolute; top: 14px; right: 3px;
@@ -1069,6 +1121,7 @@
         <span style="color:#aaa;">제작 <span id="batch-info" style="color:#a8e6ff;">×1</span></span>
         <button id="hint-btn" class="grid-action-btn" title="합칠 수 있는 모든 페어 항상 강조">💡 힌트</button>
         <button id="sell-btn" class="grid-action-btn" title="판매 모드 — 표창을 탭하면 골드로 환전">💸 판매</button>
+        <button id="info-btn" class="grid-action-btn" title="정보 모드 — 표창을 탭하면 상세 정보">ℹ 정보</button>
         <button id="merge-all-btn" class="grid-action-btn" title="가능한 모든 같은 Lv 페어를 즉시 합치기 (잠금/상한 적용)">⚡ 모두</button>
         <button id="sort-btn" class="grid-action-btn" title="레벨 순으로 자동 정렬">↕ 정렬</button>
         <button id="codex-btn" class="grid-action-btn" title="표창 도감 — 처음 도달한 레벨이 영구 기록됩니다">📖 도감</button>
@@ -1198,6 +1251,14 @@
       <button class="prestige-cancel" id="prestige-cancel">취소</button>
       <button class="prestige-confirm" id="prestige-confirm">윤회</button>
     </div>
+  </div>
+</div>
+
+<div id="info-modal">
+  <div class="info-box">
+    <div class="info-title" id="info-title">표창 정보</div>
+    <div id="info-body" class="info-body"></div>
+    <button class="codex-close" id="info-close">닫기</button>
   </div>
 </div>
 
@@ -1617,6 +1678,8 @@ const ACHIEVEMENTS = [
   { id: 'a_ritual_10',    name: '의식의 달인',     icon: '🌠', desc: '의식 합성 10회',      check: (s) => (s.stats.ritualsPerformed || 0) >= 10 },
   { id: 'a_combo_milestone',  name: '연쇄의 환희', icon: '🌟', desc: '콤보 마일스톤 첫 도달', check: (s) => (s.stats.comboMilestones || 0) >= 1 },
   { id: 'a_combo_milestone_5', name: '연쇄의 달인', icon: '🔥', desc: '콤보 마일스톤 5회',  check: (s) => (s.stats.comboMilestones || 0) >= 5 },
+  { id: 'a_dark_1',       name: '어둠의 발견',     icon: '🌑', desc: '검은 표창 첫 획득',   check: (s) => (s.stats.darkSpawned || 0) >= 1 },
+  { id: 'a_dark_absorb',  name: '흡수의 술',       icon: '🌀', desc: '검은 흡수 첫 발동',   check: (s) => (s.stats.darkAbsorbs || 0) >= 1 },
 ];
 
 // Q-Leap 41: Daily quest templates. Generator picks 3 each day (seeded by date).
@@ -2323,7 +2386,13 @@ function tryMerge(fromIdx, toIdx) {
     if (starsIn === 2) childStar = true;
     else if (starsIn === 1) childStar = Math.random() < 0.5;
     else childStar = Math.random() < starSpontaneous;
-    state.grid[toIdx] = { id: state.nextShurikenId++, level: newLv, fireTimer: rand(0, getFireInterval()), golden: childGolden, star: childStar };
+    // Q-Leap 56: child dark inheritance (rarest: 0.15% spontaneous, can co-occur)
+    const darksIn = (a.dark ? 1 : 0) + (b.dark ? 1 : 0);
+    let childDark = false;
+    if (darksIn === 2) childDark = true;
+    else if (darksIn === 1) childDark = Math.random() < 0.5;
+    else childDark = Math.random() < 0.0015;
+    state.grid[toIdx] = { id: state.nextShurikenId++, level: newLv, fireTimer: rand(0, getFireInterval()), golden: childGolden, star: childStar, dark: childDark };
     state.grid[fromIdx] = null;
     if (childGolden) {
       state.stats.goldenSpawned = (state.stats.goldenSpawned || 0) + 1;
@@ -2337,6 +2406,38 @@ function tryMerge(fromIdx, toIdx) {
       if (starsIn === 0) {
         setTimeout(() => toast('★ 별 표창 자연 발생! (spawn 가속)'), 480);
         addEvent('star', `별 표창 자연 발생 (Lv ${newLv})`);
+      }
+    }
+    if (childDark) {
+      state.stats.darkSpawned = (state.stats.darkSpawned || 0) + 1;
+      if (darksIn === 0) {
+        setTimeout(() => toast('🌑 검은 표창 자연 발생! (합성 시 인접 흡수)'), 600);
+        addEvent('dark', `검은 표창 자연 발생 (Lv ${newLv})`);
+      }
+    }
+    // Q-Leap 56: if a parent is dark, absorb one same-Lv 4-neighbor of toIdx into result
+    if (darksIn > 0) {
+      const cols = getGridCols();
+      const size = state.grid.length;
+      const row = Math.floor(toIdx / cols);
+      const col = toIdx % cols;
+      const neighbors = [];
+      if (col > 0)          neighbors.push(toIdx - 1);
+      if (col < cols - 1)   neighbors.push(toIdx + 1);
+      if (row > 0)          neighbors.push(toIdx - cols);
+      if (toIdx + cols < size) neighbors.push(toIdx + cols);
+      // pick first same-Lv non-locked neighbor
+      for (const n of neighbors) {
+        const nc = state.grid[n];
+        if (nc && !nc.locked && nc.level === newLv) {
+          state.grid[n] = null;
+          state.grid[toIdx].level += 1; // absorb → +1 Lv
+          state.stats.darkAbsorbs = (state.stats.darkAbsorbs || 0) + 1;
+          addEvent('dark', `검은 흡수 → Lv ${state.grid[toIdx].level}`);
+          setTimeout(() => toast(`🌑 검은 흡수! Lv ${state.grid[toIdx].level}`), 280);
+          flashCell(toIdx);
+          break;
+        }
       }
     }
     // Combo: chain merges within 2.5s → escalating bonus (Q-Leap 54: comboKeep doubles to 5s)
@@ -3001,6 +3102,7 @@ function updateHUD() {
 const gridEl = document.getElementById('grid');
 let selectedIdx = -1;
 let sellMode = false;
+let infoMode = false;
 
 function renderGrid() {
   const size = getGridSize();
@@ -3084,7 +3186,14 @@ function renderGrid() {
         sm.textContent = '★';
         cell.appendChild(sm);
       }
-      cell.title = `Lv ${c.level} · ${levelName(c.level)}${c.locked ? ' 🔒' : ''}${c.golden ? ' ✦ 황금 (판매 5x · 합성 +1 점프)' : ''}${c.star ? ' ★ 별 (그리드에 있으면 spawn ×1.43)' : ''}`;
+      if (c.dark) {
+        cell.classList.add('dark-piece');
+        const dm = document.createElement('div');
+        dm.className = 'dark-mark';
+        dm.textContent = '🌑';
+        cell.appendChild(dm);
+      }
+      cell.title = `Lv ${c.level} · ${levelName(c.level)}${c.locked ? ' 🔒' : ''}${c.golden ? ' ✦ 황금 (판매 5x · 합성 +1 점프)' : ''}${c.star ? ' ★ 별 (그리드에 있으면 spawn ×1.43)' : ''}${c.dark ? ' 🌑 검은 (합성 시 인접 흡수)' : ''}`;
       // Tier-scaled ambient halo around the cell (subtle for low Lv, strong for high)
       const tier = levelTier(c.level);
       const cellGlow = c.level < 4 ? 0
@@ -3129,6 +3238,11 @@ function attachDragHandlers(cell, idx, downEvent) {
   // Sell mode: any tap on an occupied cell sells it; skip drag entirely
   if (sellMode) {
     if (piece) handleCellTap(idx);
+    return;
+  }
+  // Q-Leap 55: info mode — tap to show shuriken details
+  if (infoMode) {
+    if (piece) showShurikenInfo(idx);
     return;
   }
   // Empty cells: clear selection on tap; nothing to drag
@@ -4524,6 +4638,61 @@ document.getElementById('log-close').addEventListener('click', () => {
 document.getElementById('log-modal').addEventListener('click', (e) => {
   if (e.target.id === 'log-modal') document.getElementById('log-modal').classList.remove('show');
 });
+// Q-Leap 55: info mode + modal
+function showShurikenInfo(idx) {
+  const c = state.grid[idx];
+  if (!c) return;
+  const cols = getGridCols();
+  const size = state.grid.length;
+  const row = Math.floor(idx / cols);
+  const col = idx % cols;
+  // count adjacency synergy
+  let adj = 0;
+  if (col > 0          && state.grid[idx - 1]     && state.grid[idx - 1].level    === c.level) adj++;
+  if (col < cols - 1   && state.grid[idx + 1]     && state.grid[idx + 1].level    === c.level) adj++;
+  if (row > 0          && state.grid[idx - cols]  && state.grid[idx - cols].level === c.level) adj++;
+  if (idx + cols < size && state.grid[idx + cols] && state.grid[idx + cols].level === c.level) adj++;
+  const synergyBoost = isChallenge('synergy2x') ? 0.4 : 0.2;
+  const synergyMul = 1 + adj * synergyBoost;
+  const baseGoldRate = 0.5 * Math.pow(2, c.level - 1) * synergyMul * getGoldMul();
+  // sell value (same formula as sellShuriken)
+  const baseValue = Math.pow(2, c.level) * getGoldMul() * 0.5;
+  let mul = 1;
+  if (c.golden) mul *= 5;
+  if (c.star)   mul *= 5;
+  if (c.dark)   mul *= 5;
+  if (isChallenge('sellRich')) mul *= 3;
+  const sellValue = c.locked ? 0 : Math.floor(baseValue * mul);
+  document.getElementById('info-title').textContent = `${levelName(c.level)} (Lv ${c.level})`;
+  let traits = '';
+  if (c.golden) traits += '<span class="info-trait golden">✦ 황금</span>';
+  if (c.star)   traits += '<span class="info-trait star">★ 별</span>';
+  if (c.dark)   traits += '<span class="info-trait dark">🌑 검은</span>';
+  if (c.locked) traits += '<span class="info-trait locked">🔒 잠금</span>';
+  document.getElementById('info-body').innerHTML = `
+    <div class="info-row"><span class="if-k">현재 골드율</span><span class="if-v">${baseGoldRate.toFixed(1)} / 초</span></div>
+    <div class="info-row"><span class="if-k">인접 시너지</span><span class="if-v">${adj}개 (+${Math.round((synergyMul-1)*100)}%)</span></div>
+    <div class="info-row"><span class="if-k">판매가</span><span class="if-v">${c.locked ? '잠김' : '💰 ' + fmt(sellValue)}</span></div>
+    ${traits ? `<div class="info-row"><span class="if-k">속성</span><span class="info-traits">${traits}</span></div>` : ''}
+    ${c.golden ? '<div class="info-row" style="color:#ffd966;font-size:11px;">✦ 합성 시 +1 점프 · 판매 5x</div>' : ''}
+    ${c.star ? '<div class="info-row" style="color:#ddaaff;font-size:11px;">★ 그리드에 있으면 spawn ×1.43</div>' : ''}
+    ${c.dark ? '<div class="info-row" style="color:#cc99ff;font-size:11px;">🌑 합성 시 인접 같은 Lv 흡수 (+1 추가)</div>' : ''}
+  `;
+  document.getElementById('info-modal').classList.add('show');
+}
+document.getElementById('info-btn').addEventListener('click', () => {
+  getAudio();
+  infoMode = !infoMode;
+  if (infoMode) { sellMode = false; document.getElementById('sell-btn').classList.remove('on'); }
+  document.getElementById('info-btn').classList.toggle('on', infoMode);
+  toast(infoMode ? 'ℹ 정보 모드 — 표창 탭하여 상세 보기' : '정보 모드 OFF');
+});
+document.getElementById('info-close').addEventListener('click', () => {
+  document.getElementById('info-modal').classList.remove('show');
+});
+document.getElementById('info-modal').addEventListener('click', (e) => {
+  if (e.target.id === 'info-modal') document.getElementById('info-modal').classList.remove('show');
+});
 document.getElementById('hint-btn').addEventListener('click', () => {
   getAudio();
   state.hintMode = !state.hintMode;
@@ -4570,10 +4739,12 @@ function sellShuriken(idx) {
   let mul = 1;
   if (c.golden) mul *= 5;
   if (c.star)   mul *= 5; // star also sells for 5x; both = 25x
+  if (c.dark)   mul *= 5; // dark also sells 5x (all three = 125x — extremely rare)
   if (isChallenge('sellRich')) mul *= 3; // Q-Leap 54
   const value = Math.floor(baseValue * mul);
   if (c.golden) state.stats.goldenSold = (state.stats.goldenSold || 0) + 1;
   if (c.star)   state.stats.starSold   = (state.stats.starSold   || 0) + 1;
+  if (c.dark)   state.stats.darkSold   = (state.stats.darkSold   || 0) + 1;
   state.gold += value;
   state.stats.totalGoldEarned = (state.stats.totalGoldEarned || 0) + value;
   state.stats.totalSold = (state.stats.totalSold || 0) + 1;
