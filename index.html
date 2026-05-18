@@ -1131,6 +1131,9 @@
   #frenzy-btn.active {
     background: rgba(255, 100, 50, 0.4); border-color: #ff6644; color: #fff;
   }
+  #frenzy-btn.auto-on {
+    border-color: #ffaa44; color: #ffd966;
+  }
   @keyframes frenzyPulse {
     0% { background-position: 0% 50%; transform: scale(1); }
     50% { background-position: 100% 50%; transform: scale(1.05); }
@@ -1566,6 +1569,15 @@
     <div class="shop-list" id="shop-list"></div>
     <div class="shop-divider"></div>
     <div class="auto-sell-box">
+      <div class="auto-sell-title">💱 보석 환산소 <span style="color:#888;font-size:10px;font-weight:400;">(골드 → 💎)</span></div>
+      <div class="auto-sell-row" style="gap:6px;">
+        <div style="flex:1;color:#aaa;font-size:11px;">현재: <span id="exchange-rate">10,000</span> 골드 = 💎 1<br/><span style="color:#666;font-size:10px;">윤회 당 −1,000 (최소 2,000)</span></div>
+        <button id="exchange-btn" class="auto-sell-run" style="width:auto;padding:6px 14px;">환산 (×1)</button>
+        <button id="exchange-btn-10" class="auto-sell-run" style="width:auto;padding:6px 14px;">×10</button>
+      </div>
+    </div>
+    <div class="shop-divider"></div>
+    <div class="auto-sell-box">
       <div class="auto-sell-title">🤖 자동 매도 <span style="color:#888;font-size:10px;font-weight:400;">(잠금/변종 보호)</span></div>
       <div class="auto-sell-row">
         <button class="auto-sell-toggle" id="auto-sell-toggle">OFF</button>
@@ -1917,6 +1929,8 @@ function defaultState() {
     // Q-Leap 77: 폭주 게이지 — fills 1 per merge up to 100, then user activates 30s ×2 spawn boost
     frenzyCharge: 0,
     frenzyTimer: 0,
+    // Q-Leap 80: auto-activate frenzy when charge fills
+    autoFrenzyEnabled: false,
     // Q-Leap 59: 자동 매도 — auto-sell shuriken at or below threshold
     autoSellEnabled: false,
     autoSellThreshold: 1,     // Lv ≤ this → auto-sell (golden/star/dark/locked excluded)
@@ -2032,6 +2046,8 @@ const ACHIEVEMENTS = [
   { id: 'a_frenzy_1',     name: '폭주 입문',       icon: '⚡', desc: '폭주 첫 발동',         check: (s) => ((s.stats || {}).frenzyActivations || 0) >= 1 },
   { id: 'a_divine_1',     name: '신성한 합',       icon: '✨', desc: '신성 합체 첫 발동 (0.5%)', check: (s) => ((s.stats || {}).divineMerges || 0) >= 1 },
   { id: 'a_divine_10',    name: '신성의 손',       icon: '🌌', desc: '신성 합체 10회',        check: (s) => ((s.stats || {}).divineMerges || 0) >= 10 },
+  { id: 'a_exchange_1',   name: '첫 환산',         icon: '💱', desc: '보석 환산소 첫 사용',   check: (s) => ((s.stats || {}).exchangesUsed || 0) >= 1 },
+  { id: 'a_exchange_50',  name: '환금의 도',       icon: '🏦', desc: '환산 총 💎 50 누적',    check: (s) => ((s.stats || {}).exchangesUsed || 0) >= 50 },
 ];
 
 // Q-Leap 41: Daily quest templates. Generator picks 3 each day (seeded by date).
@@ -2560,6 +2576,8 @@ function load() {
     state.frenzyCharge = Math.max(0, Math.min(FRENZY_MAX, +s.frenzyCharge || 0));
     state.frenzyTimer = Math.max(0, +s.frenzyTimer || 0);
     if (state.frenzyTimer > 0) document.body.classList.add('frenzy-active');
+    // Q-Leap 80: auto-frenzy
+    state.autoFrenzyEnabled = !!s.autoFrenzyEnabled;
     return true;
   } catch (e) { return false; }
 }
@@ -2885,13 +2903,17 @@ function tryMerge(fromIdx, toIdx) {
     state.gold += mergeGold;
     state.stats.totalMerges = (state.stats.totalMerges || 0) + 1;
     state.stats.totalGoldEarned = (state.stats.totalGoldEarned || 0) + mergeGold;
-    // Q-Leap 77: 폭주 게이지 충전 (캡 도달 시 알림은 한 번만)
+    // Q-Leap 77: 폭주 게이지 충전 (캡 도달 시 알림 + Q-Leap 80 auto-fire)
     if ((state.frenzyCharge || 0) < FRENZY_MAX) {
       state.frenzyCharge = (state.frenzyCharge || 0) + 1;
       if (state.frenzyCharge === FRENZY_MAX) {
-        setTimeout(() => toast('⚡ 폭주 게이지 가득참 — 클릭하여 발동!'), 350);
-        addEvent('milestone', '폭주 게이지 충전 완료');
-        flashJumpScreen(2);
+        if (state.autoFrenzyEnabled) {
+          setTimeout(() => activateFrenzy(true), 200);
+        } else {
+          setTimeout(() => toast('⚡ 폭주 게이지 가득참 — 클릭하여 발동!'), 350);
+          addEvent('milestone', '폭주 게이지 충전 완료');
+          flashJumpScreen(2);
+        }
       }
     }
     // Q-Leap 78: divine proc toast (after merge effects)
@@ -3558,12 +3580,14 @@ function updateHUD() {
   const fc = state.frenzyCharge || 0;
   const ft = state.frenzyTimer || 0;
   if (frCountEl) {
-    if (ft > 0) frCountEl.textContent = `${Math.ceil(ft)}s`;
-    else        frCountEl.textContent = `${fc}/${FRENZY_MAX}`;
+    const af = state.autoFrenzyEnabled ? ' 🔁' : '';
+    if (ft > 0) frCountEl.textContent = `${Math.ceil(ft)}s${af}`;
+    else        frCountEl.textContent = `${fc}/${FRENZY_MAX}${af}`;
   }
   if (frBtn) {
-    frBtn.classList.toggle('ready', fc >= FRENZY_MAX && ft <= 0);
+    frBtn.classList.toggle('ready', fc >= FRENZY_MAX && ft <= 0 && !state.autoFrenzyEnabled);
     frBtn.classList.toggle('active', ft > 0);
+    frBtn.classList.toggle('auto-on', !!state.autoFrenzyEnabled);
   }
   // Time-based generator UI — bar reflects actual progress,
   // so it visibly resets after each spawn (even immediate-from-queue spawns).
@@ -5152,10 +5176,38 @@ document.getElementById('quest-claim-all').addEventListener('click', () => {
   if (n > 0) renderQuests();
 });
 // Q-Leap 42: shop modal wiring
+// Q-Leap 82: Gold→Gem exchange rate, decreases per prestige
+function getExchangeRate() {
+  return Math.max(2000, 10000 - (state.prestigeCount || 0) * 1000);
+}
+function doExchange(count) {
+  const rate = getExchangeRate();
+  const totalCost = rate * count;
+  if (state.gold < totalCost) {
+    toast(`💱 골드 ${fmt(totalCost)} 필요 (현재 ${fmt(state.gold)})`);
+    return;
+  }
+  state.gold -= totalCost;
+  state.gem += count;
+  state.stats.exchangesUsed = (state.stats.exchangesUsed || 0) + count;
+  toast(`💱 환산 완료: ${fmt(totalCost)} 골드 → 💎 +${count}`);
+  addEvent('milestone', `환산 ${fmt(totalCost)} 골드 → 💎 +${count}`);
+  sfx('spawn');
+  renderShop();
+  refreshUI();
+  save();
+}
 function renderShop() {
   const list = document.getElementById('shop-list');
   if (!list) return;
   document.getElementById('shop-gem').textContent = `💎 ${state.gem}`;
+  // Q-Leap 82: update exchange UI
+  const erEl = document.getElementById('exchange-rate');
+  if (erEl) erEl.textContent = fmt(getExchangeRate());
+  const ex1 = document.getElementById('exchange-btn');
+  const ex10 = document.getElementById('exchange-btn-10');
+  if (ex1) ex1.disabled = state.gold < getExchangeRate();
+  if (ex10) ex10.disabled = state.gold < getExchangeRate() * 10;
   let html = '';
   for (const it of SHOP_ITEMS) {
     let extra = '';
@@ -5192,6 +5244,9 @@ document.getElementById('shop-btn').addEventListener('click', () => {
   refreshAutoLockUI();
   document.getElementById('shop-modal').classList.add('show');
 });
+// Q-Leap 82: exchange button wiring (once)
+document.getElementById('exchange-btn').addEventListener('click', () => { getAudio(); doExchange(1); });
+document.getElementById('exchange-btn-10').addEventListener('click', () => { getAudio(); doExchange(10); });
 document.getElementById('auto-sell-toggle').addEventListener('click', () => {
   getAudio();
   state.autoSellEnabled = !state.autoSellEnabled;
@@ -5350,6 +5405,32 @@ function renderTrophy() {
     let html = '<div class="stats-table">';
     for (const [k, v] of rows) {
       html += `<div class="stats-row"><span class="st-key">${k}</span><span class="st-val">${v}</span></div>`;
+    }
+    html += '</div>';
+    // Q-Leap 81: visual stats — proportional bar chart for key progression metrics
+    const codexCount = Object.keys(state.codex || {}).length;
+    const chartRows = [
+      { label: '🏔 최고 Lv',  value: state.bestLevel || 1,            cap: 60,    color: '#88ddff' },
+      { label: '📖 도감',     value: codexCount,                       cap: 60,    color: '#ffd966' },
+      { label: '💎 윤회',     value: state.prestigeCount || 0,         cap: 30,    color: '#cc99ff' },
+      { label: '🌌 깨달음',   value: state.enlightenment || 0,         cap: 100,   color: '#aaffcc' },
+      { label: '✨ 누적 합체', value: Math.min(10000, s.totalMerges || 0), cap: 10000, color: '#ff99cc', display: s.totalMerges || 0 },
+      { label: '✦ 황금 획득', value: s.goldenSpawned || 0,             cap: 50,    color: '#ffcc44' },
+      { label: '★ 별 획득',   value: s.starSpawned || 0,               cap: 20,    color: '#ff99ff' },
+      { label: '🌑 검은 획득', value: s.darkSpawned || 0,              cap: 20,    color: '#aa88ff' },
+      { label: '📅 출석',     value: state.attendStreak || 0,          cap: 100,   color: '#66ffaa' },
+    ];
+    html += '<div style="margin-top:14px;padding-top:10px;border-top:1px solid #2a3a4a;"><div style="color:#a8e6ff;font-size:11px;margin-bottom:8px;">📊 진행 시각화</div>';
+    for (const r of chartRows) {
+      const pct = Math.min(100, (r.value / r.cap) * 100);
+      const disp = r.display !== undefined ? r.display : r.value;
+      html += `<div style="display:flex;align-items:center;gap:6px;margin:3px 0;font-size:11px;">
+        <span style="width:90px;color:#bbb;">${r.label}</span>
+        <span style="flex:1;background:rgba(20,20,30,0.6);border-radius:3px;overflow:hidden;height:10px;position:relative;">
+          <span style="display:block;height:100%;width:${pct}%;background:${r.color};transition:width 0.4s;"></span>
+        </span>
+        <span style="width:60px;text-align:right;color:#fff;">${disp}/${r.cap}</span>
+      </div>`;
     }
     html += '</div>';
     content.innerHTML = html;
@@ -5551,25 +5632,39 @@ document.getElementById('storage-close').addEventListener('click', () => {
 document.getElementById('storage-modal').addEventListener('click', (e) => {
   if (e.target.id === 'storage-modal') document.getElementById('storage-modal').classList.remove('show');
 });
-// Q-Leap 77: frenzy activation
-document.getElementById('frenzy-btn').addEventListener('click', () => {
-  getAudio();
-  if ((state.frenzyTimer || 0) > 0) {
-    toast(`⚡ 폭주 진행 중 (${Math.ceil(state.frenzyTimer)}s)`);
-    return;
-  }
-  if ((state.frenzyCharge || 0) < FRENZY_MAX) {
-    toast(`⚡ 폭주 게이지 ${state.frenzyCharge || 0}/${FRENZY_MAX}`);
-    return;
-  }
+// Q-Leap 77: frenzy activation (shared by manual click + Q-Leap 80 auto)
+function activateFrenzy(auto) {
+  if ((state.frenzyTimer || 0) > 0) return false;
+  if ((state.frenzyCharge || 0) < FRENZY_MAX) return false;
   state.frenzyCharge = 0;
   state.frenzyTimer = FRENZY_DURATION;
   state.stats.frenzyActivations = (state.stats.frenzyActivations || 0) + 1;
   document.body.classList.add('frenzy-active');
-  toast(`⚡ 폭주 ${FRENZY_DURATION}s — spawn ×2!`);
+  toast(auto ? `⚡ 자동 폭주 ${FRENZY_DURATION}s — spawn ×2!` : `⚡ 폭주 ${FRENZY_DURATION}s — spawn ×2!`);
   sfx('mergeMystic');
   flashJumpScreen(4);
-  addEvent('milestone', '폭주 발동');
+  addEvent('milestone', auto ? '자동 폭주 발동' : '폭주 발동');
+  return true;
+}
+document.getElementById('frenzy-btn').addEventListener('click', (e) => {
+  getAudio();
+  // Q-Leap 80: shift+click toggles auto-frenzy
+  if (e.shiftKey) {
+    state.autoFrenzyEnabled = !state.autoFrenzyEnabled;
+    toast(state.autoFrenzyEnabled ? '⚡ 자동 폭주 ON' : '⚡ 자동 폭주 OFF');
+    refreshUI();
+    save();
+    return;
+  }
+  if ((state.frenzyTimer || 0) > 0) {
+    toast(`⚡ 폭주 진행 중 (${Math.ceil(state.frenzyTimer)}s) · Shift+클릭 = 자동 토글`);
+    return;
+  }
+  if ((state.frenzyCharge || 0) < FRENZY_MAX) {
+    toast(`⚡ 게이지 ${state.frenzyCharge || 0}/${FRENZY_MAX} · Shift+클릭 = 자동 토글`);
+    return;
+  }
+  activateFrenzy(false);
   refreshUI();
   save();
 });
@@ -5584,6 +5679,7 @@ document.getElementById('meditation-btn').addEventListener('click', () => {
     state.autoSellEnabled = true;
     state.autoRitualEnabled = true;
     state.autoLockEnabled = true;
+    state.autoFrenzyEnabled = true; // Q-Leap 80
     if ((state.prestigeCount || 0) >= 5) state.prestigeSpeedEnabled = true;
     toast('🧘 명상 모드 ON — 모든 자동화 활성');
     sfx('mergeMystic');
