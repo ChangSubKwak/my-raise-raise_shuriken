@@ -2048,6 +2048,8 @@ const ACHIEVEMENTS = [
   { id: 'a_divine_10',    name: '신성의 손',       icon: '🌌', desc: '신성 합체 10회',        check: (s) => ((s.stats || {}).divineMerges || 0) >= 10 },
   { id: 'a_exchange_1',   name: '첫 환산',         icon: '💱', desc: '보석 환산소 첫 사용',   check: (s) => ((s.stats || {}).exchangesUsed || 0) >= 1 },
   { id: 'a_exchange_50',  name: '환금의 도',       icon: '🏦', desc: '환산 총 💎 50 누적',    check: (s) => ((s.stats || {}).exchangesUsed || 0) >= 50 },
+  { id: 'a_merge_gem_1',  name: '🍀 합성의 행운',  icon: '🍀', desc: '합성 보석 드롭 1회',    check: (s) => ((s.stats || {}).mergeGemDrops || 0) >= 1 },
+  { id: 'a_merge_gem_10', name: '🌠 다이아 손',    icon: '🌠', desc: '합성 보석 드롭 10회',   check: (s) => ((s.stats || {}).mergeGemDrops || 0) >= 10 },
 ];
 
 // Q-Leap 41: Daily quest templates. Generator picks 3 each day (seeded by date).
@@ -2921,6 +2923,14 @@ function tryMerge(fromIdx, toIdx) {
       setTimeout(() => toast(`✨ 신성 합체! Lv ${newLv} (+1 도약)`), 320);
       addEvent('lucky', `신성 합체 → Lv ${newLv}`);
       flashJumpScreen(4);
+    }
+    // Q-Leap 83: 합성 보석 드롭 (0.2% base; scales with mergeGemLuck skill if exists)
+    if (Math.random() < 0.002) {
+      state.gem += 1;
+      state.stats.mergeGemDrops = (state.stats.mergeGemDrops || 0) + 1;
+      setTimeout(() => toast('💎 합성 보석 드롭 · +1'), 380);
+      addEvent('lucky', `합성 보석 드롭 → 💎+1 (Lv ${newLv})`);
+      flashJumpScreen(2);
     }
     // Q-Leap 76: cumulative merge milestones — one-shot gem bonus
     state.stats.mergeMilestones = state.stats.mergeMilestones || {};
@@ -5983,6 +5993,32 @@ function processAttendance() {
   if (streak === 30 && !state.stats.attendMilestones[30]) { milestoneGem = 50; milestoneEnlight = 5; milestoneLabel = '🌳 30일 마일스톤'; state.stats.attendMilestones[30] = true; }
   if (streak === 60 && !state.stats.attendMilestones[60]) { milestoneGem = 100;milestoneEnlight = 10;milestoneLabel = '🏯 60일 마일스톤'; state.stats.attendMilestones[60] = true; }
   if (streak === 100&& !state.stats.attendMilestones[100]){ milestoneGem = 200;milestoneEnlight = 25;milestoneLabel = '🌌 100일 마일스톤';state.stats.attendMilestones[100]= true; }
+  // Q-Leap 85: 마일스톤 변종 보상 — 그리드 비어있으면 직접 배치, 아니면 보관소(있으면)
+  let variantGift = null;
+  if (streak === 7  && !state.stats.attendVariants?.[7])  variantGift = { kind: 'golden', label: '✦ 황금' };
+  if (streak === 30 && !state.stats.attendVariants?.[30]) variantGift = { kind: 'star',   label: '★ 별' };
+  if (streak === 100&& !state.stats.attendVariants?.[100]) variantGift = { kind: 'dark',  label: '🌑 검은' };
+  if (variantGift) {
+    state.stats.attendVariants = state.stats.attendVariants || {};
+    state.stats.attendVariants[streak] = true;
+    const empties = emptySlots();
+    const lvl = Math.max(1, Math.min(state.bestLevel || 1, 5));
+    const piece = { id: state.nextShurikenId++, level: lvl, fireTimer: 0 };
+    piece[variantGift.kind] = true;
+    if (empties.length > 0) {
+      state.grid[empties[Math.floor(Math.random() * empties.length)]] = piece;
+    } else if ((state.storage || []).length < 3) {
+      (state.storage = state.storage || []).push(piece);
+    } else {
+      // overflow: gold conversion fallback
+      const sellPrice = Math.floor(Math.pow(2, lvl) * 125); // variant ×125
+      state.gold += sellPrice;
+      variantGift.overflow = sellPrice;
+    }
+    if (variantGift.kind === 'golden') state.stats.goldenSpawned = (state.stats.goldenSpawned || 0) + 1;
+    if (variantGift.kind === 'star')   state.stats.starSpawned   = (state.stats.starSpawned || 0) + 1;
+    if (variantGift.kind === 'dark')   state.stats.darkSpawned   = (state.stats.darkSpawned || 0) + 1;
+  }
   const totalGems = gems + bonusGem + milestoneGem;
   state.gem += totalGems;
   if (milestoneEnlight) state.enlightenment = (state.enlightenment || 0) + milestoneEnlight;
@@ -5995,7 +6031,8 @@ function processAttendance() {
   document.getElementById('attend-reward').innerHTML =
     `💎 +${totalGems}${bonusGem ? ` <span style="color:#ffd966">(7일 +5)</span>` : ''}${milestoneGem ? ` <span style="color:#ff88ff">(마일 +${milestoneGem})</span>` : ''}` +
     (milestoneEnlight ? `<br>🌌 깨달음 +${milestoneEnlight}` : '') +
-    (goldBonus > 0 ? `<br>💰 +${fmt(goldBonus)}` : '');
+    (goldBonus > 0 ? `<br>💰 +${fmt(goldBonus)}` : '') +
+    (variantGift ? `<br><span style="color:#ffaa44">${variantGift.label} 표창 ${variantGift.overflow ? '(그리드 가득 → 💰 +' + fmt(variantGift.overflow) + ')' : '획득!'}</span>` : '');
   if (milestoneLabel) { addEvent('milestone', milestoneLabel); flashJumpScreen(5); }
   document.getElementById('attend-modal').classList.add('show');
   save();
@@ -6013,16 +6050,36 @@ function processOfflineReward() {
   const elapsedSec = Math.min(CAP_SEC, Math.floor(elapsedMs / 1000));
   const capped = (elapsedMs / 1000) > CAP_SEC;
   const rate = getPassiveGoldRate();
-  if (rate < 0.1) return;
-  const goldEarned = Math.floor(rate * elapsedSec * EFFICIENCY);
-  if (goldEarned < 1) return;
-  state.gold += goldEarned;
-  state.stats.totalGoldEarned = (state.stats.totalGoldEarned || 0) + goldEarned;
-  // show modal
+  // Q-Leap 84: 자리비움 보너스 — 폭주 게이지 충전 + spawn 진행 사전 충전
+  // 1분당 frenzy +2 (cap 100); 별도 spawn은 다음 표창 progress 만큼 즉시 충전.
+  const frenzyGain = Math.min(FRENZY_MAX - (state.frenzyCharge || 0),
+                              Math.floor(elapsedSec / 30) * 1); // ~1 per 30s of idle
+  let frenzyAdded = 0;
+  if (frenzyGain > 0) {
+    state.frenzyCharge = (state.frenzyCharge || 0) + frenzyGain;
+    frenzyAdded = frenzyGain;
+  }
+  // pre-fill spawn progress only if grid not full
+  let spawnAdded = false;
+  if (emptySlots().length > 0 && state.spawnProgress < 1) {
+    state.spawnProgress = 1;
+    spawnAdded = true;
+  }
+  if (rate < 0.1 && frenzyAdded === 0 && !spawnAdded) return;
+  const goldEarned = rate >= 0.1 ? Math.floor(rate * elapsedSec * EFFICIENCY) : 0;
+  if (goldEarned >= 1) {
+    state.gold += goldEarned;
+    state.stats.totalGoldEarned = (state.stats.totalGoldEarned || 0) + goldEarned;
+  }
+  // show modal — extra rewards listed
   document.getElementById('offline-time').textContent = '자리비움: ' + fmtPlaytime(Math.floor(elapsedMs / 1000));
-  document.getElementById('offline-gold').textContent = '💰 ' + fmt(goldEarned);
+  const extras = [];
+  if (goldEarned >= 1) extras.push('💰 ' + fmt(goldEarned));
+  if (frenzyAdded > 0) extras.push(`⚡ 폭주 +${frenzyAdded}`);
+  if (spawnAdded)      extras.push('🪄 표창 준비');
+  document.getElementById('offline-gold').textContent = extras.join(' · ') || '—';
   document.getElementById('offline-cap-note').textContent =
-    capped ? '⚠ 최대 4시간 + 50% 효율 적용' : '50% 효율 적용';
+    capped ? '⚠ 최대 4시간 + 50% 효율 적용' : '50% 효율 + 폭주 충전 +1/30s';
   document.getElementById('offline-modal').classList.add('show');
 }
 
