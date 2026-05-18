@@ -421,6 +421,15 @@
     0%,100% { box-shadow: 0 0 4px #ffaa4444; }
     50%     { box-shadow: 0 0 10px #ffaa44aa; }
   }
+  /* Q-Leap 87: weekday banner */
+  #weekday-banner {
+    width: 100%; max-width: 100%; margin-top: 4px;
+    background: linear-gradient(90deg, rgba(102,255,170,0.15), rgba(68,204,170,0.05));
+    border: 1px solid #66ffaa88; border-radius: 8px;
+    padding: 4px 10px; text-align: center;
+    font-size: 11px; font-weight: 700;
+    color: #aaffcc; line-height: 1.3;
+  }
 
   /* Log modal — Q-Leap 52 */
   #log-modal {
@@ -1358,6 +1367,7 @@
         &nbsp; <span class="gem">💎 <span id="gem">0</span></span>
       </div>
       <div id="daily-challenge-banner" title="오늘의 도전 — 매일 자정 갱신"></div>
+      <div id="weekday-banner" title="요일 보너스 — 매일 자정 변경"></div>
     </div>
     <div id="grid-wrap">
       <div id="grid-header" style="display:flex;justify-content:space-between;align-items:center;width:100%;max-width:320px;font-size:11px;font-weight:700;gap:6px;">
@@ -1568,6 +1578,13 @@
     <div class="shop-gem" id="shop-gem">💎 0</div>
     <div class="shop-list" id="shop-list"></div>
     <div class="shop-divider"></div>
+    <div class="auto-sell-box">
+      <div class="auto-sell-title">🎲 일일 룰렛 <span style="color:#888;font-size:10px;font-weight:400;">(매일 1회)</span></div>
+      <div class="auto-sell-row" style="gap:6px;">
+        <div style="flex:1;color:#aaa;font-size:11px;">오늘의 보상: <span id="spin-status">미수령</span><br/><span style="color:#666;font-size:10px;">날짜 시드 기반 — 결정적 결과</span></div>
+        <button id="spin-btn" class="auto-sell-run" style="width:auto;padding:6px 14px;">룰렛 돌리기</button>
+      </div>
+    </div>
     <div class="auto-sell-box">
       <div class="auto-sell-title">💱 보석 환산소 <span style="color:#888;font-size:10px;font-weight:400;">(골드 → 💎)</span></div>
       <div class="auto-sell-row" style="gap:6px;">
@@ -1931,6 +1948,9 @@ function defaultState() {
     frenzyTimer: 0,
     // Q-Leap 80: auto-activate frenzy when charge fills
     autoFrenzyEnabled: false,
+    // Q-Leap 88: daily spin tracking
+    lastSpinDate: '',
+    lastSpinReward: 0,
     // Q-Leap 59: 자동 매도 — auto-sell shuriken at or below threshold
     autoSellEnabled: false,
     autoSellThreshold: 1,     // Lv ≤ this → auto-sell (golden/star/dark/locked excluded)
@@ -2050,6 +2070,9 @@ const ACHIEVEMENTS = [
   { id: 'a_exchange_50',  name: '환금의 도',       icon: '🏦', desc: '환산 총 💎 50 누적',    check: (s) => ((s.stats || {}).exchangesUsed || 0) >= 50 },
   { id: 'a_merge_gem_1',  name: '🍀 합성의 행운',  icon: '🍀', desc: '합성 보석 드롭 1회',    check: (s) => ((s.stats || {}).mergeGemDrops || 0) >= 1 },
   { id: 'a_merge_gem_10', name: '🌠 다이아 손',    icon: '🌠', desc: '합성 보석 드롭 10회',   check: (s) => ((s.stats || {}).mergeGemDrops || 0) >= 10 },
+  { id: 'a_coat_1',       name: '황금 코팅장',     icon: '✦', desc: '황금 코팅 첫 사용',     check: (s) => ((s.stats || {}).coatingsUsed || 0) >= 1 },
+  { id: 'a_spin_1',       name: '룰렛 첫 회',      icon: '🎲', desc: '일일 룰렛 첫 사용',     check: (s) => ((s.stats || {}).spinsUsed || 0) >= 1 },
+  { id: 'a_spin_30',      name: '꾸준한 운',       icon: '🎰', desc: '일일 룰렛 30회',        check: (s) => ((s.stats || {}).spinsUsed || 0) >= 30 },
 ];
 
 // Q-Leap 41: Daily quest templates. Generator picks 3 each day (seeded by date).
@@ -2277,6 +2300,26 @@ const SHOP_ITEMS = [
       flashCell(targetIdx);
       sfx('move');
       setTimeout(() => sfx('spawn'), 80);
+      return true;
+    },
+  },
+  // Q-Leap 86: 황금 코팅 의식 — 선택된 일반 표창에 황금 부여
+  {
+    id: 'coatGolden', icon: '✦', name: '황금 코팅', cost: 25,
+    desc: '선택된 표창에 황금 속성 부여 (변종 아님). 먼저 표창을 탭하여 선택하세요.',
+    effect: () => {
+      if (selectedIdx < 0) { toast('표창을 먼저 탭하여 선택하세요'); return false; }
+      const c = state.grid[selectedIdx];
+      if (!c) { toast('선택이 비었습니다'); return false; }
+      if (c.golden) { toast('이미 황금 속성입니다'); return false; }
+      c.golden = true;
+      c.id = state.nextShurikenId++;
+      state.stats.coatingsUsed = (state.stats.coatingsUsed || 0) + 1;
+      state.stats.goldenSpawned = (state.stats.goldenSpawned || 0) + 1;
+      flashCell(selectedIdx);
+      addEvent('lucky', `황금 코팅 → Lv ${c.level}`);
+      renderGrid();
+      sfx('mergeGold');
       return true;
     },
   },
@@ -2580,6 +2623,9 @@ function load() {
     if (state.frenzyTimer > 0) document.body.classList.add('frenzy-active');
     // Q-Leap 80: auto-frenzy
     state.autoFrenzyEnabled = !!s.autoFrenzyEnabled;
+    // Q-Leap 88: spin
+    state.lastSpinDate = s.lastSpinDate || '';
+    state.lastSpinReward = +s.lastSpinReward || 0;
     return true;
   } catch (e) { return false; }
 }
@@ -2641,7 +2687,8 @@ function getSpawnInterval() {
   const chalBoost = isChallenge('spawnFast') ? 0.5 : 1; // Q-Leap 54
   const prestigeSpeed = (state.prestigeSpeedEnabled && state.prestigeCount >= 5) ? 0.7 : 1; // Q-Leap 73
   const frenzyMul = (state.frenzyTimer || 0) > 0 ? 0.5 : 1; // Q-Leap 77: 폭주 ×2 spawn
-  return Math.max(0.4, base * Math.pow(0.95, state.upgrades.spawnRate) * burnMul * skillMul * shopBoost * trialBoost * starBoost * chalBoost * prestigeSpeed * frenzyMul);
+  const weekdayMul = weekdayBonus().spawnMul || 1; // Q-Leap 87
+  return Math.max(0.4, base * Math.pow(0.95, state.upgrades.spawnRate) * burnMul * skillMul * shopBoost * trialBoost * starBoost * chalBoost * prestigeSpeed * frenzyMul * weekdayMul);
 }
 
 // Q-Leap 77: Frenzy constants
@@ -2693,8 +2740,21 @@ function getGoldMul() {
   const u = 1 + state.upgrades.goldMul * 0.1;
   const prestige = 1 + state.prestigeCount * 0.5;
   const skill = 1 + getSkillLv('goldMastery') * 0.15;
-  return u * prestige * skill;
+  const weekday = weekdayBonus().goldMul || 1; // Q-Leap 87
+  return u * prestige * skill * weekday;
 }
+
+// Q-Leap 87: 요일 보너스 — small persistent bonus depending on day
+const WEEKDAY_BONUS = {
+  0: { id: 'sun', icon: '🌌', label: '일 — 도감 신규시 깨달음 +1', codexBonus: 1 },
+  1: { id: 'mon', icon: '💰', label: '월 — 골드 +20%',             goldMul: 1.2 },
+  2: { id: 'tue', icon: '⚡', label: '화 — 생성 5% 가속',          spawnMul: 0.95 },
+  3: { id: 'wed', icon: '🍀', label: '수 — 행운 +0.5% (점프)',      luckPlus: 0.005 },
+  4: { id: 'thu', icon: '🙏', label: '목 — 축복 지속 +50%',         blessMul: 1.5 },
+  5: { id: 'fri', icon: '✨', label: '금 — 콤보 +1초 유지',         comboPlus: 1 },
+  6: { id: 'sat', icon: '✦', label: '토 — 변종 자연발생 ×2',       variantMul: 2 },
+};
+function weekdayBonus() { return WEEKDAY_BONUS[new Date().getDay()] || {}; }
 function shurikenDmg(level) {
   return getBaseDmg() * Math.pow(2, level - 1) * (1 + state.prestigeCount * 0.5);
 }
@@ -2770,7 +2830,8 @@ function tryMerge(fromIdx, toIdx) {
     // Lucky-chance upgrade adds +1% per Lv (cap 10) to the +2 threshold.
     // Burning mode doubles all jump probabilities.
     const luckBonus = (state.upgrades.luckChance || 0) * 0.01
-                    + getSkillLv('fate') * 0.008; // fate skill: +0.8%/Lv
+                    + getSkillLv('fate') * 0.008 // fate skill: +0.8%/Lv
+                    + (weekdayBonus().luckPlus || 0); // Q-Leap 87
     const burnMul = isBurning() ? 2 : 1;
     const pJump5 = 0.001 * burnMul;
     const pJump3 = (0.010 + luckBonus * 0.2) * burnMul;
@@ -2816,6 +2877,7 @@ function tryMerge(fromIdx, toIdx) {
     let childGolden = false;
     let goldenSpontaneous = 0.005 + getSkillLv('goldenLuck') * 0.002;
     if (isChallenge('goldenLuck')) goldenSpontaneous *= 3;
+    if (weekdayBonus().variantMul) goldenSpontaneous *= weekdayBonus().variantMul; // Q-Leap 87
     if (goldensIn === 2) childGolden = true;
     else if (goldensIn === 1) childGolden = Math.random() < 0.5;
     else childGolden = Math.random() < goldenSpontaneous;
@@ -2886,7 +2948,7 @@ function tryMerge(fromIdx, toIdx) {
     }
     // Combo: chain merges within 2.5s → escalating bonus (Q-Leap 54: comboKeep doubles to 5s)
     state.comboCount = (state.comboCount || 0) + 1;
-    state.comboTimer = isChallenge('comboKeep') ? 5 : 2.5;
+    state.comboTimer = (isChallenge('comboKeep') ? 5 : 2.5) + (weekdayBonus().comboPlus || 0); // Q-Leap 87
     if (state.comboCount > (state.stats.bestCombo || 0)) state.stats.bestCombo = state.comboCount;
     const comboMult = 1 + (state.comboCount - 1) * 0.2;
     // Jump bonus on gold reward (skipping tiers yields disproportionate gold)
@@ -3001,7 +3063,7 @@ function tryMerge(fromIdx, toIdx) {
     if (!state.codex) state.codex = {};
     if (!state.codex[newLv]) {
       state.codex[newLv] = true;
-      const codexBonus = 1 + Math.floor(getSkillLv('codexBoost') / 2);
+      const codexBonus = 1 + Math.floor(getSkillLv('codexBoost') / 2) + (weekdayBonus().codexBonus || 0); // Q-Leap 87
       state.enlightenment = (state.enlightenment || 0) + codexBonus;
       setTimeout(() => toast(`📖 도감 신규 등록: Lv ${newLv} · 깨달음(悟) +${codexBonus}`), 400);
       sfx('spawn');
@@ -3483,7 +3545,7 @@ function update(dt) {
   state.blessedTimer = (state.blessedTimer || 0) - dt;
   if (state.blessedTimer <= 0) {
     rerollBlessedCell();
-    state.blessedTimer = 30 + getSkillLv('blessTime') * 5;
+    state.blessedTimer = (30 + getSkillLv('blessTime') * 5) * (weekdayBonus().blessMul || 1); // Q-Leap 87
   }
   // Q-Leap 42: time-boost timer (shop item)
   if ((state.timeBoostTimer || 0) > 0) {
@@ -3559,6 +3621,12 @@ function updateHUD() {
     } else {
       banner.classList.remove('active');
     }
+  }
+  // Q-Leap 87: weekday banner
+  const wkBanner = document.getElementById('weekday-banner');
+  if (wkBanner) {
+    const wb = weekdayBonus();
+    if (wb.label) wkBanner.innerHTML = `${wb.icon} ${wb.label}`;
   }
   if (state.trialActive) {
     document.getElementById('stage-name').textContent =
@@ -5186,6 +5254,41 @@ document.getElementById('quest-claim-all').addEventListener('click', () => {
   if (n > 0) renderQuests();
 });
 // Q-Leap 42: shop modal wiring
+// Q-Leap 88: daily gem spin (date-seeded so result is deterministic per day)
+function spinRewardForToday() {
+  const seed = questSeed('spin-' + todayString());
+  const r = seed();
+  const tiers = [
+    { v: 1,  w: 0.40 },
+    { v: 2,  w: 0.25 },
+    { v: 3,  w: 0.15 },
+    { v: 5,  w: 0.10 },
+    { v: 8,  w: 0.07 },
+    { v: 13, w: 0.03 },
+  ];
+  let acc = 0;
+  for (const t of tiers) { acc += t.w; if (r < acc) return t.v; }
+  return 1;
+}
+function doDailySpin() {
+  const today = todayString();
+  if (state.lastSpinDate === today) {
+    toast('🎲 오늘은 이미 룰렛을 돌렸습니다');
+    return;
+  }
+  const reward = spinRewardForToday();
+  state.lastSpinDate = today;
+  state.lastSpinReward = reward;
+  state.gem += reward;
+  state.stats.spinsUsed = (state.stats.spinsUsed || 0) + 1;
+  toast(`🎲 룰렛 결과: 💎 +${reward}`);
+  addEvent('milestone', `일일 룰렛 → 💎 +${reward}`);
+  flashJumpScreen(2 + Math.min(3, Math.floor(reward / 4)));
+  sfx('spawn');
+  renderShop();
+  refreshUI();
+  save();
+}
 // Q-Leap 82: Gold→Gem exchange rate, decreases per prestige
 function getExchangeRate() {
   return Math.max(2000, 10000 - (state.prestigeCount || 0) * 1000);
@@ -5218,6 +5321,18 @@ function renderShop() {
   const ex10 = document.getElementById('exchange-btn-10');
   if (ex1) ex1.disabled = state.gold < getExchangeRate();
   if (ex10) ex10.disabled = state.gold < getExchangeRate() * 10;
+  // Q-Leap 88: daily spin status
+  const spinBtn = document.getElementById('spin-btn');
+  const spinStatus = document.getElementById('spin-status');
+  const todayStr = todayString();
+  const claimed = state.lastSpinDate === todayStr;
+  if (spinStatus) spinStatus.textContent = claimed
+    ? `오늘 수령 (💎 +${state.lastSpinReward || 0})`
+    : `미수령 (예상 💎 +${spinRewardForToday()})`;
+  if (spinBtn) {
+    spinBtn.disabled = claimed;
+    spinBtn.textContent = claimed ? '내일 또 오세요' : '룰렛 돌리기';
+  }
   let html = '';
   for (const it of SHOP_ITEMS) {
     let extra = '';
@@ -5257,6 +5372,8 @@ document.getElementById('shop-btn').addEventListener('click', () => {
 // Q-Leap 82: exchange button wiring (once)
 document.getElementById('exchange-btn').addEventListener('click', () => { getAudio(); doExchange(1); });
 document.getElementById('exchange-btn-10').addEventListener('click', () => { getAudio(); doExchange(10); });
+// Q-Leap 88: daily spin
+document.getElementById('spin-btn').addEventListener('click', () => { getAudio(); doDailySpin(); });
 document.getElementById('auto-sell-toggle').addEventListener('click', () => {
   getAudio();
   state.autoSellEnabled = !state.autoSellEnabled;
