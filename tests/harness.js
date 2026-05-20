@@ -12,7 +12,7 @@ const vm = require('vm');
 function makeElementStub() {
   const el = {
     classList: { add() {}, remove() {}, toggle() {}, contains() { return false; } },
-    style: {},
+    style: { setProperty() {}, removeProperty() {}, getPropertyValue() { return ''; } },
     dataset: {},
     children: [],
     textContent: '',
@@ -92,7 +92,7 @@ function loadGame() {
     getNextGoal, getGoldMulBreakdown, sellValue, getPrestigeAdvice, getEnlightenmentGain, getFireInterval, getTotalDPS,
     pushGrowthSnapshot, sparkline, validateAndRepairState,
     // integration-level (DOM calls are stubbed to no-ops):
-    tryMerge, autoMergeStep, emptySlots, spawnShuriken, doExchange, doRitualMerge,
+    tryMerge, autoMergeStep, emptySlots, spawnShuriken, doExchange, doRitualMerge, sellShuriken,
   },
   consts: { FRENZY_MAX, FRENZY_DURATION, TRANSCEND_BASE, DAILY_CHALLENGE_TARGET, SET_DEFS, ACHIEVEMENTS, LEVEL_NAMES, TRANSCEND_NAMES_61_80 },
 };

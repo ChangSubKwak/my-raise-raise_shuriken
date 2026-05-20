@@ -581,53 +581,74 @@ group('save integrity repair (Q-Leap 121)', () => {
 });
 
 group('stress: random ops preserve invariants (property test)', () => {
-  // Deterministic LCG so any failure is reproducible from this seed.
-  let seed = 0x2bad4f3d;
-  const rnd = () => { seed = (Math.imul(seed, 1103515245) + 12345) & 0x7fffffff; return seed / 0x7fffffff; };
-  const realRandom = Math.random;
-  Math.random = rnd;
-  try {
-    const s = withState({
-      upgrades: Object.assign(defaultUpgrades(), { maxShuriken: 6 }), // grid size 12
-      gold: 0, gem: 0, bestLevel: 1, prestigeCount: 0, spawnProgress: 0,
-      grid: new Array(12).fill(null),
-    });
-    s.stats = {};
-    s.codex = {};
-    const size = F.getGridSize();
-    let prevBest = 1;
+  // Run the integrated core loop under several deterministic seeds, mixing
+  // spawn / merge / sell / ritual + occasional variant pieces. Any failure is
+  // reproducible from its seed. Catches emergent corruption unit tests miss.
+  function runSeed(seed0, steps) {
+    let seed = seed0 >>> 0;
+    const rnd = () => { seed = (Math.imul(seed, 1103515245) + 12345) & 0x7fffffff; return seed / 0x7fffffff; };
+    const realRandom = Math.random;
+    Math.random = rnd;
     const violations = [];
-    for (let step = 0; step < 3000; step++) {
-      const roll = rnd();
-      if (roll < 0.55) {
-        F.spawnShuriken();
-      } else {
+    try {
+      const s = withState({
+        upgrades: Object.assign(defaultUpgrades(), { maxShuriken: 6 }), // grid size 12
+        gold: 0, gem: 0, bestLevel: 1, prestigeCount: 0, spawnProgress: 0,
+        grid: new Array(12).fill(null),
+      });
+      s.stats = {}; s.codex = {};
+      const size = F.getGridSize();
+      let prevBest = 1;
+      for (let step = 0; step < steps; step++) {
         const g = G.getState().grid;
-        const a = Math.floor(rnd() * g.length);
-        const b = Math.floor(rnd() * g.length);
-        if (a !== b) F.tryMerge(a, b);
+        const roll = rnd();
+        if (roll < 0.45) {
+          F.spawnShuriken();
+          // occasionally tag a fresh piece as a variant to exercise inheritance/sets
+          if (rnd() < 0.15) {
+            const occupied = []; for (let i = 0; i < g.length; i++) if (g[i]) occupied.push(i);
+            if (occupied.length) {
+              const c = g[occupied[Math.floor(rnd() * occupied.length)]];
+              const k = rnd(); if (k < 0.4) c.golden = true; else if (k < 0.7) c.star = true; else c.dark = true;
+            }
+          }
+        } else if (roll < 0.8) {
+          const a = Math.floor(rnd() * g.length), b = Math.floor(rnd() * g.length);
+          if (a !== b) F.tryMerge(a, b);
+        } else if (roll < 0.92) {
+          const occupied = []; for (let i = 0; i < g.length; i++) if (g[i] && !g[i].locked) occupied.push(i);
+          if (occupied.length) F.sellShuriken(occupied[Math.floor(rnd() * occupied.length)]);
+        } else {
+          F.doRitualMerge(); // no-op if no 3-group
+        }
+        const st = G.getState();
+        if (!isFinite(st.gold) || st.gold < 0) violations.push(`gold@${seed0}:${step}=${st.gold}`);
+        if (!isFinite(st.gem) || st.gem < 0) violations.push(`gem@${seed0}:${step}=${st.gem}`);
+        if (!isFinite(st.bestLevel) || st.bestLevel < 1) violations.push(`best@${seed0}:${step}`);
+        if (st.bestLevel < prevBest) violations.push(`bestRegress@${seed0}:${step}`);
+        prevBest = st.bestLevel;
+        if (st.grid.length > size) violations.push(`gridGrow@${seed0}:${step}`);
+        let gridMax = 0;
+        for (const c of st.grid) {
+          if (c == null) continue;
+          if (typeof c !== 'object' || !isFinite(c.level) || c.level < 1) { violations.push(`piece@${seed0}:${step}`); continue; }
+          if (c.level > gridMax) gridMax = c.level;
+        }
+        if (gridMax > st.bestLevel) violations.push(`bestBelowGrid@${seed0}:${step}`);
+        if (violations.length > 8) break;
       }
-      const st = G.getState();
-      if (!isFinite(st.gold) || st.gold < 0) violations.push(`gold@${step}=${st.gold}`);
-      if (!isFinite(st.gem) || st.gem < 0) violations.push(`gem@${step}=${st.gem}`);
-      if (!isFinite(st.bestLevel) || st.bestLevel < 1) violations.push(`best@${step}=${st.bestLevel}`);
-      if (st.bestLevel < prevBest) violations.push(`bestRegress@${step}`);
-      prevBest = st.bestLevel;
-      if (st.grid.length > size) violations.push(`gridGrow@${step}=${st.grid.length}`);
-      let gridMax = 0;
-      for (const c of st.grid) {
-        if (c == null) continue;
-        if (typeof c !== 'object' || !isFinite(c.level) || c.level < 1) { violations.push(`piece@${step}`); continue; }
-        if (c.level > gridMax) gridMax = c.level;
-      }
-      if (gridMax > st.bestLevel) violations.push(`bestBelowGrid@${step}(${gridMax}>${st.bestLevel})`);
-      if (violations.length > 8) break; // stop early on repeated failure
-    }
-    eq(violations.length, 0, '3000 random ops keep invariants: ' + violations.slice(0, 8).join(' | '));
-    ok(G.getState().bestLevel > 1, 'stress run actually progressed (bestLevel grew)');
-  } finally {
-    Math.random = realRandom;
+    } finally { Math.random = realRandom; }
+    return { violations, best: G.getState().bestLevel };
   }
+  let totalViolations = [];
+  let progressed = false;
+  for (const seed of [0x2bad4f3d, 0x9e3779b9, 0x1234abcd]) {
+    const r = runSeed(seed, 2500);
+    totalViolations = totalViolations.concat(r.violations);
+    if (r.best > 1) progressed = true;
+  }
+  eq(totalViolations.length, 0, 'mixed ops across 3 seeds keep invariants: ' + totalViolations.slice(0, 8).join(' | '));
+  ok(progressed, 'stress runs progressed (bestLevel grew)');
 });
 
 group('findNextAutoMergePair priority', () => {
