@@ -822,6 +822,40 @@ group('all achievement checks are safe (Q-Leap 124)', () => {
   eq(threwRich, 0, 'no achievement check throws on rich state');
 });
 
+group('auto-merge end-to-end via update() (reproduce toggle report)', () => {
+  if (typeof F.update !== 'function') { ok(true, 'update() not exposed — skip'); return; }
+  // unlocked + on, a grid of mergeable pairs; advance time → auto-merge should consume pairs.
+  const s = withState({
+    autoMergeUnlocked: true, autoMerge: true, autoMergeCap: 99, autoMergePriority: 'low',
+    upgrades: Object.assign(defaultUpgrades(), { maxShuriken: 6 }),
+    spawnProgress: 0, prestigeCount: 0, bestLevel: 1,
+    grid: gridFrom([2, 2, 3, 3, 4, 4]), // 3 pairs, grid full (no spawning interference)
+  });
+  s.stats = {};
+  const realRandom = Math.random;
+  Math.random = () => 0.999999; // suppress lucky jumps so merges are deterministic
+  const pairsBefore = G.getState().grid.filter(Boolean).length; // 6 pieces
+  // advance ~5s of game time in 0.1s steps → autoMergeTimer fires every 0.5s
+  for (let i = 0; i < 50; i++) { try { F.update(0.1); } catch (e) { ok(false, 'update threw: ' + e.message); break; } }
+  Math.random = realRandom;
+  const st = G.getState();
+  const occupied = st.grid.filter(Boolean).length;
+  ok(occupied < pairsBefore, `auto-merge consumed pairs while ON (${pairsBefore} → ${occupied})`);
+  ok(st.bestLevel > 1, `auto-merge produced higher levels (bestLevel ${st.bestLevel})`);
+
+  // toggled OFF + not burning → no auto-merging
+  const s2 = withState({
+    autoMergeUnlocked: true, autoMerge: false, burningTimer: 0,
+    upgrades: Object.assign(defaultUpgrades(), { maxShuriken: 6 }),
+    spawnProgress: 0, bestLevel: 5,
+    grid: gridFrom([5, 5, 5, 5, 5, 5]),
+  });
+  s2.stats = {};
+  const before2 = G.getState().grid.filter(Boolean).length;
+  for (let i = 0; i < 50; i++) { try { F.update(0.1); } catch (e) {} }
+  eq(G.getState().grid.filter(Boolean).length, before2, 'no auto-merge when toggled OFF (state respected)');
+});
+
 group('UI structure guard — buttons present + wired (Q-Leap 125)', () => {
   // Every interactive control must exist in the HTML AND have a click handler wired,
   // so a future layout rebuild can't silently drop a button. (Catches the class of
