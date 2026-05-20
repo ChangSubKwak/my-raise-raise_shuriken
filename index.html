@@ -929,7 +929,14 @@
     align-items: center; justify-content: center;
     border-top: 1px solid #2a2a3e;
     transition: background 0.3s;
+    min-height: 0; overflow: hidden; /* contain children within the fixed-height stage column */
   }
+  /* Header is a single horizontally-scrollable strip so the ~19 action buttons
+     never wrap/overflow into adjacent UI (was causing overlap + intercepting clicks). */
+  #grid-header > * { flex: 0 0 auto; white-space: nowrap; }
+  #grid-header::-webkit-scrollbar { height: 5px; }
+  #grid-header::-webkit-scrollbar-thumb { background: #33334a; border-radius: 3px; }
+  #grid-header::-webkit-scrollbar-track { background: transparent; }
   #grid-wrap.full {
     animation: gridFullPulse 1.4s ease-in-out infinite;
   }
@@ -1443,7 +1450,7 @@
       <div id="weekday-banner" title="요일 보너스 — 매일 자정 변경"></div>
     </div>
     <div id="grid-wrap">
-      <div id="grid-header" style="display:flex;justify-content:space-between;align-items:center;width:100%;max-width:320px;font-size:11px;font-weight:700;gap:6px;">
+      <div id="grid-header" style="display:flex;flex-wrap:nowrap;overflow-x:auto;overflow-y:hidden;justify-content:flex-start;align-items:center;width:100%;max-width:380px;font-size:11px;font-weight:700;gap:6px;flex-shrink:0;padding-bottom:4px;">
         <span style="color:#aaa;">보유 <span id="shuriken-count" style="color:#ffd966;">0</span>/<span id="shuriken-max">6</span></span>
         <span style="color:#aaa;">제작 <span id="batch-info" style="color:#a8e6ff;">×1</span></span>
         <span style="color:#aaa;" title="다음 spawn될 표창 레벨">다음 Lv <span id="next-spawn-lv" style="color:#88ddff;">1</span></span>
@@ -4044,7 +4051,6 @@ function update(dt) {
   } else {
     if (_prevFullState) {
       state.spawnProgress = 0;
-      toast('▶ 게이지 재개');
     }
     const interval = getSpawnInterval();
     if (interval > 0 && dt > 0) {
@@ -5510,8 +5516,7 @@ function syncSpawnGaugeAfterMutation() {
     state.spawnProgress = 1;
   } else if (_prevFullState) {
     state.spawnProgress = 0;
-    toast('▶ 게이지 재개');
-    _prevFullState = false; // prevent update() from showing toast again
+    _prevFullState = false; // gauge resumes silently
   }
 }
 function fmtPlaytime(sec) {
