@@ -439,6 +439,40 @@ group('dark absorb records the true level (Q-Leap 116 bugfix)', () => {
   ok(st.codex[7], 'codex registered Lv7 reached via dark absorb');
 });
 
+group('next goal indicator (Q-Leap 117)', () => {
+  withState({ bestLevel: 1 });
+  let g = F.getNextGoal();
+  eq(g.kind, 'level', 'early game → level goal');
+  eq(g.target, 8, 'first goal is Lv8 prestige unlock');
+  withState({ bestLevel: 8 });
+  eq(F.getNextGoal().target, 10, 'after 8 → next is 10');
+  withState({ bestLevel: 35 });
+  eq(F.getNextGoal().target, 40, 'mid game → next milestone 40');
+  withState({ bestLevel: 60 });
+  g = F.getNextGoal();
+  eq(g.kind, 'transcend', 'at 60 → transcend goal');
+  eq(g.target, 5, 'first transcend goal is 5');
+  withState({ bestLevel: 72 }); // transcend 12
+  eq(F.getNextGoal().target, 15, 'transcend 12 → next transcend milestone 15');
+  withState({ bestLevel: 80 }); // transcend 20 (max milestone)
+  eq(F.getNextGoal().kind, 'endless', 'past all goals → endless');
+});
+
+group('gold multiplier breakdown (Q-Leap 118 refactor)', () => {
+  // breakdown product must equal getGoldMul exactly (single source of truth)
+  withState({ prestigeCount: 2, bestLevel: 70, upgrades: Object.assign(defaultUpgrades(), { goldMul: 3 }),
+    grid: gridFrom([20, 20, 20, 21, 22, 20]), goldRushTimer: 5 });
+  const product = F.getGoldMulBreakdown().reduce((a, f) => a * f.mul, 1);
+  approx(product, F.getGoldMul(), 'breakdown product == getGoldMul', 1e-9);
+  // each factor labeled and numeric
+  const bd = F.getGoldMulBreakdown();
+  eq(bd.length, 10, '10 gold-multiplier sources defined');
+  ok(bd.every(f => typeof f.mul === 'number' && f.label), 'every factor has label + numeric mul');
+  // prestige factor reflects count
+  const pf = bd.find(f => f.key === 'prestige');
+  approx(pf.mul, 1 + 2 * 0.5, 'prestige factor = 1 + count*0.5');
+});
+
 group('findNextAutoMergePair priority', () => {
   // low priority: lowest level pair first
   withState({ grid: gridFrom([2, 5, 5, 2, null, null]), autoMergePriority: 'low', autoMergeCap: 99 });

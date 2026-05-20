@@ -2943,20 +2943,43 @@ function getBaseDmg() {
 function getSpawnStartLevel() {
   return 1 + state.upgrades.spawnLevel + getSkillLv('masterSmith');
 }
-function getGoldMul() {
-  const u = 1 + state.upgrades.goldMul * 0.1;
-  const prestige = 1 + state.prestigeCount * 0.5;
-  const skill = 1 + getSkillLv('goldMastery') * 0.15;
-  const weekday = weekdayBonus().goldMul || 1; // Q-Leap 87
-  const frenzyGold = (state.frenzyTimer || 0) > 0 ? 1.2 : 1; // Q-Leap 90: 폭주 중 +20% gold
-  // Q-Leap 95/101/109: 세트 골드 보너스 (삼위일체 +15%, 무지개 +25%, 완전 +50%, 곱연산)
+// Q-Leap 118: 골드 배수 분해 — 누적된 10개 출처를 한 곳에서 정의 (단일 진실 공급원).
+// getGoldMul은 이 곱. 활성(>1) 요소는 명예의 전당에 표시되어 경제가 투명해진다.
+function getGoldMulBreakdown() {
   const sets = getActiveSets();
-  const setGold = (sets.trinity ? 1.15 : 1) * (sets.rainbow ? 1.25 : 1) * (sets.perfect ? 1.5 : 1);
-  const transcend = getTranscendMul(); // Q-Leap 98
-  const goldRush = (state.goldRushTimer || 0) > 0 ? 2 : 1; // Q-Leap 104
-  return u * prestige * skill * weekday * frenzyGold * setGold * transcend * goldRush;
+  return [
+    { key: 'upgrade',   label: '🪙 골드 강화', mul: 1 + state.upgrades.goldMul * 0.1 },
+    { key: 'prestige',  label: '☯ 윤회',       mul: 1 + (state.prestigeCount || 0) * 0.5 },
+    { key: 'skill',     label: '🌌 깨달음',    mul: 1 + getSkillLv('goldMastery') * 0.15 },
+    { key: 'weekday',   label: '📅 요일',      mul: weekdayBonus().goldMul || 1 },           // Q-Leap 87
+    { key: 'frenzy',    label: '⚡ 폭주',      mul: (state.frenzyTimer || 0) > 0 ? 1.2 : 1 }, // Q-Leap 90
+    { key: 'trinity',   label: '🔺 삼위일체',  mul: sets.trinity ? 1.15 : 1 },               // Q-Leap 95
+    { key: 'rainbow',   label: '🌈 무지개',    mul: sets.rainbow ? 1.25 : 1 },               // Q-Leap 101
+    { key: 'perfect',   label: '👑 완전 진형', mul: sets.perfect ? 1.5 : 1 },                // Q-Leap 109
+    { key: 'transcend', label: '🌌 초월',      mul: getTranscendMul() },                      // Q-Leap 98
+    { key: 'goldRush',  label: '💰 골드러시',  mul: (state.goldRushTimer || 0) > 0 ? 2 : 1 }, // Q-Leap 104
+  ];
+}
+function getGoldMul() {
+  return getGoldMulBreakdown().reduce((acc, f) => acc * f.mul, 1);
 }
 const GOLD_RUSH_DURATION = 15;
+// Q-Leap 117: 다음 목표 — 현재 상태에서 가장 가까운 메타 목표 하나 (길잡이).
+function getNextGoal() {
+  const b = state.bestLevel || 1;
+  const levelMilestones = [8, 10, 20, 30, 40, 50, 60];
+  for (const m of levelMilestones) {
+    if (b < m) {
+      const label = m === 8 ? `Lv 8 도달 → 윤회(輪廻) 해금` : `Lv ${m} 「${levelName(m)}」 도달`;
+      return { kind: 'level', label, current: b, target: m };
+    }
+  }
+  const trans = getTranscendence();
+  for (const t of [5, 10, 15, 20]) {
+    if (trans < t) return { kind: 'transcend', label: `초월 ${t} 도달 (Lv ${TRANSCEND_BASE + t})`, current: trans, target: t };
+  }
+  return { kind: 'endless', label: '모든 목표 달성 — 무한의 영역', current: b, target: b };
+}
 
 // Q-Leap 95: 표창 세트 효과 — 그리드 구성을 읽어 활성 세트 id 배열 반환.
 // 매 프레임/합성마다 호출되므로 가볍게 유지 (grid ≤ 30).
@@ -6310,7 +6333,10 @@ function renderHallOfFame() {
   const achUnlocked = Object.keys(state.achievements || {}).length;
   const codexN = Object.keys(state.codex || {}).length;
   const trans = getTranscendence();
+  const goal = getNextGoal(); // Q-Leap 117
+  const goldMul = getGoldMul();
   const rows = [
+    { ico: '🎯', label: '다음 목표', val: goal.kind === 'endless' ? '∞' : `${goal.current}/${goal.target}`, sub: goal.label, featured: true },
     { ico: '🏔', label: '최고 표창', val: `Lv ${state.bestLevel || 1}`, sub: levelName(state.bestLevel || 1), featured: true },
     ...(trans > 0 ? [{ ico: '🌌', label: '초월 경지', val: `초월 ${trans}`, sub: `데미지/골드 +${trans * 2}%`, featured: true }] : []),
     { ico: '🎌', label: '진형 등급', val: getFormationGrade().grade, sub: `평균 Lv ${getFormationGrade().avg.toFixed(1)}` },
@@ -6327,12 +6353,22 @@ function renderHallOfFame() {
     { ico: '⏰', label: '플레이 시간', val: fmtPlaytime(s.playTimeSec || 0) },
   ];
   const content = document.getElementById('hof-content');
-  content.innerHTML = rows.map(r =>
+  let html = rows.map(r =>
     `<div class="hof-row${r.featured ? ' featured' : ''}">
        <span class="hof-ico">${r.ico}</span>
        <span class="hof-label">${r.label}${r.sub ? ` <span style="color:#8a7;font-size:10px;">${r.sub}</span>` : ''}</span>
        <span class="hof-val">${r.val}</span>
      </div>`).join('');
+  // Q-Leap 118: gold multiplier breakdown — show active (>1) factors + total
+  const activeFactors = getGoldMulBreakdown().filter(f => f.mul > 1.0001);
+  if (activeFactors.length > 0) {
+    html += `<div style="margin-top:12px;padding-top:8px;border-top:1px solid #ffcc6633;">
+      <div style="color:#ffcc66;font-size:11px;margin-bottom:6px;">💰 골드 배수 ×${goldMul.toFixed(2)}</div>
+      <div style="display:flex;flex-wrap:wrap;gap:4px;">${
+        activeFactors.map(f => `<span style="font-size:10px;padding:2px 7px;border-radius:8px;background:rgba(255,204,102,0.1);border:1px solid #ffcc6633;color:#ddc;">${f.label} ×${f.mul.toFixed(2)}</span>`).join('')
+      }</div></div>`;
+  }
+  content.innerHTML = html;
   const sub = document.getElementById('hof-sub');
   if (sub) {
     const title = state.prestigeCount >= 10 ? '윤회를 거듭한 초월자'
