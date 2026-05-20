@@ -1447,6 +1447,7 @@
         <span style="color:#aaa;">보유 <span id="shuriken-count" style="color:#ffd966;">0</span>/<span id="shuriken-max">6</span></span>
         <span style="color:#aaa;">제작 <span id="batch-info" style="color:#a8e6ff;">×1</span></span>
         <span style="color:#aaa;" title="다음 spawn될 표창 레벨">다음 Lv <span id="next-spawn-lv" style="color:#88ddff;">1</span></span>
+        <span style="color:#aaa;" title="진형 등급 — 그리드 평균 레벨이 최고기록에 근접할수록 높음">진형 <span id="formation-grade" style="color:#88ddff;font-weight:900;">—</span></span>
         <button id="hint-btn" class="grid-action-btn" title="합칠 수 있는 모든 페어 항상 강조">💡 힌트</button>
         <button id="sell-btn" class="grid-action-btn" title="판매 모드 — 표창을 탭하면 골드로 환전">💸 판매</button>
         <button id="info-btn" class="grid-action-btn" title="정보 모드 — 표창을 탭하면 상세 정보">ℹ 정보</button>
@@ -4146,6 +4147,15 @@ function updateHUD() {
   // Q-Leap 74: storage count
   const stcEl = document.getElementById('storage-count');
   if (stcEl) stcEl.textContent = `${(state.storage || []).length}/3`;
+  // Q-Leap 115: live formation grade with color
+  const fgEl = document.getElementById('formation-grade');
+  if (fgEl) {
+    const fg = getFormationGrade();
+    fgEl.textContent = fg.grade;
+    const gradeColor = { S: '#ffd966', A: '#88ff99', B: '#88ddff', C: '#bbbbbb', '—': '#666' };
+    fgEl.style.color = gradeColor[fg.grade] || '#88ddff';
+    fgEl.style.textShadow = fg.grade === 'S' ? '0 0 6px #ffd96688' : 'none';
+  }
   // Q-Leap 77: Frenzy display
   const frCountEl = document.getElementById('frenzy-count');
   const frBtn = document.getElementById('frenzy-btn');
@@ -5251,6 +5261,19 @@ const TIER_SUBTITLE = {
   gold:   '금의 격을 얻다',
   mystic: '현(玄)의 경지 — 미답의 영역',
 };
+// Q-Leap 114: 표창 어록 — 주요 마일스톤 레벨에 서사적 한 줄 (해당 없으면 '').
+const LEVEL_FLAVOR = {
+  10: '"황금빛이 손끝에 머문다. 여기까지가 시작이었다."',
+  20: '"극(極)에 닿은 자만이 다음을 본다."',
+  30: '"사신(四神)이 깃든 창, 바람이 갈라진다."',
+  40: '"도(道)란 끝이 아니라 길이었음을."',
+  50: '"하늘(天)을 베는 데 망설임이 없다."',
+  60: '"무한(無限). 더는 이름 붙일 것이 없다 — 그러나."',
+  61: '"무한 너머에도 길은 있었다. 초월(超越)의 첫 걸음."',
+  70: '"근원(根源)에 손이 닿는다."',
+  80: '"전설(傳說)이 된 표창술사. 이야기는 여기서 다시 시작된다."',
+};
+function getLevelFlavor(level) { return LEVEL_FLAVOR[level] || ''; }
 function showRecordOverlay(level) {
   const tier = levelTier(level);
   const color = levelColor(level);
@@ -5260,7 +5283,9 @@ function showRecordOverlay(level) {
   document.getElementById('record-tier').style.color = color;
   document.getElementById('record-level').innerHTML =
     `Lv ${level} 「${levelName(level)}」 도달`;
-  document.getElementById('record-sub').textContent = TIER_SUBTITLE[tier.id] || '새 경지';
+  // Q-Leap 114: milestone flavor overrides the generic tier subtitle
+  const flavor = getLevelFlavor(level);
+  document.getElementById('record-sub').textContent = flavor || TIER_SUBTITLE[tier.id] || '새 경지';
   document.getElementById('record-canvas-wrap').style.color = color;
   const rcanvas = document.getElementById('record-canvas');
   drawShurikenSprite(rcanvas, level);

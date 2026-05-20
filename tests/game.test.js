@@ -334,6 +334,44 @@ group('autoMergeStep integration', () => {
   ok(levels.includes(5), 'a Lv5 exists after merging the Lv4 pair');
 });
 
+group('level flavor (Q-Leap 114)', () => {
+  ok(F.getLevelFlavor(10).length > 0, 'Lv10 has flavor');
+  ok(F.getLevelFlavor(60).length > 0, 'Lv60 has flavor');
+  ok(F.getLevelFlavor(61).length > 0, 'Lv61 (transcend) has flavor');
+  ok(F.getLevelFlavor(80).length > 0, 'Lv80 has flavor');
+  eq(F.getLevelFlavor(11), '', 'non-milestone level has no flavor');
+  eq(F.getLevelFlavor(5), '', 'Lv5 no flavor');
+});
+
+group('spawn pause when full (QA edge)', () => {
+  withState({ grid: gridFrom([1, 2, 3, 4, 5, 6]), upgrades: defaultUpgrades() });
+  eq(F.emptySlots().length, 0, 'full grid has 0 empty slots');
+  eq(F.spawnShuriken(), false, 'spawnShuriken returns false when full');
+  withState({ grid: gridFrom([1, 2, 3, null, null, null]), upgrades: defaultUpgrades() });
+  G.getState().stats = G.getState().stats || {};
+  ok(F.spawnShuriken() === true, 'spawnShuriken succeeds with empty slots');
+});
+
+group('exchange affordability (QA edge)', () => {
+  withState({ prestigeCount: 0, gold: 5000, gem: 0 }); // rate 10000, can't afford
+  G.getState().stats = G.getState().stats || {};
+  F.doExchange(1);
+  eq(G.getState().gem, 0, 'no gem gained when gold insufficient');
+  eq(G.getState().gold, 5000, 'gold untouched when unaffordable');
+  withState({ prestigeCount: 0, gold: 25000, gem: 0 });
+  G.getState().stats = G.getState().stats || {};
+  F.doExchange(2); // cost 20000
+  eq(G.getState().gem, 2, 'gained 2 gem');
+  eq(G.getState().gold, 5000, 'gold reduced by 20000');
+});
+
+group('getActiveSets on empty grid (QA defensive)', () => {
+  withState({ grid: gridFrom([null, null, null, null, null, null]), bestLevel: 1 });
+  const sets = F.getActiveSets();
+  eq(Object.keys(sets).length, 0, 'empty grid yields no sets');
+  eq(F.getFormationGrade().grade, '—', 'empty grid grade is —');
+});
+
 group('findNextAutoMergePair priority', () => {
   // low priority: lowest level pair first
   withState({ grid: gridFrom([2, 5, 5, 2, null, null]), autoMergePriority: 'low', autoMergeCap: 99 });
