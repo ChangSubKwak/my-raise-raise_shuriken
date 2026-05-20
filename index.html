@@ -421,6 +421,21 @@
     0%,100% { box-shadow: 0 0 4px #ffaa4444; }
     50%     { box-shadow: 0 0 10px #ffaa44aa; }
   }
+  /* Q-Leap 95: set-effect badges */
+  #set-badges {
+    display: flex; flex-wrap: wrap; gap: 4px; justify-content: center;
+    width: 100%; max-width: 320px; margin: 4px 0 2px; min-height: 0;
+  }
+  #set-badges:empty { display: none; }
+  .set-badge {
+    font-size: 10px; font-weight: 800; padding: 2px 8px; border-radius: 10px;
+    background: rgba(136,221,255,0.14); border: 1px solid #88ddff66; color: #aef;
+    animation: setBadgeIn 0.3s ease-out;
+  }
+  @keyframes setBadgeIn {
+    from { opacity: 0; transform: scale(0.7); }
+    to   { opacity: 1; transform: scale(1); }
+  }
   /* Q-Leap 87: weekday banner */
   #weekday-banner {
     width: 100%; max-width: 100%; margin-top: 4px;
@@ -1400,6 +1415,7 @@
         <button id="meditation-btn" class="grid-action-btn" title="명상 모드 — 모든 자동화 ON">🧘 명상</button>
         <button id="frenzy-btn" class="grid-action-btn" title="폭주 — 합성으로 충전, 가득 차면 발동 시 30s spawn ×2">⚡ 폭주 <span id="frenzy-count">0/100</span></button>
       </div>
+      <div id="set-badges" title="표창 세트 효과 — 그리드 구성으로 활성화"></div>
       <div id="grid"></div>
       <div style="font-size:10px;color:#888;text-align:center;">
         같은 Lv 탭→탭 또는 <b>드래그</b>로 합체 · 길게누름 = 🔒 잠금<br>
@@ -1944,6 +1960,8 @@ function defaultState() {
     dailyChallengeDone: false,
     challengeStreak: 0,
     lastChallengeDoneDate: '',
+    // Q-Leap 97: 일일 미션 전체 완료 보너스 (하루 1회)
+    lastAllQuestsDate: '',
     // Q-Leap 67: 일일 첫 합성 보너스 — daily first merge gem reward
     lastFirstMergeDate: '',
     // Q-Leap 70: 자동 합치기 우선순위 — 'low' (default), 'high', 'preserve'
@@ -2099,6 +2117,10 @@ const ACHIEVEMENTS = [
   { id: 'a_line_25',      name: '정렬의 달인',     icon: '📐', desc: '라인 보너스 25회',      check: (s) => ((s.stats || {}).lineBonuses || 0) >= 25 },
   { id: 'a_chal_done_1',  name: '도전 완수',       icon: '🎯', desc: '일일 도전 첫 완수',     check: (s) => ((s.stats || {}).challengesCompleted || 0) >= 1 },
   { id: 'a_chal_streak_7',name: '도전 연속 7일',   icon: '🏆', desc: '도전 7일 연속 완수',    check: (s) => (s.challengeStreak || 0) >= 7 },
+  { id: 'a_set_1',        name: '진형의 이해',     icon: '🔺', desc: '세트 효과 첫 발동 (배지 확인)', check: (s) => Object.keys((typeof getActiveSets === 'function' ? getActiveSets() : {})).length >= 1 },
+  { id: 'a_codex_mile',   name: '도감의 경지',     icon: '📚', desc: '도감 마일스톤 첫 달성',  check: (s) => Object.keys((s.stats || {}).codexMilestones || {}).length >= 1 },
+  { id: 'a_allquest_1',   name: '완벽한 하루',     icon: '🎊', desc: '일일 미션 전체 완료 1회', check: (s) => ((s.stats || {}).allQuestDays || 0) >= 1 },
+  { id: 'a_allquest_10',  name: '완벽주의자',      icon: '👑', desc: '미션 전체 완료 10일',    check: (s) => ((s.stats || {}).allQuestDays || 0) >= 10 },
 ];
 
 // Q-Leap 41: Daily quest templates. Generator picks 3 each day (seeded by date).
@@ -2184,6 +2206,19 @@ function claimQuestRewards() {
     state.stats.questsCompleted = (state.stats.questsCompleted || 0) + count;
     toast(`📋 미션 ${count}개 완료 · 💎 +${totalGem}`);
     sfx('mergeGold');
+    // Q-Leap 97: 일일 미션 전체 완료 보너스 (하루 1회)
+    const allClaimed = (state.dailyQuests || []).length > 0
+                    && (state.dailyQuests || []).every(q => q.claimed);
+    const today = todayString();
+    if (allClaimed && state.lastAllQuestsDate !== today) {
+      state.lastAllQuestsDate = today;
+      const bonus = 10 * (isChallenge('questBoost') ? 2 : 1);
+      state.gem += bonus;
+      state.stats.allQuestDays = (state.stats.allQuestDays || 0) + 1;
+      setTimeout(() => toast(`🎊 오늘의 미션 전체 완료! 보너스 💎 +${bonus}`), 400);
+      addEvent('milestone', `일일 미션 전체 완료 · 💎+${bonus}`);
+      flashJumpScreen(5);
+    }
     refreshQuestBadge();
     refreshUI();
     checkAchievements();
@@ -2666,6 +2701,7 @@ function load() {
     state.dailyChallengeDone = !!s.dailyChallengeDone;
     state.challengeStreak = +s.challengeStreak || 0;
     state.lastChallengeDoneDate = s.lastChallengeDoneDate || '';
+    state.lastAllQuestsDate = s.lastAllQuestsDate || ''; // Q-Leap 97
     state.autoSellEnabled = !!s.autoSellEnabled;
     state.autoSellThreshold = s.autoSellThreshold || 1;
     state.lastFirstMergeDate = s.lastFirstMergeDate || '';
@@ -2804,8 +2840,41 @@ function getGoldMul() {
   const skill = 1 + getSkillLv('goldMastery') * 0.15;
   const weekday = weekdayBonus().goldMul || 1; // Q-Leap 87
   const frenzyGold = (state.frenzyTimer || 0) > 0 ? 1.2 : 1; // Q-Leap 90: 폭주 중 +20% gold
-  return u * prestige * skill * weekday * frenzyGold;
+  const setGold = hasSet('trinity') ? 1.15 : 1; // Q-Leap 95: 삼위일체
+  return u * prestige * skill * weekday * frenzyGold * setGold;
 }
+
+// Q-Leap 95: 표창 세트 효과 — 그리드 구성을 읽어 활성 세트 id 배열 반환.
+// 매 프레임/합성마다 호출되므로 가볍게 유지 (grid ≤ 30).
+const SET_DEFS = {
+  trinity:       { icon: '🔺', name: '삼위일체',  desc: '같은 Lv 3+ (Lv5↑) · 골드 +15%' },
+  goldFormation: { icon: '✦', name: '황금 진형',  desc: '황금 표창 2+ · 변종 발생 ×1.5' },
+  packed:        { icon: '📦', name: '만재 진형',  desc: '그리드 90%+ · 폭주 충전 ×2' },
+  ascension:     { icon: '🌌', name: '승천 진형',  desc: 'Lv20+ 표창 3+ · 콤보 유지 +1s' },
+};
+function getActiveSets() {
+  const grid = state.grid;
+  const total = grid.length;
+  let count = 0, goldenCount = 0, highCount = 0;
+  const byLevel = {};
+  for (let i = 0; i < total; i++) {
+    const p = grid[i];
+    if (!p) continue;
+    count++;
+    if (p.golden) goldenCount++;
+    if (p.level >= 20) highCount++;
+    byLevel[p.level] = (byLevel[p.level] || 0) + 1;
+  }
+  const sets = {};
+  for (const lv in byLevel) {
+    if (byLevel[lv] >= 3 && +lv >= 5) { sets.trinity = true; break; }
+  }
+  if (goldenCount >= 2) sets.goldFormation = true;
+  if (total > 0 && count / total >= 0.9) sets.packed = true;
+  if (highCount >= 3) sets.ascension = true;
+  return sets;
+}
+function hasSet(id) { return !!getActiveSets()[id]; }
 
 // Q-Leap 87: 요일 보너스 — small persistent bonus depending on day
 const WEEKDAY_BONUS = {
@@ -2955,6 +3024,7 @@ function tryMerge(fromIdx, toIdx) {
     if (isChallenge('goldenLuck')) goldenSpontaneous *= 3;
     if (weekdayBonus().variantMul) goldenSpontaneous *= weekdayBonus().variantMul; // Q-Leap 87
     if ((state.frenzyTimer || 0) > 0) goldenSpontaneous *= 1.5; // Q-Leap 90: 폭주 중 황금 ×1.5
+    if (hasSet('goldFormation')) goldenSpontaneous *= 1.5; // Q-Leap 95: 황금 진형
     if (goldensIn === 2) childGolden = true;
     else if (goldensIn === 1) childGolden = Math.random() < 0.5;
     else childGolden = Math.random() < goldenSpontaneous;
@@ -3025,7 +3095,7 @@ function tryMerge(fromIdx, toIdx) {
     }
     // Combo: chain merges within 2.5s → escalating bonus (Q-Leap 54: comboKeep doubles to 5s)
     state.comboCount = (state.comboCount || 0) + 1;
-    state.comboTimer = (isChallenge('comboKeep') ? 5 : 2.5) + (weekdayBonus().comboPlus || 0); // Q-Leap 87
+    state.comboTimer = (isChallenge('comboKeep') ? 5 : 2.5) + (weekdayBonus().comboPlus || 0) + (hasSet('ascension') ? 1 : 0); // Q-Leap 87 + 95
     state.comboTimerMax = state.comboTimer; // Q-Leap 93
     if (state.comboCount > (state.stats.bestCombo || 0)) state.stats.bestCombo = state.comboCount;
     const comboMult = 1 + (state.comboCount - 1) * 0.2;
@@ -3046,8 +3116,10 @@ function tryMerge(fromIdx, toIdx) {
     state.stats.totalMerges = (state.stats.totalMerges || 0) + 1;
     state.stats.totalGoldEarned = (state.stats.totalGoldEarned || 0) + mergeGold;
     // Q-Leap 77: 폭주 게이지 충전 (캡 도달 시 알림 + Q-Leap 80 auto-fire)
+    // Q-Leap 95: 만재 진형이면 충전 ×2
     if ((state.frenzyCharge || 0) < FRENZY_MAX) {
-      state.frenzyCharge = (state.frenzyCharge || 0) + 1;
+      const chargeGain = hasSet('packed') ? 2 : 1;
+      state.frenzyCharge = Math.min(FRENZY_MAX, (state.frenzyCharge || 0) + chargeGain);
       if (state.frenzyCharge === FRENZY_MAX) {
         if (state.autoFrenzyEnabled) {
           setTimeout(() => activateFrenzy(true), 200);
@@ -3155,6 +3227,19 @@ function tryMerge(fromIdx, toIdx) {
       state.enlightenment = (state.enlightenment || 0) + codexBonus;
       setTimeout(() => toast(`📖 도감 신규 등록: Lv ${newLv} · 깨달음(悟) +${codexBonus}`), 400);
       sfx('spawn');
+      // Q-Leap 96: 도감 완성 마일스톤 — 누적 등록 수가 임계값 도달 시 1회성 보상
+      const codexN = Object.keys(state.codex).length;
+      state.stats.codexMilestones = state.stats.codexMilestones || {};
+      const codexRewards = { 10: { gem: 10, en: 2 }, 25: { gem: 25, en: 5 }, 40: { gem: 50, en: 10 }, 60: { gem: 120, en: 25 } };
+      if (codexRewards[codexN] && !state.stats.codexMilestones[codexN]) {
+        state.stats.codexMilestones[codexN] = true;
+        const rw = codexRewards[codexN];
+        state.gem += rw.gem;
+        state.enlightenment = (state.enlightenment || 0) + rw.en;
+        setTimeout(() => toast(`📚 도감 ${codexN}종 완성! · 💎+${rw.gem} · 깨달음 +${rw.en}`), 560);
+        addEvent('milestone', `도감 ${codexN}종 마일스톤 · 💎+${rw.gem}`);
+        flashJumpScreen(5);
+      }
     }
     flashCell(toIdx);
     // Floating +N gold popup at target cell center
@@ -3775,6 +3860,20 @@ function updateHUD() {
   if (wkBanner) {
     const wb = weekdayBonus();
     if (wb.label) wkBanner.innerHTML = `${wb.icon} ${wb.label}`;
+  }
+  // Q-Leap 95: set-effect badges
+  const setBadges = document.getElementById('set-badges');
+  if (setBadges) {
+    const active = getActiveSets();
+    const ids = Object.keys(active);
+    const sig = ids.join(',');
+    if (setBadges._sig !== sig) {
+      setBadges._sig = sig;
+      setBadges.innerHTML = ids.map(id => {
+        const d = SET_DEFS[id];
+        return d ? `<span class="set-badge" title="${d.desc}">${d.icon} ${d.name}</span>` : '';
+      }).join('');
+    }
   }
   if (state.trialActive) {
     document.getElementById('stage-name').textContent =
