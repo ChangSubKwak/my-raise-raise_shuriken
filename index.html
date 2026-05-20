@@ -1452,6 +1452,7 @@
         <button id="info-btn" class="grid-action-btn" title="정보 모드 — 표창을 탭하면 상세 정보">ℹ 정보</button>
         <button id="merge-all-btn" class="grid-action-btn" title="가능한 모든 같은 Lv 페어를 즉시 합치기 (잠금/상한 적용)">⚡ 모두</button>
         <button id="sort-btn" class="grid-action-btn" title="레벨 순으로 자동 정렬">↕ 정렬</button>
+        <button id="compact-btn" class="grid-action-btn" title="빈칸만 제거 — 표창 배치 순서는 유지">⬇ 압축</button>
         <button id="codex-btn" class="grid-action-btn" title="표창 도감 — 처음 도달한 레벨이 영구 기록됩니다">📖 도감</button>
         <button id="quest-btn" class="grid-action-btn" title="일일 미션 — 매일 3개의 목표, 보석 보상">📋 미션</button>
         <button id="shop-btn" class="grid-action-btn" title="보석 상점 — 일회성 효과 구매">🛒 상점</button>
@@ -5666,6 +5667,10 @@ document.getElementById('sort-btn').addEventListener('click', () => {
   getAudio();
   sortGridByLevel();
 });
+document.getElementById('compact-btn').addEventListener('click', () => {
+  getAudio();
+  compactGrid();
+});
 // Q-Leap 39: Codex modal
 function renderCodex() {
   const grid = document.getElementById('codex-grid');
@@ -6529,6 +6534,21 @@ function sortGridByLevel() {
   const newGrid = new Array(state.grid.length).fill(null);
   for (let i = 0; i < items.length; i++) newGrid[i] = items[i];
   state.grid = newGrid;
+  selectedIdx = -1;
+  sfx('move');
+  renderGrid();
+  save();
+}
+// Q-Leap 113: 압축 — 빈칸만 제거하고 표창의 상대 순서는 보존 (정렬과 달리 배치 유지).
+// 순수 변환이라 테스트 가능. 중앙 보너스(107) 위치가 바뀔 수 있어 정렬과는 다른 선택지.
+function compactGridArray(grid) {
+  const items = grid.filter(c => c !== null);
+  const out = new Array(grid.length).fill(null);
+  for (let i = 0; i < items.length; i++) out[i] = items[i];
+  return out;
+}
+function compactGrid() {
+  state.grid = compactGridArray(state.grid);
   selectedIdx = -1;
   sfx('move');
   renderGrid();

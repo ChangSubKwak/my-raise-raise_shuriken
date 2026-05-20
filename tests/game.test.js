@@ -268,6 +268,72 @@ group('combo cashout (Q-Leap 112)', () => {
   ok(F.comboCashout(20) > F.comboCashout(10) * 3, 'cashout scales super-linearly with peak');
 });
 
+group('compact grid (Q-Leap 113)', () => {
+  // gaps removed, relative order preserved
+  const g = gridFrom([5, null, 3, null, 7, null]);
+  const out = F.compactGridArray(g);
+  eq(out[0].level, 5, 'first piece stays first');
+  eq(out[1].level, 3, 'second piece keeps order');
+  eq(out[2].level, 7, 'third piece keeps order');
+  eq(out[3], null, 'trailing cells null');
+  eq(out.length, 6, 'length preserved');
+  // already-compact grid unchanged in order
+  const g2 = gridFrom([1, 2, 3, null, null, null]);
+  const out2 = F.compactGridArray(g2);
+  eq(out2.map(c => c && c.level).join(','), '1,2,3,,,', 'compact is stable');
+});
+
+group('merge mechanic — integration (tryMerge)', () => {
+  // same level → merge into target at level+1, source cleared, combo +1, bestLevel updated
+  const s = withState({ grid: gridFrom([3, 3, null, null, null, null]), gold: 0, bestLevel: 3, comboCount: 0,
+    upgrades: defaultUpgrades(), prestigeCount: 0 });
+  s.stats = s.stats || {};
+  // Force deterministic merge (no lucky jump): stub Math.random high so jump stays 1.
+  const realRandom = Math.random;
+  Math.random = () => 0.999999; // above all jump/divine/drop thresholds
+  const res = F.tryMerge(0, 1);
+  Math.random = realRandom;
+  const st = G.getState();
+  eq(res, 'merge', 'same-level returns "merge"');
+  eq(st.grid[0], null, 'source cleared after merge');
+  ok(st.grid[1] && st.grid[1].level === 4, 'target becomes level+1');
+  ok(st.gold > 0, 'merge awards gold');
+  eq(st.bestLevel, 4, 'bestLevel updated to 4');
+  ok((st.comboCount || 0) >= 1, 'combo incremented');
+  ok((st.stats.totalMerges || 0) >= 1, 'totalMerges counted');
+});
+
+group('merge mechanic — move to empty', () => {
+  withState({ grid: gridFrom([5, null, null, null, null, null]), upgrades: defaultUpgrades() });
+  const res = F.tryMerge(0, 2);
+  const st = G.getState();
+  eq(res, 'move', 'move to empty returns "move"');
+  eq(st.grid[0], null, 'source emptied on move');
+  ok(st.grid[2] && st.grid[2].level === 5, 'piece relocated to empty target');
+});
+
+group('merge mechanic — swap on different level', () => {
+  withState({ grid: gridFrom([5, 7, null, null, null, null]), upgrades: defaultUpgrades() });
+  const res = F.tryMerge(0, 1);
+  const st = G.getState();
+  eq(res, 'swap', 'different levels return "swap"');
+  eq(st.grid[0].level, 7, 'levels swapped (0)');
+  eq(st.grid[1].level, 5, 'levels swapped (1)');
+});
+
+group('autoMergeStep integration', () => {
+  withState({ grid: gridFrom([4, 4, 2, null, null, null]), autoMergePriority: 'low', autoMergeCap: 99,
+    upgrades: defaultUpgrades(), prestigeCount: 0 });
+  G.getState().stats = G.getState().stats || {};
+  const realRandom = Math.random;
+  Math.random = () => 0.999999;
+  const did = F.autoMergeStep();
+  Math.random = realRandom;
+  ok(did === true, 'autoMergeStep performs a merge when a pair exists');
+  const levels = G.getState().grid.filter(Boolean).map(c => c.level).sort((a, b) => a - b);
+  ok(levels.includes(5), 'a Lv5 exists after merging the Lv4 pair');
+});
+
 group('findNextAutoMergePair priority', () => {
   // low priority: lowest level pair first
   withState({ grid: gridFrom([2, 5, 5, 2, null, null]), autoMergePriority: 'low', autoMergeCap: 99 });
