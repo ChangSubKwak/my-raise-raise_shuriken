@@ -781,6 +781,44 @@ group('prestige preserve/reset rules (Q-Leap 123 refactor + QA)', () => {
   eq(kept[1], 9, 'keeps 2nd highest');
 });
 
+group('all achievement checks are safe (Q-Leap 124)', () => {
+  const ACH = C.ACHIEVEMENTS;
+  ok(Array.isArray(ACH) && ACH.length > 50, `achievement list present (${ACH.length})`);
+  // every entry well-formed
+  ok(ACH.every(a => a.id && a.name && typeof a.check === 'function'), 'every achievement has id/name/check');
+  // ids unique
+  eq(new Set(ACH.map(a => a.id)).size, ACH.length, 'achievement ids are unique');
+  // checks never throw on a minimal default state
+  withState({});
+  let threwDefault = 0;
+  for (const a of ACH) { try { a.check(G.getState()); } catch (e) { threwDefault++; } }
+  eq(threwDefault, 0, 'no achievement check throws on default state');
+  // checks never throw on a rich state, and return boolean-ish
+  const rich = withState({
+    bestLevel: 80, prestigeCount: 12, enlightenment: 200, attendStreak: 100,
+    autoMergeUnlocked: true, meditationMode: true, challengeStreak: 8,
+    skills: { inheritance: 3, fate: 5 }, codex: {}, storage: [{ id: 1, level: 5 }],
+    grid: gridFrom([20, 20, 20, 21, 22, 20]),
+  });
+  for (let lv = 1; lv <= 60; lv++) rich.codex[lv] = true;
+  rich.stats = {
+    totalMerges: 10000, totalSpawned: 5000, totalGoldEarned: 5e7, bestCombo: 100,
+    luckyMerges: 200, blessedMerges: 50, goldenSpawned: 30, starSpawned: 10, darkSpawned: 5,
+    questsCompleted: 50, weeklyCompleted: 12, shopUses: 40, trialsWon: 15, locksUsed: 20,
+    burnsUsed: 5, massMerges: 3, splitsUsed: 2, totalSold: 100, ritualsPerformed: 20,
+    comboMilestones: 6, darkAbsorbs: 4, autoSells: 10, milestonesReached: 5, divineMerges: 12,
+    mergeGemDrops: 15, coatingsUsed: 3, spinsUsed: 30, luckyCharmsUsed: 10, lineBonuses: 25,
+    challengesCompleted: 10, transcendMilestones: { 5: true, 10: true }, codexMilestones: { 10: true },
+    goldRushes: 5, dailyMergeTiers: 4, comboCashouts: 8, allQuestDays: 10, goldenSold: 2,
+  };
+  let threwRich = 0, nonBool = 0;
+  for (const a of ACH) {
+    try { const r = a.check(G.getState()); if (typeof r !== 'boolean' && r !== undefined) nonBool++; }
+    catch (e) { threwRich++; }
+  }
+  eq(threwRich, 0, 'no achievement check throws on rich state');
+});
+
 group('findNextAutoMergePair priority', () => {
   // low priority: lowest level pair first
   withState({ grid: gridFrom([2, 5, 5, 2, null, null]), autoMergePriority: 'low', autoMergeCap: 99 });

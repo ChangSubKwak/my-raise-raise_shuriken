@@ -5158,7 +5158,10 @@ function checkAchievements() {
   if (!state.achievements) state.achievements = {};
   for (const a of ACHIEVEMENTS) {
     if (state.achievements[a.id]) continue;
-    if (a.check(state)) {
+    // Defensive: a single malformed check() must not break the whole loop (Q-Leap 124).
+    let unlocked = false;
+    try { unlocked = !!a.check(state); } catch (e) { unlocked = false; }
+    if (unlocked) {
       state.achievements[a.id] = Date.now();
       _achvQueue.push(a);
     }
