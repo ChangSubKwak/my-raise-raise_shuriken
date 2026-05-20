@@ -89,7 +89,7 @@ function loadGame() {
     dailyMergeRewardFor, getFormationGrade, comboCashout,
     compactGridArray, sortGridByLevel, getLevelFlavor,
     registerCodex, announceTranscendIfNeeded,
-    getNextGoal, getGoldMulBreakdown,
+    getNextGoal, getGoldMulBreakdown, sellValue, getPrestigeGain, getFireInterval, getTotalDPS,
     // integration-level (DOM calls are stubbed to no-ops):
     tryMerge, autoMergeStep, emptySlots, spawnShuriken, doExchange, doRitualMerge,
   },

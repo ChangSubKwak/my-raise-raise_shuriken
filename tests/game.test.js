@@ -473,6 +473,39 @@ group('gold multiplier breakdown (Q-Leap 118 refactor)', () => {
   approx(pf.mul, 1 + 2 * 0.5, 'prestige factor = 1 + count*0.5');
 });
 
+group('sell value formula (Q-Leap 119 refactor + QA)', () => {
+  withState({ prestigeCount: 0, bestLevel: 1, upgrades: defaultUpgrades(), dailyChallengeId: '' });
+  const gm = F.getGoldMul();
+  const base = (lv) => Math.floor(Math.pow(2, lv) * gm * 0.5);
+  eq(F.sellValue({ level: 5 }), base(5), 'plain sell = 2^lv * goldMul * 0.5');
+  eq(F.sellValue({ level: 5, golden: true }), base(5) * 5, 'golden sells 5x');
+  eq(F.sellValue({ level: 5, golden: true, star: true, dark: true }), base(5) * 125, 'all variants → 125x');
+  eq(F.sellValue({ level: 5, locked: true }), 0, 'locked piece is unsellable');
+  eq(F.sellValue(null), 0, 'null → 0');
+});
+
+group('prestige gain formula (QA)', () => {
+  withState({ bestLevel: 7 });
+  eq(F.getPrestigeGain(), 0, 'below Lv8 → 0 prestige gain');
+  withState({ bestLevel: 8 });
+  eq(F.getPrestigeGain(), 1, 'Lv8 → floor(1^1.3) = 1');
+  withState({ bestLevel: 17 });
+  eq(F.getPrestigeGain(), Math.floor(Math.pow(10, 1.3)), 'Lv17 → floor(10^1.3)');
+  // monotonic non-decreasing
+  let prev = 0, ok2 = true;
+  for (let lv = 8; lv <= 60; lv++) { withState({ bestLevel: lv }); const g = F.getPrestigeGain(); if (g < prev) ok2 = false; prev = g; }
+  ok(ok2, 'prestige gain is monotonic non-decreasing in bestLevel');
+});
+
+group('damage scales with fire interval (QA)', () => {
+  withState({ prestigeCount: 0, bestLevel: 1, upgrades: defaultUpgrades(), grid: gridFrom([1, 2, 3, null, null, null]) });
+  const dps = F.getTotalDPS();
+  const interval = F.getFireInterval();
+  let sum = 0;
+  for (const lv of [1, 2, 3]) sum += F.shurikenDmg(lv);
+  approx(dps, sum / interval, 'total DPS = sum(shurikenDmg)/fireInterval', 1e-6);
+});
+
 group('findNextAutoMergePair priority', () => {
   // low priority: lowest level pair first
   withState({ grid: gridFrom([2, 5, 5, 2, null, null]), autoMergePriority: 'low', autoMergeCap: 99 });

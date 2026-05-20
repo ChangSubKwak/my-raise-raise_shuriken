@@ -3154,6 +3154,17 @@ function getPrestigeGain() {
   if (state.bestLevel < 8) return 0;
   return Math.floor(Math.pow(state.bestLevel - 7, 1.3));
 }
+// Q-Leap 119 refactor: single sell-value formula (was duplicated in info modal + sellShuriken).
+// Locked pieces are unsellable → 0. Variants stack ×5 each (golden·star·dark → ×125).
+function sellValue(c) {
+  if (!c || c.locked) return 0;
+  let mul = 1;
+  if (c.golden) mul *= 5;
+  if (c.star)   mul *= 5;
+  if (c.dark)   mul *= 5;
+  if (isChallenge('sellRich')) mul *= 3; // Q-Leap 54
+  return Math.floor(Math.pow(2, c.level) * getGoldMul() * 0.5 * mul);
+}
 function getUpgradeCost(u) {
   const lvl = state.upgrades[u.id];
   return Math.ceil(u.costBase * Math.pow(u.costMul, lvl));
@@ -6215,14 +6226,7 @@ function showShurikenInfo(idx) {
   const synergyBoost = isChallenge('synergy2x') ? 0.4 : 0.2;
   const synergyMul = 1 + adj * synergyBoost;
   const baseGoldRate = 0.5 * Math.pow(2, c.level - 1) * synergyMul * getGoldMul();
-  // sell value (same formula as sellShuriken)
-  const baseValue = Math.pow(2, c.level) * getGoldMul() * 0.5;
-  let mul = 1;
-  if (c.golden) mul *= 5;
-  if (c.star)   mul *= 5;
-  if (c.dark)   mul *= 5;
-  if (isChallenge('sellRich')) mul *= 3;
-  const sellValue = c.locked ? 0 : Math.floor(baseValue * mul);
+  const sellVal = sellValue(c); // Q-Leap 119: shared formula (0 if locked)
   document.getElementById('info-title').textContent = `${levelName(c.level)} (Lv ${c.level})`;
   let traits = '';
   if (c.golden) traits += '<span class="info-trait golden">✦ 황금</span>';
@@ -6234,7 +6238,7 @@ function showShurikenInfo(idx) {
     <div class="info-row"><span class="if-k">현재 골드율</span><span class="if-v">${baseGoldRate.toFixed(1)} / 초${idx === getCenterIndex() ? ' <span style="color:#ffd966">◈중앙+25%</span>' : ''}</span></div>
     <div class="info-row"><span class="if-k">전투 DPS 기여</span><span class="if-v">${(getPieceDpsShare(idx) * 100).toFixed(1)}%</span></div>
     <div class="info-row"><span class="if-k">인접 시너지</span><span class="if-v">${adj}개 (+${Math.round((synergyMul-1)*100)}%)</span></div>
-    <div class="info-row"><span class="if-k">판매가</span><span class="if-v">${c.locked ? '잠김' : '💰 ' + fmt(sellValue)}</span></div>
+    <div class="info-row"><span class="if-k">판매가</span><span class="if-v">${c.locked ? '잠김' : '💰 ' + fmt(sellVal)}</span></div>
     ${traits ? `<div class="info-row"><span class="if-k">속성</span><span class="info-traits">${traits}</span></div>` : ''}
     ${c.golden ? '<div class="info-row" style="color:#ffd966;font-size:11px;">✦ 합성 시 +1 점프 · 판매 5x</div>' : ''}
     ${c.star ? '<div class="info-row" style="color:#ddaaff;font-size:11px;">★ 그리드에 있으면 spawn ×1.43</div>' : ''}
@@ -6552,13 +6556,7 @@ function sellShuriken(idx) {
   const c = state.grid[idx];
   if (!c) return false;
   if (c.locked) { toast('🔒 잠긴 표창은 팔 수 없습니다'); return false; }
-  const baseValue = Math.pow(2, c.level) * getGoldMul() * 0.5;
-  let mul = 1;
-  if (c.golden) mul *= 5;
-  if (c.star)   mul *= 5; // star also sells for 5x; both = 25x
-  if (c.dark)   mul *= 5; // dark also sells 5x (all three = 125x — extremely rare)
-  if (isChallenge('sellRich')) mul *= 3; // Q-Leap 54
-  const value = Math.floor(baseValue * mul);
+  const value = sellValue(c); // Q-Leap 119: shared formula
   if (c.golden) state.stats.goldenSold = (state.stats.goldenSold || 0) + 1;
   if (c.star)   state.stats.starSold   = (state.stats.starSold   || 0) + 1;
   if (c.dark)   state.stats.darkSold   = (state.stats.darkSold   || 0) + 1;
