@@ -419,6 +419,26 @@ group('ritual merge now grants codex (Q-Leap 116 bugfix)', () => {
   ok(G.getState().enlightenment >= 1, 'ritual merge granted codex enlightenment');
 });
 
+group('dark absorb records the true level (Q-Leap 116 bugfix)', () => {
+  // 3-col grid. idx0 = dark Lv5, idx1 = Lv5, idx2 = Lv6.
+  // Merge idx0→idx1 → Lv6, then dark absorbs the Lv6 neighbour at idx2 → Lv7.
+  // Before the fix, bestLevel/codex recorded Lv6, leaving Lv7 unregistered.
+  const s = withState({
+    grid: gridFrom([{ level: 5, dark: true }, 5, 6, null, null, null]),
+    codex: {}, enlightenment: 0, bestLevel: 6, upgrades: defaultUpgrades(), prestigeCount: 0,
+  });
+  s.stats = {};
+  const realRandom = Math.random;
+  Math.random = () => 0.999999; // no lucky jump, no spontaneous variant
+  F.tryMerge(0, 1);
+  Math.random = realRandom;
+  const st = G.getState();
+  eq(st.grid[1].level, 7, 'dark absorb produced a Lv7 piece');
+  eq(st.grid[2], null, 'absorbed neighbour cleared');
+  eq(st.bestLevel, 7, 'bestLevel records the absorbed Lv7 (not pre-absorb Lv6)');
+  ok(st.codex[7], 'codex registered Lv7 reached via dark absorb');
+});
+
 group('findNextAutoMergePair priority', () => {
   // low priority: lowest level pair first
   withState({ grid: gridFrom([2, 5, 5, 2, null, null]), autoMergePriority: 'low', autoMergeCap: 99 });
