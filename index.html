@@ -1241,6 +1241,11 @@
     box-shadow: 0 0 6px #ffd96677, inset 0 0 4px #ffd96622 !important;
     border-color: #ffd96688 !important;
   }
+  /* Q-Leap 107: center cell — subtle gold corner marker (gold +25% for occupant) */
+  .cell.center-cell::before {
+    content: '◈'; position: absolute; top: 1px; left: 2px;
+    font-size: 9px; color: #ffd96699; z-index: 2; pointer-events: none;
+  }
   /* Q-Leap 79: predicted next auto-merge pair — subtle cyan pulse, distinct from hint */
   .cell.auto-predict {
     animation: autoPredictPulse 1.3s ease-in-out infinite;
@@ -2208,6 +2213,7 @@ const ACHIEVEMENTS = [
   { id: 'a_goldrush_1',   name: '골드 러시',       icon: '💰', desc: '골드 러시 첫 발동',     check: (s) => ((s.stats || {}).goldRushes || 0) >= 1 },
   { id: 'a_elite',        name: '정예 진형',       icon: '🎖', desc: '정예 진형 첫 구성',     check: (s) => !!(typeof getActiveSets === 'function' && getActiveSets().elite) },
   { id: 'a_combo_100',    name: '연쇄의 극치',     icon: '🌟', desc: '콤보 ×100 달성',        check: (s) => ((s.stats || {}).bestCombo || 0) >= 100 },
+  { id: 'a_perfect',      name: '완전 진형',       icon: '👑', desc: '4대 세트 동시 구성',     check: (s) => !!(typeof getActiveSets === 'function' && getActiveSets().perfect) },
 ];
 
 // Q-Leap 41: Daily quest templates. Generator picks 3 each day (seeded by date).
@@ -2831,6 +2837,15 @@ function getGridCols() {
 function getSpawnBatch() {
   return Math.min(SPAWN_BATCH_CAP, 1 + state.upgrades.spawnBatch);
 }
+// Q-Leap 107: 그리드 중앙 칸 — 점유한 표창의 골드 기여 +25%. 배치 전략 유도.
+const CENTER_BONUS = 1.25;
+function getCenterIndex() {
+  const cols = getGridCols();
+  const size = getGridSize();
+  const rows = Math.ceil(size / cols);
+  const idx = Math.floor(rows / 2) * cols + Math.floor(cols / 2);
+  return Math.min(idx, size - 1);
+}
 function getFireInterval() {
   const base = 2.0;
   return Math.max(0.25, base * Math.pow(0.95, state.upgrades.firerate));
@@ -2929,9 +2944,9 @@ function getGoldMul() {
   const skill = 1 + getSkillLv('goldMastery') * 0.15;
   const weekday = weekdayBonus().goldMul || 1; // Q-Leap 87
   const frenzyGold = (state.frenzyTimer || 0) > 0 ? 1.2 : 1; // Q-Leap 90: 폭주 중 +20% gold
-  // Q-Leap 95/101: 세트 골드 보너스 (삼위일체 +15%, 무지개 +25%, 곱연산)
+  // Q-Leap 95/101/109: 세트 골드 보너스 (삼위일체 +15%, 무지개 +25%, 완전 +50%, 곱연산)
   const sets = getActiveSets();
-  const setGold = (sets.trinity ? 1.15 : 1) * (sets.rainbow ? 1.25 : 1);
+  const setGold = (sets.trinity ? 1.15 : 1) * (sets.rainbow ? 1.25 : 1) * (sets.perfect ? 1.5 : 1);
   const transcend = getTranscendMul(); // Q-Leap 98
   const goldRush = (state.goldRushTimer || 0) > 0 ? 2 : 1; // Q-Leap 104
   return u * prestige * skill * weekday * frenzyGold * setGold * transcend * goldRush;
@@ -2947,6 +2962,7 @@ const SET_DEFS = {
   ascension:     { icon: '🌌', name: '승천 진형',  desc: 'Lv20+ 표창 3+ · 콤보 유지 +1s' },
   rainbow:       { icon: '🌈', name: '무지개 진형', desc: '황금·별·검은 동시 보유 · 골드 +25%' }, // Q-Leap 101
   elite:         { icon: '🎖', name: '정예 진형',  desc: '5+ 표창 전부 최고Lv−3 이상 · 생성 +10% 가속' }, // Q-Leap 105
+  perfect:       { icon: '👑', name: '완전 진형',  desc: '삼위일체·만재·승천·정예 동시 · 골드 +50%' }, // Q-Leap 109
 };
 function getActiveSets() {
   const grid = state.grid;
@@ -2976,6 +2992,8 @@ function getActiveSets() {
   if (goldenCount >= 1 && starCount >= 1 && darkCount >= 1) sets.rainbow = true;
   // Q-Leap 105: 정예 진형 — 5개 이상 보유 + 가장 낮은 표창도 최고Lv−3 이상
   if (count >= 5 && minLevel >= Math.max(1, (state.bestLevel || 1) - 3)) sets.elite = true;
+  // Q-Leap 109: 완전 진형 — 4대 핵심 세트 동시 활성 (capstone)
+  if (sets.trinity && sets.packed && sets.ascension && sets.elite) sets.perfect = true;
   return sets;
 }
 function hasSet(id) { return !!getActiveSets()[id]; }
@@ -3017,6 +3035,15 @@ function getTotalDPS() {
   let sum = 0;
   for (const c of state.grid) if (c) sum += shurikenDmg(c.level);
   return sum / interval;
+}
+// Q-Leap 108: a piece's share of total grid damage output (0..1). Empty/no-damage → 0.
+function getPieceDpsShare(idx) {
+  const c = state.grid[idx];
+  if (!c) return 0;
+  let total = 0;
+  for (const p of state.grid) if (p) total += shurikenDmg(p.level);
+  if (total <= 0) return 0;
+  return shurikenDmg(c.level) / total;
 }
 function getPrestigeGain() {
   if (state.bestLevel < 8) return 0;
@@ -4192,6 +4219,8 @@ function renderGrid() {
     const p = findNextAutoMergePair();
     if (p) { autoPairSet.add(p[0]); autoPairSet.add(p[1]); }
   }
+  // Q-Leap 107: center cell index (golden-weighted gold)
+  const centerIdx = getCenterIndex();
   // reuse cells if possible
   gridEl.innerHTML = '';
   for (let i = 0; i < size; i++) {
@@ -4200,6 +4229,7 @@ function renderGrid() {
     cell.dataset.idx = i;
     const c = state.grid[i];
     if (!c) cell.classList.add('empty');
+    if (i === centerIdx) cell.classList.add('center-cell'); // Q-Leap 107
     if (selectedIdx === i) cell.classList.add('selected');
     if (state.blessedIdx === i) cell.classList.add('blessed');
     // highlight cells that can merge with the selected one + preview result
@@ -5350,9 +5380,14 @@ function renderAchievements() {
   }
 }
 function getPassiveGoldRate() {
+  // Q-Leap 107: center cell occupant earns CENTER_BONUS× its base gold weight.
+  const centerIdx = getCenterIndex();
   let r = 0;
-  for (const c of state.grid) {
-    if (c) r += 0.5 * Math.pow(2, c.level - 1);
+  for (let i = 0; i < state.grid.length; i++) {
+    const c = state.grid[i];
+    if (!c) continue;
+    const w = 0.5 * Math.pow(2, c.level - 1);
+    r += (i === centerIdx) ? w * CENTER_BONUS : w;
   }
   return r * getGoldMul();
 }
@@ -6081,7 +6116,8 @@ function showShurikenInfo(idx) {
   if (c.locked) traits += '<span class="info-trait locked">🔒 잠금</span>';
   const canStore = !c.locked && (state.storage || []).length < 3;
   document.getElementById('info-body').innerHTML = `
-    <div class="info-row"><span class="if-k">현재 골드율</span><span class="if-v">${baseGoldRate.toFixed(1)} / 초</span></div>
+    <div class="info-row"><span class="if-k">현재 골드율</span><span class="if-v">${baseGoldRate.toFixed(1)} / 초${idx === getCenterIndex() ? ' <span style="color:#ffd966">◈중앙+25%</span>' : ''}</span></div>
+    <div class="info-row"><span class="if-k">전투 DPS 기여</span><span class="if-v">${(getPieceDpsShare(idx) * 100).toFixed(1)}%</span></div>
     <div class="info-row"><span class="if-k">인접 시너지</span><span class="if-v">${adj}개 (+${Math.round((synergyMul-1)*100)}%)</span></div>
     <div class="info-row"><span class="if-k">판매가</span><span class="if-v">${c.locked ? '잠김' : '💰 ' + fmt(sellValue)}</span></div>
     ${traits ? `<div class="info-row"><span class="if-k">속성</span><span class="info-traits">${traits}</span></div>` : ''}

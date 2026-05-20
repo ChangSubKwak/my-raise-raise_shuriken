@@ -187,6 +187,56 @@ group('elite formation set (Q-Leap 105)', () => {
   approx(eliteInt, plainInt * 0.9, 'elite cuts spawn interval 10%', 1e-6);
 });
 
+group('center cell (Q-Leap 107)', () => {
+  // default grid size 6 → 3 cols, 2 rows → center = floor(2/2)*3 + floor(3/2) = 3+1 = 4
+  withState({ upgrades: defaultUpgrades() });
+  eq(F.getCenterIndex(), 4, 'center index for 6-cell grid');
+  // center occupant earns +25%: two identical pieces, one centered vs not
+  withState({ upgrades: defaultUpgrades(), prestigeCount: 0, bestLevel: 1,
+    grid: place(6, { 4: 5 }) });
+  const centered = F.getPassiveGoldRate();
+  withState({ upgrades: defaultUpgrades(), prestigeCount: 0, bestLevel: 1,
+    grid: place(6, { 0: 5 }) });
+  const offCenter = F.getPassiveGoldRate();
+  approx(centered, offCenter * 1.25, 'center cell gives +25% gold weight', 1e-6);
+});
+
+group('piece DPS share (Q-Leap 108)', () => {
+  withState({ prestigeCount: 0, bestLevel: 1, upgrades: defaultUpgrades(),
+    grid: gridFrom([1, 1, null, null, null, null]) });
+  approx(F.getPieceDpsShare(0), 0.5, 'two equal pieces → 50% each');
+  // Lv2 deals 2x Lv1 → share 2/3 vs 1/3
+  withState({ prestigeCount: 0, bestLevel: 1, upgrades: defaultUpgrades(),
+    grid: gridFrom([2, 1, null, null, null, null]) });
+  approx(F.getPieceDpsShare(0), 2 / 3, 'Lv2 contributes 2/3 of DPS', 1e-9);
+  eq(F.getPieceDpsShare(2), 0, 'empty cell contributes 0');
+});
+
+group('perfect formation (Q-Leap 109)', () => {
+  // need trinity (3x same Lv>=5), packed (90%+ full), ascension (3x Lv20+), elite (5+ all >= best-3)
+  // bestLevel 22 → elite threshold 19. Fill all 6 cells with Lv 20,20,20,21,22,20:
+  //   trinity: 20 appears 4x (>=3, >=5) ✓; ascension: all >=20 (>=3) ✓; elite: all >=19, count 6 ✓;
+  //   packed: 6/6 full ✓
+  withState({ bestLevel: 22, grid: gridFrom([20, 20, 20, 21, 22, 20]) });
+  const sets = F.getActiveSets();
+  ok(sets.trinity && sets.packed && sets.ascension && sets.elite, 'all 4 core sets active');
+  ok(sets.perfect, 'perfect formation active when 4 core sets present');
+  // remove one to break packed → no perfect
+  withState({ bestLevel: 22, grid: gridFrom([20, 20, 20, 21, 22, null]) });
+  ok(!F.getActiveSets().perfect, 'no perfect when not packed');
+});
+
+group('perfect gold multiplier (Q-Leap 109)', () => {
+  // perfect grants +50% (×1.5) on top of trinity (×1.15). Compare vs a grid with neither.
+  withState({ prestigeCount: 0, bestLevel: 1, upgrades: defaultUpgrades(),
+    grid: gridFrom([1, 2, null, null, null, null]) });
+  const plain = F.getGoldMul();
+  withState({ prestigeCount: 0, bestLevel: 22, upgrades: defaultUpgrades(),
+    grid: gridFrom([20, 20, 20, 21, 22, 20]) });
+  // transcendence is 0 here (best 22 < 60). trinity ×1.15 × perfect ×1.5
+  approx(F.getGoldMul(), plain * 1.15 * 1.5, 'perfect+trinity stack on gold', 1e-6);
+});
+
 group('findNextAutoMergePair priority', () => {
   // low priority: lowest level pair first
   withState({ grid: gridFrom([2, 5, 5, 2, null, null]), autoMergePriority: 'low', autoMergeCap: 99 });
@@ -270,6 +320,13 @@ function gridFrom(spec) {
     if (typeof x === 'number') return { id: id++, level: x, fireTimer: 0 };
     return Object.assign({ id: id++, fireTimer: 0 }, x);
   });
+}
+// Build an empty grid of `size` with pieces placed at specific indices: place(6, {4: 5}).
+function place(size, map) {
+  const g = new Array(size).fill(null);
+  let id = 1;
+  for (const k of Object.keys(map)) g[+k] = { id: id++, level: map[k], fireTimer: 0 };
+  return g;
 }
 
 // ---- report ----
