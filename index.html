@@ -2825,8 +2825,46 @@ function load() {
     // Q-Leap 89 & 91
     state.luckyCharms = Math.max(0, +s.luckyCharms || 0);
     state.postPrestigeSpawns = Math.max(0, +s.postPrestigeSpawns || 0);
+    validateAndRepairState(); // Q-Leap 121: defensive — repair corrupt/legacy saves
     return true;
   } catch (e) { return false; }
+}
+// Q-Leap 121: 세이브 무결성 검증/복구 — localStorage가 손상되거나 구버전이어도
+// 게임이 깨지지 않도록 핵심 불변식을 강제한다. 복구한 항목 수를 반환(테스트/진단용).
+function validateAndRepairState() {
+  let repairs = 0;
+  const size = getGridSize();
+  // grid must be an array of exactly `size`, each cell null or a valid piece.
+  if (!Array.isArray(state.grid)) { state.grid = new Array(size).fill(null); repairs++; }
+  if (state.grid.length !== size) {
+    const g = new Array(size).fill(null);
+    for (let i = 0; i < Math.min(size, state.grid.length); i++) g[i] = state.grid[i];
+    state.grid = g; repairs++;
+  }
+  for (let i = 0; i < state.grid.length; i++) {
+    const c = state.grid[i];
+    if (c === null) continue;
+    if (typeof c !== 'object' || typeof c.level !== 'number' || !isFinite(c.level) || c.level < 1) {
+      state.grid[i] = null; repairs++; continue;
+    }
+    c.level = Math.floor(c.level);
+    if (typeof c.id !== 'number' || !isFinite(c.id)) { c.id = state.nextShurikenId++; repairs++; }
+    if (typeof c.fireTimer !== 'number' || !isFinite(c.fireTimer)) { c.fireTimer = 0; repairs++; }
+  }
+  // numeric scalars must be finite + in-range.
+  const fixNum = (key, min, fallback) => {
+    if (typeof state[key] !== 'number' || !isFinite(state[key]) || state[key] < min) { state[key] = fallback; repairs++; }
+  };
+  fixNum('gold', 0, 0);
+  fixNum('gem', 0, 0);
+  fixNum('bestLevel', 1, 1);
+  fixNum('enlightenment', 0, 0);
+  fixNum('prestigeCount', 0, 0);
+  if (typeof state.spawnProgress !== 'number' || !isFinite(state.spawnProgress)) { state.spawnProgress = 0; repairs++; }
+  state.spawnProgress = Math.max(0, Math.min(1, state.spawnProgress));
+  // bestLevel must be ≥ the highest level currently on the grid.
+  for (const c of state.grid) if (c && c.level > state.bestLevel) { state.bestLevel = c.level; repairs++; }
+  return repairs;
 }
 
 // ---------- Computed ----------

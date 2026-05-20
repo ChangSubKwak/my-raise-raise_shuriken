@@ -536,6 +536,37 @@ group('sparkline (Q-Leap 120)', () => {
   eq(F.sparkline([3, 3, 3]).length, 3, 'flat series handled');
 });
 
+group('save integrity repair (Q-Leap 121)', () => {
+  // wrong grid length → resized to getGridSize (6 with default upgrades)
+  let s = withState({ upgrades: defaultUpgrades(), grid: [null, null] });
+  let r = F.validateAndRepairState();
+  eq(G.getState().grid.length, 6, 'grid resized to correct size');
+  ok(r >= 1, 'repair counted for grid resize');
+  // invalid piece entries nulled
+  s = withState({ upgrades: defaultUpgrades(), grid: [{ level: 5 }, { level: NaN }, 'garbage', { foo: 1 }, null, null] });
+  F.validateAndRepairState();
+  const g = G.getState().grid;
+  ok(g[0] && g[0].level === 5, 'valid piece kept');
+  eq(g[1], null, 'NaN-level piece nulled');
+  eq(g[2], null, 'non-object cell nulled');
+  eq(g[3], null, 'piece without level nulled');
+  // negative / NaN scalars repaired
+  s = withState({ upgrades: defaultUpgrades(), gold: -50, gem: NaN, bestLevel: 0, spawnProgress: 5, grid: gridFrom([null,null,null,null,null,null]) });
+  F.validateAndRepairState();
+  const st = G.getState();
+  eq(st.gold, 0, 'negative gold → 0');
+  eq(st.gem, 0, 'NaN gem → 0');
+  eq(st.bestLevel, 1, 'bestLevel < 1 → 1');
+  eq(st.spawnProgress, 1, 'spawnProgress clamped to [0,1]');
+  // bestLevel raised to grid max
+  s = withState({ upgrades: defaultUpgrades(), bestLevel: 3, grid: gridFrom([10, 2, null, null, null, null]) });
+  F.validateAndRepairState();
+  eq(G.getState().bestLevel, 10, 'bestLevel raised to highest grid piece');
+  // clean state needs no repair
+  s = withState({ upgrades: defaultUpgrades(), gold: 100, gem: 5, bestLevel: 10, spawnProgress: 0.5, grid: gridFrom([5, 5, null, null, null, null]) });
+  eq(F.validateAndRepairState(), 0, 'clean state → 0 repairs');
+});
+
 group('findNextAutoMergePair priority', () => {
   // low priority: lowest level pair first
   withState({ grid: gridFrom([2, 5, 5, 2, null, null]), autoMergePriority: 'low', autoMergeCap: 99 });
