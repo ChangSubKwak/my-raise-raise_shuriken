@@ -1123,13 +1123,20 @@
 
   /* Spawn bar — time-based generator */
   #spawn-bar {
-    display: flex; gap: 6px; padding: 8px 12px;
+    display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 12px;
     background: rgba(10,10,20,0.6);
     border-top: 1px solid #2a2a3e;
-    align-items: stretch;
+    align-items: stretch; flex-shrink: 0;
   }
+  /* keep the progress bar dominant; controls wrap beneath it on narrow widths
+     so the auto-merge / burn buttons are never clipped off the row. */
+  /* progress bar takes the full first row; controls wrap beneath so the
+     auto-merge / burn buttons are never clipped off the row on narrow widths. */
+  #spawn-bar > #instant-spawn-btn,
+  #spawn-bar > .auto-merge-group,
+  #spawn-bar > #burn-btn { flex: 1 1 auto; }
   #spawn-progress-wrap {
-    flex: 1.8; display: flex; flex-direction: column; gap: 4px; justify-content: center;
+    flex: 1 1 100%; display: flex; flex-direction: column; gap: 4px; justify-content: center;
     cursor: pointer; user-select: none; padding: 4px 6px; border-radius: 8px;
     transition: background 0.08s;
   }
