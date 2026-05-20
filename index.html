@@ -1951,6 +1951,10 @@ function defaultState() {
     // Q-Leap 88: daily spin tracking
     lastSpinDate: '',
     lastSpinReward: 0,
+    // Q-Leap 89: 합성 보장 부적 — 100 합성마다 +1 charge, 다음 합성 +1 점프
+    luckyCharms: 0,
+    // Q-Leap 91: 윤회 직후 신생 부스트 카운터
+    postPrestigeSpawns: 0,
     // Q-Leap 59: 자동 매도 — auto-sell shuriken at or below threshold
     autoSellEnabled: false,
     autoSellThreshold: 1,     // Lv ≤ this → auto-sell (golden/star/dark/locked excluded)
@@ -2073,6 +2077,8 @@ const ACHIEVEMENTS = [
   { id: 'a_coat_1',       name: '황금 코팅장',     icon: '✦', desc: '황금 코팅 첫 사용',     check: (s) => ((s.stats || {}).coatingsUsed || 0) >= 1 },
   { id: 'a_spin_1',       name: '룰렛 첫 회',      icon: '🎲', desc: '일일 룰렛 첫 사용',     check: (s) => ((s.stats || {}).spinsUsed || 0) >= 1 },
   { id: 'a_spin_30',      name: '꾸준한 운',       icon: '🎰', desc: '일일 룰렛 30회',        check: (s) => ((s.stats || {}).spinsUsed || 0) >= 30 },
+  { id: 'a_charm_1',      name: '부적의 손',       icon: '🔮', desc: '합성 보장 부적 첫 소비', check: (s) => ((s.stats || {}).luckyCharmsUsed || 0) >= 1 },
+  { id: 'a_charm_10',     name: '부적 장인',       icon: '🔮', desc: '보장 부적 10회 소비',   check: (s) => ((s.stats || {}).luckyCharmsUsed || 0) >= 10 },
 ];
 
 // Q-Leap 41: Daily quest templates. Generator picks 3 each day (seeded by date).
@@ -2626,6 +2632,9 @@ function load() {
     // Q-Leap 88: spin
     state.lastSpinDate = s.lastSpinDate || '';
     state.lastSpinReward = +s.lastSpinReward || 0;
+    // Q-Leap 89 & 91
+    state.luckyCharms = Math.max(0, +s.luckyCharms || 0);
+    state.postPrestigeSpawns = Math.max(0, +s.postPrestigeSpawns || 0);
     return true;
   } catch (e) { return false; }
 }
@@ -2741,7 +2750,8 @@ function getGoldMul() {
   const prestige = 1 + state.prestigeCount * 0.5;
   const skill = 1 + getSkillLv('goldMastery') * 0.15;
   const weekday = weekdayBonus().goldMul || 1; // Q-Leap 87
-  return u * prestige * skill * weekday;
+  const frenzyGold = (state.frenzyTimer || 0) > 0 ? 1.2 : 1; // Q-Leap 90: 폭주 중 +20% gold
+  return u * prestige * skill * weekday * frenzyGold;
 }
 
 // Q-Leap 87: 요일 보너스 — small persistent bonus depending on day
@@ -2786,7 +2796,13 @@ function spawnShuriken() {
   if (empties.length === 0) return false;
   const idx = empties[Math.floor(Math.random() * empties.length)];
   const id = state.nextShurikenId++;
-  state.grid[idx] = { id, level: getSpawnStartLevel(), fireTimer: rand(0, getFireInterval()) };
+  let startLv = getSpawnStartLevel();
+  // Q-Leap 91: 윤회 직후 spawn 부스트
+  if ((state.postPrestigeSpawns || 0) > 0) {
+    startLv += 2;
+    state.postPrestigeSpawns -= 1;
+  }
+  state.grid[idx] = { id, level: startLv, fireTimer: rand(0, getFireInterval()) };
   freshSpawnIds.add(id);
   state.stats.totalSpawned = (state.stats.totalSpawned || 0) + 1;
   addQuestProgress('spawn', 1);
@@ -2860,6 +2876,13 @@ function tryMerge(fromIdx, toIdx) {
       jump += 1;
       luckyHandUsed = true;
     }
+    // Q-Leap 89: 합성 보장 부적 charge — auto-consume if jump still == 1 (no other boost)
+    let luckyCharmUsed = false;
+    if ((state.luckyCharms || 0) > 0 && jump === 1) {
+      state.luckyCharms -= 1;
+      jump += 1;
+      luckyCharmUsed = true;
+    }
     // Q-Leap 54: jumpBonus challenge — +1 to every merge
     if (isChallenge('jumpBonus')) jump += 1;
     // Q-Leap 78: 신성 합체 — 0.5% chance for +1 (independent of luck), tracked separately
@@ -2878,6 +2901,7 @@ function tryMerge(fromIdx, toIdx) {
     let goldenSpontaneous = 0.005 + getSkillLv('goldenLuck') * 0.002;
     if (isChallenge('goldenLuck')) goldenSpontaneous *= 3;
     if (weekdayBonus().variantMul) goldenSpontaneous *= weekdayBonus().variantMul; // Q-Leap 87
+    if ((state.frenzyTimer || 0) > 0) goldenSpontaneous *= 1.5; // Q-Leap 90: 폭주 중 황금 ×1.5
     if (goldensIn === 2) childGolden = true;
     else if (goldensIn === 1) childGolden = Math.random() < 0.5;
     else childGolden = Math.random() < goldenSpontaneous;
@@ -3004,6 +3028,15 @@ function tryMerge(fromIdx, toIdx) {
       setTimeout(() => toast(`🏵 합성 ${mm}회 마일스톤 · 💎+${milestones[mm]}`), 300);
       addEvent('milestone', `합성 ${mm}회 · 💎+${milestones[mm]}`);
       flashJumpScreen(3);
+    }
+    // Q-Leap 89: 합성 보장 부적 — 매 100 합성마다 1 charge 지급
+    if (mm % 100 === 0) {
+      state.luckyCharms = (state.luckyCharms || 0) + 1;
+      setTimeout(() => toast(`🔮 합성 보장 부적 ×${state.luckyCharms} 획득`), 360);
+      addEvent('lucky', `보장 부적 획득 (총 ×${state.luckyCharms})`);
+    }
+    if (luckyCharmUsed) {
+      state.stats.luckyCharmsUsed = (state.stats.luckyCharmsUsed || 0) + 1;
     }
     // Q-Leap 67: daily first merge bonus (per-day, persists through prestige)
     const today = todayString();
@@ -5091,6 +5124,8 @@ function renderPrestige() {
       state.stage = 1;
       state.enemiesInStage = 0;
       state.runBestLevel = 1;
+      // Q-Leap 91: 윤회 후 첫 10 spawn은 시작 Lv +2 보너스
+      state.postPrestigeSpawns = 10;
       // preserve capital investments on prestige: grid size, spawn batch, luck chance, autoMerge unlock
       const keepMax = state.upgrades.maxShuriken;
       const keepBatch = state.upgrades.spawnBatch;
