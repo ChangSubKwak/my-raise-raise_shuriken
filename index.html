@@ -5333,11 +5333,18 @@ const LEVEL_FLAVOR = {
   80: '"전설(傳說)이 된 표창술사. 이야기는 여기서 다시 시작된다."',
 };
 function getLevelFlavor(level) { return LEVEL_FLAVOR[level] || ''; }
+let _recordRedrawInterval = null; // Q-Leap 121: single redraw interval — prevents leak in auto-play
+let _recordAutoDismiss = null;
 function showRecordOverlay(level) {
   const tier = levelTier(level);
   const color = levelColor(level);
   const overlay = document.getElementById('record-overlay');
   if (!overlay) return;
+  // Q-Leap 121: clear any previous overlay's redraw/auto-dismiss before starting a new one.
+  // In autonomous/auto-merge play records can fire faster than the user dismisses,
+  // so each prior setInterval would otherwise run forever.
+  if (_recordRedrawInterval) { clearInterval(_recordRedrawInterval); _recordRedrawInterval = null; }
+  if (_recordAutoDismiss) { clearTimeout(_recordAutoDismiss); _recordAutoDismiss = null; }
   document.getElementById('record-tier').textContent = tier.name;
   document.getElementById('record-tier').style.color = color;
   document.getElementById('record-level').innerHTML =
@@ -5350,6 +5357,7 @@ function showRecordOverlay(level) {
   drawShurikenSprite(rcanvas, level);
   // re-draw periodically so the sprite animates while the modal is open
   const rcRedraw = setInterval(() => drawShurikenSprite(rcanvas, level), 80);
+  _recordRedrawInterval = rcRedraw;
   overlay.classList.add('show');
   // ambient celebration burst behind the box
   const W = window.innerWidth, H = window.innerHeight;
@@ -5378,12 +5386,15 @@ function showRecordOverlay(level) {
   setTimeout(() => {
     const dismiss = () => {
       overlay.classList.remove('show');
-      clearInterval(rcRedraw);
+      if (_recordRedrawInterval) { clearInterval(_recordRedrawInterval); _recordRedrawInterval = null; }
+      if (_recordAutoDismiss) { clearTimeout(_recordAutoDismiss); _recordAutoDismiss = null; }
       document.removeEventListener('pointerdown', dismiss, true);
       document.removeEventListener('keydown', dismiss, true);
     };
     document.addEventListener('pointerdown', dismiss, true);
     document.addEventListener('keydown', dismiss, true);
+    // Q-Leap 121: auto-dismiss after 5s so unattended/auto-play never leaks the redraw interval
+    _recordAutoDismiss = setTimeout(dismiss, 5000);
   }, 350);
 }
 
