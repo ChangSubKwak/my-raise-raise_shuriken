@@ -651,6 +651,41 @@ group('stress: random ops preserve invariants (property test)', () => {
   ok(progressed, 'stress runs progressed (bestLevel grew)');
 });
 
+group('daily quest generation (QA)', () => {
+  const a = F.generateDailyQuests('2026-5-21');
+  const b = F.generateDailyQuests('2026-5-21');
+  eq(a.length, 3, 'exactly 3 daily quests');
+  eq(JSON.stringify(a), JSON.stringify(b), 'same date → identical quests (deterministic)');
+  const c = F.generateDailyQuests('2026-5-22');
+  ok(JSON.stringify(a) !== JSON.stringify(c), 'different date → different quests');
+  // distinct templates (no duplicate type+target pair)
+  const keys = a.map(q => q.type + ':' + q.target);
+  eq(new Set(keys).size, 3, 'quests are distinct templates');
+  // each quest well-formed
+  ok(a.every(q => q.progress === 0 && q.claimed === false && q.reward && typeof q.target === 'number'), 'quests well-formed (progress 0, unclaimed, reward, numeric target)');
+});
+
+group('mondayOfWeek ISO correctness (QA)', () => {
+  // for any date, the returned key must parse to a Monday (getDay()===1),
+  // be on or before the input, and within the same 6-day window.
+  const parse = (key) => { const [y, m, d] = key.split('-').map(Number); return new Date(y, m - 1, d); };
+  let allMonday = true, allInWindow = true;
+  for (let off = 0; off < 21; off++) {
+    const d = new Date(2026, 4, 1 + off); // May 1..21 2026 spans 3 weeks incl. Sundays
+    const mk = parse(F.mondayOfWeek(d));
+    if (mk.getDay() !== 1) allMonday = false;
+    const diffDays = Math.round((d - mk) / 86400000);
+    if (diffDays < 0 || diffDays > 6) allInWindow = false;
+  }
+  ok(allMonday, 'mondayOfWeek always lands on a Monday (incl. Sundays)');
+  ok(allInWindow, 'returned Monday is within the same ISO week (0..6 days back)');
+  // determinism: same week → same key for Mon..Sun
+  const monday = F.mondayOfWeek(new Date(2026, 4, 18)); // a Monday
+  for (let i = 0; i < 7; i++) {
+    eq(F.mondayOfWeek(new Date(2026, 4, 18 + i)), monday, `day +${i} maps to same week Monday`);
+  }
+});
+
 group('findNextAutoMergePair priority', () => {
   // low priority: lowest level pair first
   withState({ grid: gridFrom([2, 5, 5, 2, null, null]), autoMergePriority: 'low', autoMergeCap: 99 });
