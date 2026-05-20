@@ -2201,6 +2201,8 @@ const ACHIEVEMENTS = [
   { id: 'a_transcend_1',  name: '무한을 넘어',     icon: '🌌', desc: 'Lv 61 도달 (초월)',     check: (s) => (s.bestLevel || 1) >= 61 },
   { id: 'a_transcend_10', name: '초월의 길',       icon: '🌠', desc: '초월 10 (Lv 70)',       check: (s) => (s.bestLevel || 1) >= 70 },
   { id: 'a_transcend_20', name: '전설의 표창술사', icon: '👑', desc: '초월 20 (Lv 80)',       check: (s) => (s.bestLevel || 1) >= 80 },
+  { id: 'a_rainbow',      name: '무지개 진형',     icon: '🌈', desc: '황금·별·검은 동시 보유', check: (s) => !!(typeof getActiveSets === 'function' && getActiveSets().rainbow) },
+  { id: 'a_trans_mile',   name: '초월의 이정표',   icon: '🌌', desc: '초월 마일스톤 첫 달성',  check: (s) => Object.keys((s.stats || {}).transcendMilestones || {}).length >= 1 },
 ];
 
 // Q-Leap 41: Daily quest templates. Generator picks 3 each day (seeded by date).
@@ -2919,7 +2921,9 @@ function getGoldMul() {
   const skill = 1 + getSkillLv('goldMastery') * 0.15;
   const weekday = weekdayBonus().goldMul || 1; // Q-Leap 87
   const frenzyGold = (state.frenzyTimer || 0) > 0 ? 1.2 : 1; // Q-Leap 90: 폭주 중 +20% gold
-  const setGold = hasSet('trinity') ? 1.15 : 1; // Q-Leap 95: 삼위일체
+  // Q-Leap 95/101: 세트 골드 보너스 (삼위일체 +15%, 무지개 +25%, 곱연산)
+  const sets = getActiveSets();
+  const setGold = (sets.trinity ? 1.15 : 1) * (sets.rainbow ? 1.25 : 1);
   const transcend = getTranscendMul(); // Q-Leap 98
   return u * prestige * skill * weekday * frenzyGold * setGold * transcend;
 }
@@ -2931,17 +2935,20 @@ const SET_DEFS = {
   goldFormation: { icon: '✦', name: '황금 진형',  desc: '황금 표창 2+ · 변종 발생 ×1.5' },
   packed:        { icon: '📦', name: '만재 진형',  desc: '그리드 90%+ · 폭주 충전 ×2' },
   ascension:     { icon: '🌌', name: '승천 진형',  desc: 'Lv20+ 표창 3+ · 콤보 유지 +1s' },
+  rainbow:       { icon: '🌈', name: '무지개 진형', desc: '황금·별·검은 동시 보유 · 골드 +25%' }, // Q-Leap 101
 };
 function getActiveSets() {
   const grid = state.grid;
   const total = grid.length;
-  let count = 0, goldenCount = 0, highCount = 0;
+  let count = 0, goldenCount = 0, highCount = 0, starCount = 0, darkCount = 0;
   const byLevel = {};
   for (let i = 0; i < total; i++) {
     const p = grid[i];
     if (!p) continue;
     count++;
     if (p.golden) goldenCount++;
+    if (p.star) starCount++;
+    if (p.dark) darkCount++;
     if (p.level >= 20) highCount++;
     byLevel[p.level] = (byLevel[p.level] || 0) + 1;
   }
@@ -2952,6 +2959,8 @@ function getActiveSets() {
   if (goldenCount >= 2) sets.goldFormation = true;
   if (total > 0 && count / total >= 0.9) sets.packed = true;
   if (highCount >= 3) sets.ascension = true;
+  // Q-Leap 101: 무지개 진형 — 세 변종(황금/별/검은)을 동시에 그리드에 보유
+  if (goldenCount >= 1 && starCount >= 1 && darkCount >= 1) sets.rainbow = true;
   return sets;
 }
 function hasSet(id) { return !!getActiveSets()[id]; }
@@ -2971,6 +2980,20 @@ function weekdayBonus() { return WEEKDAY_BONUS[new Date().getDay()] || {}; }
 const TRANSCEND_BASE = 60;
 function getTranscendence() { return Math.max(0, (state.bestLevel || 1) - TRANSCEND_BASE); }
 function getTranscendMul() { return 1 + getTranscendence() * 0.02; } // +2% dmg & gold per pt
+// Q-Leap 102: 초월 마일스톤 — 초월 5/10/15/20 최초 도달 시 1회성 보석.
+const TRANSCEND_MILESTONES = { 5: 30, 10: 80, 15: 150, 20: 300 };
+function grantTranscendMilestone() {
+  const t = getTranscendence();
+  state.stats.transcendMilestones = state.stats.transcendMilestones || {};
+  if (TRANSCEND_MILESTONES[t] && !state.stats.transcendMilestones[t]) {
+    state.stats.transcendMilestones[t] = true;
+    const gem = TRANSCEND_MILESTONES[t];
+    state.gem += gem;
+    setTimeout(() => toast(`🌌 초월 ${t} 마일스톤 · 💎+${gem}`), 1100);
+    addEvent('milestone', `초월 ${t} 마일스톤 · 💎+${gem}`);
+    flashJumpScreen(5);
+  }
+}
 function shurikenDmg(level) {
   return getBaseDmg() * Math.pow(2, level - 1) * (1 + state.prestigeCount * 0.5) * getTranscendMul();
 }
@@ -3305,6 +3328,8 @@ function tryMerge(fromIdx, toIdx) {
           state.stats.transcendReached = getTranscendence();
           setTimeout(() => toast(`🌌 초월 ${getTranscendence()} — 데미지/골드 +${(getTranscendence() * 2)}%`), 900);
           addEvent('milestone', `초월 ${getTranscendence()} 도달`);
+          // Q-Leap 102: 초월 마일스톤 1회성 보석 보상
+          grantTranscendMilestone();
         }
       }
     }
@@ -6242,6 +6267,8 @@ const HELP_SECTIONS = {
     { title: '🔗 인접 시너지', body: '같은 Lv 표창이 4방향 인접 시 <span class="hk">골드 생성 +20%/인접</span> (max +80%). 색상 dot으로 표시.' },
     { title: '✨ 의식 합성', body: '같은 Lv 4방향 연결 그룹 3+ 시 자동 활성화. 발동 시 <span class="hk">한꺼번에 합쳐 큰 점프</span> (3개→+1, 4개→+2 ...).' },
     { title: '🌟 콤보', body: '2.5초 안 chain merge 시 콤보 ×N. 콤보당 +20% 골드. 5/10/15/20/30/50 마일스톤 보너스.' },
+    { title: '🔺 세트 효과', body: '그리드 구성으로 패시브 발동 (그리드 위 배지 표시): <span class="hk">삼위일체</span>(같은 Lv 3+·골드+15%) / <span class="hk">황금 진형</span>(황금 2+·변종×1.5) / <span class="hk">만재</span>(90%+·폭주충전×2) / <span class="hk">승천</span>(Lv20+ 3개·콤보+1s) / <span class="hk">무지개</span>(황금·별·검은 동시·골드+25%).' },
+    { title: '🌌 초월', body: 'Lv 60 초과 최고기록 = 초월 포인트. <span class="hk">포인트당 데미지·골드 +2%</span> (윤회 보존). 초월 5/10/15/20에 보석 마일스톤. Lv 61~80 고유 명명.' },
   ],
   missions: [
     { title: '📋 일일 미션', body: '매일 자정 9종 중 3개 무작위. 보석 3~6 보상. <span class="hk">매일 다른 조합</span> (date-seeded).' },

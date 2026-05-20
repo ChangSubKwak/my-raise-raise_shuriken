@@ -124,6 +124,44 @@ group('set bonuses (getActiveSets)', () => {
   ok(F.hasSet('ascension'), 'ascension with 3x Lv20+');
 });
 
+group('rainbow set (Q-Leap 101)', () => {
+  // all three variant kinds present (on any pieces) → rainbow
+  withState({ grid: gridFrom([
+    { level: 3, golden: true }, { level: 4, star: true }, { level: 5, dark: true }, null, null, null,
+  ]) });
+  ok(F.hasSet('rainbow'), 'rainbow active with golden+star+dark');
+  withState({ grid: gridFrom([{ level: 3, golden: true }, { level: 4, star: true }, null, null, null, null]) });
+  ok(!F.hasSet('rainbow'), 'no rainbow without a dark variant');
+  // one piece can carry all three → still counts
+  withState({ grid: gridFrom([{ level: 3, golden: true, star: true, dark: true }, null, null, null, null, null]) });
+  ok(F.hasSet('rainbow'), 'rainbow from a single tri-variant piece');
+});
+
+group('rainbow gold multiplier (Q-Leap 101)', () => {
+  withState({ prestigeCount: 0, bestLevel: 1, upgrades: defaultUpgrades(), grid: gridFrom([null, null, null, null, null, null]) });
+  const plain = F.getGoldMul();
+  withState({ prestigeCount: 0, bestLevel: 1, upgrades: defaultUpgrades(),
+    grid: gridFrom([{ level: 3, golden: true, star: true, dark: true }, null, null, null, null, null]) });
+  approx(F.getGoldMul(), plain * 1.25, 'rainbow adds +25% gold');
+});
+
+group('transcend milestones (Q-Leap 102)', () => {
+  const s = withState({ bestLevel: 65, gem: 0 }); // transcend 5
+  s.stats = s.stats || {};
+  F.grantTranscendMilestone();
+  eq(G.getState().gem, 30, 'transcend 5 grants 30 gem');
+  F.grantTranscendMilestone(); // idempotent
+  eq(G.getState().gem, 30, 'transcend 5 milestone is one-shot');
+  const s2 = withState({ bestLevel: 80, gem: 0 }); // transcend 20
+  s2.stats = {};
+  F.grantTranscendMilestone();
+  eq(G.getState().gem, 300, 'transcend 20 grants 300 gem');
+  const s3 = withState({ bestLevel: 63, gem: 0 }); // transcend 3, no milestone
+  s3.stats = {};
+  F.grantTranscendMilestone();
+  eq(G.getState().gem, 0, 'no milestone between thresholds');
+});
+
 group('findNextAutoMergePair priority', () => {
   // low priority: lowest level pair first
   withState({ grid: gridFrom([2, 5, 5, 2, null, null]), autoMergePriority: 'low', autoMergeCap: 99 });
