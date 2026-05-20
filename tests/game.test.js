@@ -162,6 +162,31 @@ group('transcend milestones (Q-Leap 102)', () => {
   eq(G.getState().gem, 0, 'no milestone between thresholds');
 });
 
+group('gold rush multiplier (Q-Leap 104)', () => {
+  withState({ prestigeCount: 0, bestLevel: 1, upgrades: defaultUpgrades(), goldRushTimer: 0, grid: gridFrom([null, null, null, null, null, null]) });
+  const plain = F.getGoldMul();
+  withState({ prestigeCount: 0, bestLevel: 1, upgrades: defaultUpgrades(), goldRushTimer: 10, grid: gridFrom([null, null, null, null, null, null]) });
+  approx(F.getGoldMul(), plain * 2, 'gold rush doubles gold while active');
+});
+
+group('elite formation set (Q-Leap 105)', () => {
+  // bestLevel 10 → threshold 7; 5 pieces all >=7 → elite
+  withState({ bestLevel: 10, grid: gridFrom([7, 8, 9, 10, 7, 8]) });
+  ok(F.hasSet('elite'), 'elite with 5+ pieces all >= bestLevel-3');
+  // one piece below threshold → no elite
+  withState({ bestLevel: 10, grid: gridFrom([7, 8, 9, 10, 3, 8]) });
+  ok(!F.hasSet('elite'), 'no elite if any piece below threshold');
+  // fewer than 5 pieces → no elite
+  withState({ bestLevel: 10, grid: gridFrom([8, 9, 10, null, null, null]) });
+  ok(!F.hasSet('elite'), 'no elite with under 5 pieces');
+  // elite speeds spawn by 10%
+  withState({ bestLevel: 10, upgrades: defaultUpgrades(), grid: gridFrom([8, 8, 8, 8, 8, 8]) });
+  const eliteInt = F.getSpawnInterval();
+  withState({ bestLevel: 10, upgrades: defaultUpgrades(), grid: gridFrom([8, 8, 8, null, null, null]) });
+  const plainInt = F.getSpawnInterval();
+  approx(eliteInt, plainInt * 0.9, 'elite cuts spawn interval 10%', 1e-6);
+});
+
 group('findNextAutoMergePair priority', () => {
   // low priority: lowest level pair first
   withState({ grid: gridFrom([2, 5, 5, 2, null, null]), autoMergePriority: 'low', autoMergeCap: 99 });
