@@ -281,6 +281,16 @@
     from { background-position: 0% 0%; }
     to   { background-position: 100% 100%; }
   }
+  /* Q-Leap 99: transcendent (Lv 61+) — golden-edged cosmos, faster spin */
+  .cell.transcend {
+    box-shadow: 0 0 10px #ffcc66cc, inset 0 0 8px #ffaa4466 !important;
+    border-color: #ffcc66 !important;
+    animation: cosmicSpin 5s linear infinite, transcendPulse 2.2s ease-in-out infinite;
+  }
+  @keyframes transcendPulse {
+    0%,100% { box-shadow: 0 0 8px #ffcc6688, inset 0 0 6px #ffaa4444; }
+    50%     { box-shadow: 0 0 16px #ffcc66ee, inset 0 0 12px #ffaa4488; }
+  }
   @keyframes starsTwinkle {
     0%,100% { opacity: 0.6; transform: rotate(0deg); }
     50%     { opacity: 1; transform: rotate(180deg); }
@@ -346,6 +356,39 @@
   }
   .storage-row .sr-take:active { transform: scale(0.95); }
   .storage-empty { text-align: center; color: #666; padding: 20px; font-size: 11px; }
+
+  /* Q-Leap 100: Hall of Fame modal */
+  #hof-modal {
+    position: fixed; inset: 0; z-index: 254;
+    display: none; align-items: center; justify-content: center;
+    background: rgba(0,0,0,0.9);
+  }
+  #hof-modal.show { display: flex; }
+  .hof-box {
+    background: radial-gradient(ellipse at top, #2a1f3a 0%, #0a0612 100%);
+    border: 2px solid #ffcc66; border-radius: 18px;
+    padding: 20px 24px; max-width: 400px; width: 92%;
+    box-shadow: 0 0 40px rgba(255,204,102,0.3);
+    max-height: 86vh; overflow-y: auto;
+  }
+  .hof-title { font-size: 22px; font-weight: 900; color: #ffcc66; text-align: center; letter-spacing: 4px; margin-bottom: 2px; text-shadow: 0 0 12px #ffaa44aa; }
+  .hof-sub { font-size: 11px; color: #aa99cc; text-align: center; margin-bottom: 16px; }
+  .hof-content { display: flex; flex-direction: column; gap: 8px; margin-bottom: 14px; }
+  .hof-row {
+    display: flex; align-items: center; gap: 10px;
+    background: rgba(255,204,102,0.06); border: 1px solid #ffcc6633;
+    border-radius: 10px; padding: 9px 12px;
+  }
+  .hof-row .hof-ico { font-size: 20px; width: 26px; text-align: center; }
+  .hof-row .hof-label { flex: 1; font-size: 12px; color: #ccbbdd; }
+  .hof-row .hof-val { font-size: 14px; font-weight: 800; color: #fff; text-align: right; }
+  .hof-row.featured { border-color: #ffcc66; background: rgba(255,204,102,0.14); }
+  .hof-close {
+    width: 100%; padding: 10px; border-radius: 10px; cursor: pointer;
+    background: linear-gradient(180deg, #ffcc66, #cc9933); border: none; color: #2a1500;
+    font-family: inherit; font-weight: 900; font-size: 13px;
+  }
+  .hof-close:active { transform: scale(0.97); }
 
   /* Q-Leap 57: help modal */
   #help-modal {
@@ -1414,6 +1457,7 @@
         <button id="storage-btn" class="grid-action-btn" title="보관소 — 그리드 외 3칸 보관">📦 보관 <span id="storage-count">0/3</span></button>
         <button id="meditation-btn" class="grid-action-btn" title="명상 모드 — 모든 자동화 ON">🧘 명상</button>
         <button id="frenzy-btn" class="grid-action-btn" title="폭주 — 합성으로 충전, 가득 차면 발동 시 30s spawn ×2">⚡ 폭주 <span id="frenzy-count">0/100</span></button>
+        <button id="hof-btn" class="grid-action-btn" title="명예의 전당 — 평생 기록 쇼케이스">🏛 전당</button>
       </div>
       <div id="set-badges" title="표창 세트 효과 — 그리드 구성으로 활성화"></div>
       <div id="grid"></div>
@@ -1722,6 +1766,15 @@
   <span class="combo-timer-bar"><span class="combo-timer-fill" id="combo-timer-fill"></span></span>
 </div>
 
+<div id="hof-modal">
+  <div class="hof-box">
+    <div class="hof-title">🏛 명예의 전당</div>
+    <div class="hof-sub" id="hof-sub">한 표창술사의 일대기</div>
+    <div class="hof-content" id="hof-content"></div>
+    <button class="hof-close" id="hof-close">닫기</button>
+  </div>
+</div>
+
 <div id="record-overlay">
   <div class="record-box">
     <div class="record-title">NEW RECORD</div>
@@ -1857,10 +1910,34 @@ const LEVEL_NAMES = [
   '절대(絶對)',          // 59
   '무한(無限)',          // 60
 ];
+// Q-Leap 99: 초월 명명 — Lv 61~80 (무한 너머의 영역)
+const TRANSCEND_NAMES_61_80 = [
+  '초월(超越)',          // 61
+  '겁(劫)',              // 62
+  '윤(輪)',              // 63
+  '허(虛)',              // 64
+  '멸(滅)',              // 65
+  '겁멸(劫滅)',          // 66
+  '창세(創世)',          // 67
+  '종언(終焉)',          // 68
+  '혼돈(混沌)',          // 69
+  '질서(秩序)',          // 70
+  '근원(根源)',          // 71
+  '섭리(攝理)',          // 72
+  '운명(運命)',          // 73
+  '인과(因果)',          // 74
+  '영겁(永劫)',          // 75
+  '무상(無上)',          // 76
+  '지존(至尊)',          // 77
+  '천외천(天外天)',      // 78
+  '신화(神話)',          // 79
+  '전설(傳說)',          // 80
+];
 function levelName(lv) {
   if (lv <= 0) return '미상';
   if (lv < LEVEL_NAMES.length) return LEVEL_NAMES[lv];
-  return `초월 ${lv}창`;
+  if (lv >= 61 && lv <= 80) return TRANSCEND_NAMES_61_80[lv - 61];
+  return `초월계 ${lv}창`;
 }
 
 // ---------- Upgrade Definitions ----------
@@ -2121,6 +2198,9 @@ const ACHIEVEMENTS = [
   { id: 'a_codex_mile',   name: '도감의 경지',     icon: '📚', desc: '도감 마일스톤 첫 달성',  check: (s) => Object.keys((s.stats || {}).codexMilestones || {}).length >= 1 },
   { id: 'a_allquest_1',   name: '완벽한 하루',     icon: '🎊', desc: '일일 미션 전체 완료 1회', check: (s) => ((s.stats || {}).allQuestDays || 0) >= 1 },
   { id: 'a_allquest_10',  name: '완벽주의자',      icon: '👑', desc: '미션 전체 완료 10일',    check: (s) => ((s.stats || {}).allQuestDays || 0) >= 10 },
+  { id: 'a_transcend_1',  name: '무한을 넘어',     icon: '🌌', desc: 'Lv 61 도달 (초월)',     check: (s) => (s.bestLevel || 1) >= 61 },
+  { id: 'a_transcend_10', name: '초월의 길',       icon: '🌠', desc: '초월 10 (Lv 70)',       check: (s) => (s.bestLevel || 1) >= 70 },
+  { id: 'a_transcend_20', name: '전설의 표창술사', icon: '👑', desc: '초월 20 (Lv 80)',       check: (s) => (s.bestLevel || 1) >= 80 },
 ];
 
 // Q-Leap 41: Daily quest templates. Generator picks 3 each day (seeded by date).
@@ -2841,7 +2921,8 @@ function getGoldMul() {
   const weekday = weekdayBonus().goldMul || 1; // Q-Leap 87
   const frenzyGold = (state.frenzyTimer || 0) > 0 ? 1.2 : 1; // Q-Leap 90: 폭주 중 +20% gold
   const setGold = hasSet('trinity') ? 1.15 : 1; // Q-Leap 95: 삼위일체
-  return u * prestige * skill * weekday * frenzyGold * setGold;
+  const transcend = getTranscendMul(); // Q-Leap 98
+  return u * prestige * skill * weekday * frenzyGold * setGold * transcend;
 }
 
 // Q-Leap 95: 표창 세트 효과 — 그리드 구성을 읽어 활성 세트 id 배열 반환.
@@ -2887,8 +2968,12 @@ const WEEKDAY_BONUS = {
   6: { id: 'sat', icon: '✦', label: '토 — 변종 자연발생 ×2',       variantMul: 2 },
 };
 function weekdayBonus() { return WEEKDAY_BONUS[new Date().getDay()] || {}; }
+// Q-Leap 98: 초월 시스템 — Lv 60 초과 최고 기록만큼 초월 포인트 (윤회 무관, bestLevel 파생)
+const TRANSCEND_BASE = 60;
+function getTranscendence() { return Math.max(0, (state.bestLevel || 1) - TRANSCEND_BASE); }
+function getTranscendMul() { return 1 + getTranscendence() * 0.02; } // +2% dmg & gold per pt
 function shurikenDmg(level) {
-  return getBaseDmg() * Math.pow(2, level - 1) * (1 + state.prestigeCount * 0.5);
+  return getBaseDmg() * Math.pow(2, level - 1) * (1 + state.prestigeCount * 0.5) * getTranscendMul();
 }
 function getTotalDPS() {
   const interval = getFireInterval();
@@ -3205,6 +3290,7 @@ function tryMerge(fromIdx, toIdx) {
     if (COMBO_MILESTONES[state.comboCount]) triggerComboMilestone(state.comboCount);
     const isNewRecord = newLv > state.bestLevel;
     if (isNewRecord) {
+      const prevBest = state.bestLevel;
       state.bestLevel = newLv;
       if (newLv % 2 === 0) { state.gem += 1; toast(`💎 +1 (Lv ${newLv} 달성)`); }
       // big celebration overlay — fires once per record
@@ -3212,6 +3298,15 @@ function tryMerge(fromIdx, toIdx) {
       setTimeout(() => showRecordOverlay(newLv), 720);
       // Q-Leap 49: milestone explosions for major thresholds
       triggerMilestone(newLv);
+      // Q-Leap 98: 초월 — Lv 60 초과 신기록마다 초월 포인트 안내
+      if (newLv > TRANSCEND_BASE) {
+        const gained = newLv - Math.max(TRANSCEND_BASE, prevBest);
+        if (gained > 0) {
+          state.stats.transcendReached = getTranscendence();
+          setTimeout(() => toast(`🌌 초월 ${getTranscendence()} — 데미지/골드 +${(getTranscendence() * 2)}%`), 900);
+          addEvent('milestone', `초월 ${getTranscendence()} 도달`);
+        }
+      }
     }
     if (newLv > state.runBestLevel) state.runBestLevel = newLv;
     // Q-Leap 71: auto-lock high-Lv pieces if enabled
@@ -4111,6 +4206,7 @@ function renderGrid() {
       }
       // Q-Leap 66: Lv 60+ cells get cosmic background
       if (c.level >= 60) cell.classList.add('cosmic');
+      if (c.level >= 61) cell.classList.add('transcend'); // Q-Leap 99
       // Q-Leap 60: Lv 30+ cells get floating aura particles (more for higher tier)
       if (c.level >= 30) {
         const tier = levelTier(c.level);
@@ -5767,7 +5863,8 @@ function renderTrophy() {
     const rows = [
       ['💎 윤회 횟수',       state.prestigeCount || 0],
       ['🌌 깨달음(悟)',      state.enlightenment || 0],
-      ['🏔 최고 Lv',         state.bestLevel || 1],
+      ['🏔 최고 Lv',         `${state.bestLevel || 1} (${levelName(state.bestLevel || 1)})`],
+      ['🌌 초월',            getTranscendence() > 0 ? `${getTranscendence()} (+${getTranscendence() * 2}% 뎀/골드)` : '—'],
       ['📖 도감',           `${Object.keys(state.codex || {}).length} / 60`],
       ['✨ 누적 합체',       s.totalMerges || 0],
       ['🏭 누적 생성',       s.totalSpawned || 0],
@@ -6014,6 +6111,55 @@ document.getElementById('storage-close').addEventListener('click', () => {
 });
 document.getElementById('storage-modal').addEventListener('click', (e) => {
   if (e.target.id === 'storage-modal') document.getElementById('storage-modal').classList.remove('show');
+});
+// Q-Leap 100: Hall of Fame
+function renderHallOfFame() {
+  const s = state.stats || {};
+  const achUnlocked = Object.keys(state.achievements || {}).length;
+  const codexN = Object.keys(state.codex || {}).length;
+  const trans = getTranscendence();
+  const rows = [
+    { ico: '🏔', label: '최고 표창', val: `Lv ${state.bestLevel || 1}`, sub: levelName(state.bestLevel || 1), featured: true },
+    ...(trans > 0 ? [{ ico: '🌌', label: '초월 경지', val: `초월 ${trans}`, sub: `데미지/골드 +${trans * 2}%`, featured: true }] : []),
+    { ico: '💎', label: '윤회 횟수', val: `${state.prestigeCount || 0}회` },
+    { ico: '🌟', label: '깨달음(悟)', val: `${state.enlightenment || 0}` },
+    { ico: '📖', label: '도감 수집', val: `${codexN} / 60` },
+    { ico: '✨', label: '누적 합체', val: fmt(s.totalMerges || 0) },
+    { ico: '🏭', label: '누적 생성', val: fmt(s.totalSpawned || 0) },
+    { ico: '💰', label: '누적 골드', val: fmt(s.totalGoldEarned || 0) },
+    { ico: '⚡', label: '최고 콤보', val: `×${s.bestCombo || 0}` },
+    { ico: '✦', label: '황금/별/검은', val: `${s.goldenSpawned || 0}/${s.starSpawned || 0}/${s.darkSpawned || 0}` },
+    { ico: '🏆', label: '명예(업적)', val: `${achUnlocked} / ${ACHIEVEMENTS.length}` },
+    { ico: '📅', label: '최고 출석', val: `${state.attendStreak || 0}일 연속` },
+    { ico: '⏰', label: '플레이 시간', val: fmtPlaytime(s.playTimeSec || 0) },
+  ];
+  const content = document.getElementById('hof-content');
+  content.innerHTML = rows.map(r =>
+    `<div class="hof-row${r.featured ? ' featured' : ''}">
+       <span class="hof-ico">${r.ico}</span>
+       <span class="hof-label">${r.label}${r.sub ? ` <span style="color:#8a7;font-size:10px;">${r.sub}</span>` : ''}</span>
+       <span class="hof-val">${r.val}</span>
+     </div>`).join('');
+  const sub = document.getElementById('hof-sub');
+  if (sub) {
+    const title = state.prestigeCount >= 10 ? '윤회를 거듭한 초월자'
+                : trans > 0 ? '무한을 넘어선 자'
+                : state.bestLevel >= 40 ? '도(道)에 이른 표창술사'
+                : state.bestLevel >= 20 ? '극창의 경지에 선 자'
+                : '수행 중인 표창술사';
+    sub.textContent = title;
+  }
+}
+document.getElementById('hof-btn').addEventListener('click', () => {
+  getAudio();
+  renderHallOfFame();
+  document.getElementById('hof-modal').classList.add('show');
+});
+document.getElementById('hof-close').addEventListener('click', () => {
+  document.getElementById('hof-modal').classList.remove('show');
+});
+document.getElementById('hof-modal').addEventListener('click', (e) => {
+  if (e.target.id === 'hof-modal') document.getElementById('hof-modal').classList.remove('show');
 });
 // Q-Leap 77: frenzy activation (shared by manual click + Q-Leap 80 auto)
 function activateFrenzy(auto) {
