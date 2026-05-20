@@ -506,6 +506,36 @@ group('damage scales with fire interval (QA)', () => {
   approx(dps, sum / interval, 'total DPS = sum(shurikenDmg)/fireInterval', 1e-6);
 });
 
+group('growth snapshot (Q-Leap 120)', () => {
+  // new day appends
+  let log = F.pushGrowthSnapshot([], { date: '2026-5-21', best: 10, prestige: 1 });
+  eq(log.length, 1, 'first snapshot appended');
+  log = F.pushGrowthSnapshot(log, { date: '2026-5-22', best: 14, prestige: 1 });
+  eq(log.length, 2, 'next day appended');
+  // same day updates to the higher record (not appended)
+  log = F.pushGrowthSnapshot(log, { date: '2026-5-22', best: 12, prestige: 2 });
+  eq(log.length, 2, 'same day does not append a new entry');
+  eq(log[1].best, 14, 'same day keeps the higher best (14 > 12)');
+  eq(log[1].prestige, 2, 'same day keeps the higher prestige');
+  // cap enforced
+  let big = [];
+  for (let d = 1; d <= 20; d++) big = F.pushGrowthSnapshot(big, { date: '2026-6-' + d, best: d, prestige: 0 }, 14);
+  eq(big.length, 14, 'log capped at 14 entries');
+  eq(big[big.length - 1].best, 20, 'newest entry retained after capping');
+  eq(big[0].best, 7, 'oldest beyond cap dropped (kept last 14: days 7..20)');
+});
+
+group('sparkline (Q-Leap 120)', () => {
+  eq(F.sparkline([]), '', 'empty → empty string');
+  eq(F.sparkline([5]).length, 1, 'single value → one block');
+  const s = F.sparkline([1, 2, 3, 4, 5, 6, 7, 8]);
+  eq(s.length, 8, 'one block per value');
+  eq(s[0], '▁', 'min value → lowest block');
+  eq(s[s.length - 1], '█', 'max value → highest block');
+  // flat series doesn't crash (span 0 guarded)
+  eq(F.sparkline([3, 3, 3]).length, 3, 'flat series handled');
+});
+
 group('findNextAutoMergePair priority', () => {
   // low priority: lowest level pair first
   withState({ grid: gridFrom([2, 5, 5, 2, null, null]), autoMergePriority: 'low', autoMergeCap: 99 });

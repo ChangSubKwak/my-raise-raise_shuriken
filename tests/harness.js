@@ -90,6 +90,7 @@ function loadGame() {
     compactGridArray, sortGridByLevel, getLevelFlavor,
     registerCodex, announceTranscendIfNeeded,
     getNextGoal, getGoldMulBreakdown, sellValue, getPrestigeGain, getFireInterval, getTotalDPS,
+    pushGrowthSnapshot, sparkline,
     // integration-level (DOM calls are stubbed to no-ops):
     tryMerge, autoMergeStep, emptySlots, spawnShuriken, doExchange, doRitualMerge,
   },

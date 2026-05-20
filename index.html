@@ -2036,6 +2036,7 @@ function defaultState() {
     weekStartDate: '',
     // Q-Leap 52: 활동 로그 — last 30 noteworthy events
     eventLog: [],             // [{type, msg, time}]
+    growthLog: [],            // Q-Leap 120: 일별 성장 스냅샷 [{date, best, prestige}] (최근 14일)
     // Q-Leap 54: 일일 도전 — date-seeded daily modifier
     dailyChallengeId: '',     // template id
     dailyChallengeDate: '',
@@ -2787,6 +2788,7 @@ function load() {
     state.weeklyQuest = s.weeklyQuest || null;
     state.weekStartDate = s.weekStartDate || '';
     state.eventLog = Array.isArray(s.eventLog) ? s.eventLog.slice(-30) : [];
+    state.growthLog = Array.isArray(s.growthLog) ? s.growthLog.slice(-GROWTH_LOG_CAP) : []; // Q-Leap 120
     state.dailyChallengeId = s.dailyChallengeId || '';
     state.dailyChallengeDate = s.dailyChallengeDate || '';
     // Q-Leap 94: challenge completion tracking
@@ -2979,6 +2981,32 @@ function getNextGoal() {
     if (trans < t) return { kind: 'transcend', label: `초월 ${t} 도달 (Lv ${TRANSCEND_BASE + t})`, current: trans, target: t };
   }
   return { kind: 'endless', label: '모든 목표 달성 — 무한의 영역', current: b, target: b };
+}
+// Q-Leap 120: 성장 기록 — 하루 1개 스냅샷, 최근 cap일만 보존. 같은 날은 최댓값 갱신.
+const GROWTH_LOG_CAP = 14;
+function pushGrowthSnapshot(log, entry, cap = GROWTH_LOG_CAP) {
+  const out = Array.isArray(log) ? log.slice() : [];
+  const last = out[out.length - 1];
+  if (last && last.date === entry.date) {
+    // same day → keep the higher record
+    out[out.length - 1] = { date: entry.date, best: Math.max(last.best, entry.best), prestige: Math.max(last.prestige, entry.prestige) };
+  } else {
+    out.push({ date: entry.date, best: entry.best, prestige: entry.prestige });
+  }
+  return out.slice(-cap);
+}
+function recordGrowth() {
+  state.growthLog = pushGrowthSnapshot(state.growthLog, {
+    date: todayString(), best: state.bestLevel || 1, prestige: state.prestigeCount || 0,
+  });
+}
+// Pure: render a list of numbers as a unicode block sparkline.
+function sparkline(values) {
+  if (!values || values.length === 0) return '';
+  const blocks = '▁▂▃▄▅▆▇█';
+  const max = Math.max(...values), min = Math.min(...values);
+  const span = max - min || 1;
+  return values.map(v => blocks[Math.min(blocks.length - 1, Math.floor(((v - min) / span) * (blocks.length - 1)))]).join('');
 }
 
 // Q-Leap 95: 표창 세트 효과 — 그리드 구성을 읽어 활성 세트 id 배열 반환.
@@ -6372,6 +6400,17 @@ function renderHallOfFame() {
         activeFactors.map(f => `<span style="font-size:10px;padding:2px 7px;border-radius:8px;background:rgba(255,204,102,0.1);border:1px solid #ffcc6633;color:#ddc;">${f.label} ×${f.mul.toFixed(2)}</span>`).join('')
       }</div></div>`;
   }
+  // Q-Leap 120: growth sparkline (best level over recent days)
+  const gl = state.growthLog || [];
+  if (gl.length >= 2) {
+    const spark = sparkline(gl.map(e => e.best));
+    const first = gl[0], last = gl[gl.length - 1];
+    html += `<div style="margin-top:12px;padding-top:8px;border-top:1px solid #ffcc6633;">
+      <div style="color:#ffcc66;font-size:11px;margin-bottom:4px;">📈 성장 기록 (최근 ${gl.length}일)</div>
+      <div style="font-size:18px;letter-spacing:2px;color:#aef;line-height:1;">${spark}</div>
+      <div style="font-size:10px;color:#8a7;margin-top:3px;">Lv ${first.best} → Lv ${last.best} · 윤회 ${first.prestige}→${last.prestige}</div>
+    </div>`;
+  }
   content.innerHTML = html;
   const sub = document.getElementById('hof-sub');
   if (sub) {
@@ -6869,7 +6908,8 @@ function boot() {
   setInterval(save, 10000);
   setInterval(repaintGridSprites, 100);
   // Q-Leap 41: check daily-quest rollover every minute
-  setInterval(() => { ensureDailyQuests(); ensureWeeklyQuest(); ensureDailyChallenge(); refreshQuestBadge(); refreshUI(); }, 60000);
+  setInterval(() => { ensureDailyQuests(); ensureWeeklyQuest(); ensureDailyChallenge(); recordGrowth(); refreshQuestBadge(); refreshUI(); }, 60000);
+  recordGrowth(); // Q-Leap 120: snapshot at boot
   requestAnimationFrame(gameLoop);
 }
 document.getElementById('offline-claim').addEventListener('click', () => {
