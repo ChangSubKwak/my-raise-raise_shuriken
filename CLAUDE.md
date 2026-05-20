@@ -25,6 +25,22 @@ node -e "const s=require('fs').readFileSync('index.html','utf8').match(/<script>
 
 Silent JS errors are the dominant failure mode in a single-file game. Run this before declaring any change complete.
 
+## Tests
+
+```bash
+npm run check     # parse (above) + pure-logic test suite
+npm test          # tests only
+```
+
+Zero-install: `tests/harness.js` reads `index.html`, extracts the `<script>`, stubs the
+browser (DOM/localStorage/Web Audio via a recursive proxy), and evaluates it in a `vm`
+context with `boot()` suppressed. Block-scoped `const`/`let` functions are captured into
+`globalThis.__GAME__` by code appended to the script (they don't leak onto the vm context
+otherwise). `tests/game.test.js` then asserts on the **pure** logic only — damage/gold
+formulas, transcendence, set bonuses, auto-merge priority, line bonus, daily-spin/exchange,
+level naming, spawn interval. DOM-rendering paths are intentionally out of scope. Add a test
+whenever you add a deterministic formula or a new derived stat.
+
 ## Architecture (v2 merge)
 
 **Two-region layout, by design**:

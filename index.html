@@ -2231,10 +2231,9 @@ function questSeed(dateStr) {
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
 }
-function todayString() {
-  const d = new Date();
-  return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
-}
+// todayString and dateKey() share one YYYY-M-D format so all daily-reset
+// comparisons (quests, spin, attendance, challenge) stay consistent.
+function todayString() { return dateKey(); }
 function generateDailyQuests(dateStr) {
   const rand = questSeed(dateStr);
   // sample 3 distinct templates (by index)
@@ -3015,6 +3014,7 @@ function spawnShuriken() {
   addQuestProgress('spawn', 1);
   sfx('spawn');
   renderGrid();
+  checkLineBonus(); // Q-Leap 92: a spawn can complete a row/column
   checkAchievements();
   // Q-Leap 59: auto-sell newly-spawned if eligible (defer to end of tick to avoid recursion)
   if (state.autoSellEnabled && state.grid[idx] && state.grid[idx].level <= (state.autoSellThreshold || 1)) {
@@ -5459,6 +5459,8 @@ function renderPrestige() {
       // reset blessed cell — new run, fresh blessing
       state.blessedIdx = -1;
       state.blessedTimer = 0;
+      // Q-Leap 92: clear stale line-bonus claims so a fresh grid can re-trigger
+      state._claimedLines = {};
       startStage();
       // Q-Leap 43: start trial round immediately after prestige
       startTrial();
