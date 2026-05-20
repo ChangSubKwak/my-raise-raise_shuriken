@@ -88,8 +88,9 @@ function loadGame() {
     grantTranscendMilestone, getCenterIndex, getPieceDpsShare, getPassiveGoldRate,
     dailyMergeRewardFor, getFormationGrade, comboCashout,
     compactGridArray, sortGridByLevel, getLevelFlavor,
+    registerCodex, announceTranscendIfNeeded,
     // integration-level (DOM calls are stubbed to no-ops):
-    tryMerge, autoMergeStep, emptySlots, spawnShuriken, doExchange,
+    tryMerge, autoMergeStep, emptySlots, spawnShuriken, doExchange, doRitualMerge,
   },
   consts: { FRENZY_MAX, FRENZY_DURATION, TRANSCEND_BASE, DAILY_CHALLENGE_TARGET, SET_DEFS, ACHIEVEMENTS, LEVEL_NAMES, TRANSCEND_NAMES_61_80 },
 };

@@ -372,6 +372,53 @@ group('getActiveSets on empty grid (QA defensive)', () => {
   eq(F.getFormationGrade().grade, '—', 'empty grid grade is —');
 });
 
+group('registerCodex shared helper (Q-Leap 116 refactor)', () => {
+  // first reach grants enlightenment; re-reach is a no-op
+  withState({ codex: {}, enlightenment: 0, bestLevel: 5 });
+  G.getState().stats = G.getState().stats || {};
+  F.registerCodex(5);
+  const e1 = G.getState().enlightenment;
+  ok(e1 >= 1, 'new codex entry grants enlightenment');
+  F.registerCodex(5);
+  eq(G.getState().enlightenment, e1, 're-registering same level is a no-op');
+  // hitting the 10-entry milestone grants gem
+  const s = withState({ enlightenment: 0, gem: 0, bestLevel: 60 });
+  s.stats = {};
+  s.codex = {};
+  for (let lv = 1; lv <= 9; lv++) s.codex[lv] = true; // 9 pre-registered
+  F.registerCodex(10); // 10th → milestone {gem:10}
+  eq(G.getState().gem, 10, 'codex 10-milestone grants 10 gem via shared helper');
+});
+
+group('transcend announce helper (Q-Leap 116 refactor)', () => {
+  const s = withState({ bestLevel: 65, gem: 0 }); // transcend 5
+  s.stats = {};
+  // simulate a new record from 64 → 65 (already at 65); use prevBest 60
+  F.announceTranscendIfNeeded(65, 60);
+  eq(G.getState().gem, 30, 'announce grants the transcend-5 milestone (30 gem)');
+  // below transcend base → nothing
+  const s2 = withState({ bestLevel: 40, gem: 0 });
+  s2.stats = {};
+  F.announceTranscendIfNeeded(40, 30);
+  eq(G.getState().gem, 0, 'no transcend announce below Lv 60');
+});
+
+group('ritual merge now grants codex (Q-Leap 116 bugfix)', () => {
+  // 3 connected same-level pieces in a row → ritual merges to a NEW level → codex registers.
+  // grid 6 = 3 cols × 2 rows. Row 0 = [5,5,5] are 4-neighbour connected.
+  const s = withState({ grid: gridFrom([5, 5, 5, null, null, null]),
+    codex: {}, enlightenment: 0, bestLevel: 5, upgrades: defaultUpgrades(), prestigeCount: 0 });
+  s.stats = {};
+  const before = Object.keys(G.getState().codex).length;
+  const realRandom = Math.random;
+  Math.random = () => 0.999999;
+  F.doRitualMerge();
+  Math.random = realRandom;
+  const after = Object.keys(G.getState().codex).length;
+  ok(after > before, 'ritual merge registered a new codex entry (was silently skipped before)');
+  ok(G.getState().enlightenment >= 1, 'ritual merge granted codex enlightenment');
+});
+
 group('findNextAutoMergePair priority', () => {
   // low priority: lowest level pair first
   withState({ grid: gridFrom([2, 5, 5, 2, null, null]), autoMergePriority: 'low', autoMergeCap: 99 });

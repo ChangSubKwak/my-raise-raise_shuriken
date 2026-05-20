@@ -2419,14 +2419,7 @@ const SHOP_ITEMS = [
       flashCell(minIdx);
       renderGrid();
       sfx('mergeGold');
-      // codex check (same as merge path)
-      if (!state.codex) state.codex = {};
-      const lv = state.grid[minIdx].level;
-      if (!state.codex[lv]) {
-        state.codex[lv] = true;
-        state.enlightenment = (state.enlightenment || 0) + 1;
-        setTimeout(() => toast(`📖 도감 신규 등록: Lv ${lv} · 깨달음(悟) +1`), 400);
-      }
+      registerCodex(state.grid[minIdx].level); // Q-Leap 116: shared codex path (milestones + weekday bonus)
       return true;
     },
   },
@@ -2685,23 +2678,22 @@ function doRitualMerge() {
   else if (starsIn === 1) childStar = Math.random() < 0.7;
   state.grid[toIdx] = { id: state.nextShurikenId++, level: newLv, fireTimer: 0, golden: childGolden, star: childStar };
   if (newLv > state.bestLevel) {
+    const prevBest = state.bestLevel;
     state.bestLevel = newLv;
     setTimeout(() => showRecordOverlay(newLv), 720);
     triggerMilestone(newLv);
+    announceTranscendIfNeeded(newLv, prevBest); // Q-Leap 116: ritual path now grants transcend milestones too
   }
   if (newLv > state.runBestLevel) state.runBestLevel = newLv;
-  if (!state.codex) state.codex = {};
-  if (!state.codex[newLv]) {
-    state.codex[newLv] = true;
-    const codexBonus = 1 + Math.floor(getSkillLv('codexBoost') / 2);
-    state.enlightenment = (state.enlightenment || 0) + codexBonus;
-    setTimeout(() => toast(`📖 도감 신규 등록: Lv ${newLv} · 깨달음(悟) +${codexBonus}`), 400);
-  }
+  registerCodex(newLv); // Q-Leap 116: shared — ritual now grants codex milestones + weekday bonus
   const ritualGold = Math.floor(Math.pow(2, newLv) * getGoldMul() * g.indices.length * 2);
   state.gold += ritualGold;
   state.stats.totalGoldEarned = (state.stats.totalGoldEarned || 0) + ritualGold;
   state.stats.ritualsPerformed = (state.stats.ritualsPerformed || 0) + 1;
   state.stats.totalMerges = (state.stats.totalMerges || 0) + g.indices.length - 1;
+  // Q-Leap 116: ritual merges also progress daily merge tiers + line bonus
+  for (let k = 0; k < g.indices.length - 1; k++) addDailyMergeCount();
+  checkLineBonus();
   toast(`✨ 의식 발동! ${g.indices.length}개 → Lv ${newLv} · 💰 +${fmt(ritualGold)}`);
   addEvent('ritual', `의식 ${g.indices.length}개 → Lv ${newLv}`);
   flashJumpScreen(5);
@@ -3077,6 +3069,41 @@ function grantTranscendMilestone() {
     flashJumpScreen(5);
   }
 }
+// Q-Leap 116 refactor: shared codex registration. Both the pairwise merge (tryMerge)
+// and the ritual merge (doRitualMerge) and the shop upgrade reach new levels — they must
+// all grant the codex enlightenment + milestone rewards identically. Previously only
+// tryMerge had the milestone block, so ritual/shop level-ups silently skipped 도감 보상.
+const CODEX_MILESTONE_REWARDS = { 10: { gem: 10, en: 2 }, 25: { gem: 25, en: 5 }, 40: { gem: 50, en: 10 }, 60: { gem: 120, en: 25 } };
+function registerCodex(newLv) {
+  if (!state.codex) state.codex = {};
+  if (state.codex[newLv]) return;
+  state.codex[newLv] = true;
+  const codexBonus = 1 + Math.floor(getSkillLv('codexBoost') / 2) + (weekdayBonus().codexBonus || 0); // Q-Leap 50/87
+  state.enlightenment = (state.enlightenment || 0) + codexBonus;
+  setTimeout(() => toast(`📖 도감 신규 등록: Lv ${newLv} · 깨달음(悟) +${codexBonus}`), 400);
+  sfx('spawn');
+  // Q-Leap 96: 도감 완성 마일스톤
+  const codexN = Object.keys(state.codex).length;
+  state.stats.codexMilestones = state.stats.codexMilestones || {};
+  const rw = CODEX_MILESTONE_REWARDS[codexN];
+  if (rw && !state.stats.codexMilestones[codexN]) {
+    state.stats.codexMilestones[codexN] = true;
+    state.gem += rw.gem;
+    state.enlightenment = (state.enlightenment || 0) + rw.en;
+    setTimeout(() => toast(`📚 도감 ${codexN}종 완성! · 💎+${rw.gem} · 깨달음 +${rw.en}`), 560);
+    addEvent('milestone', `도감 ${codexN}종 마일스톤 · 💎+${rw.gem}`);
+    flashJumpScreen(5);
+  }
+}
+// Q-Leap 116 refactor: shared transcend announce on a new best crossing Lv 60+.
+function announceTranscendIfNeeded(newLv, prevBest) {
+  if (newLv <= TRANSCEND_BASE) return;
+  if (newLv - Math.max(TRANSCEND_BASE, prevBest) <= 0) return;
+  state.stats.transcendReached = getTranscendence();
+  setTimeout(() => toast(`🌌 초월 ${getTranscendence()} — 데미지/골드 +${getTranscendence() * 2}%`), 900);
+  addEvent('milestone', `초월 ${getTranscendence()} 도달`);
+  grantTranscendMilestone(); // Q-Leap 102
+}
 function shurikenDmg(level) {
   return getBaseDmg() * Math.pow(2, level - 1) * (1 + state.prestigeCount * 0.5) * getTranscendMul();
 }
@@ -3431,46 +3458,15 @@ function tryMerge(fromIdx, toIdx) {
       setTimeout(() => showRecordOverlay(newLv), 720);
       // Q-Leap 49: milestone explosions for major thresholds
       triggerMilestone(newLv);
-      // Q-Leap 98: 초월 — Lv 60 초과 신기록마다 초월 포인트 안내
-      if (newLv > TRANSCEND_BASE) {
-        const gained = newLv - Math.max(TRANSCEND_BASE, prevBest);
-        if (gained > 0) {
-          state.stats.transcendReached = getTranscendence();
-          setTimeout(() => toast(`🌌 초월 ${getTranscendence()} — 데미지/골드 +${(getTranscendence() * 2)}%`), 900);
-          addEvent('milestone', `초월 ${getTranscendence()} 도달`);
-          // Q-Leap 102: 초월 마일스톤 1회성 보석 보상
-          grantTranscendMilestone();
-        }
-      }
+      announceTranscendIfNeeded(newLv, prevBest); // Q-Leap 98/102/116
     }
     if (newLv > state.runBestLevel) state.runBestLevel = newLv;
     // Q-Leap 71: auto-lock high-Lv pieces if enabled
     autoLockPass();
     // Q-Leap 43: trial — check if goal reached
     if (state.trialActive) checkTrialProgress();
-    // Q-Leap 39: codex — first reach of this level grants 깨달음 +1 permanently
-    // Q-Leap 50: codexBoost skill — +1 추가 / 2Lv (floor)
-    if (!state.codex) state.codex = {};
-    if (!state.codex[newLv]) {
-      state.codex[newLv] = true;
-      const codexBonus = 1 + Math.floor(getSkillLv('codexBoost') / 2) + (weekdayBonus().codexBonus || 0); // Q-Leap 87
-      state.enlightenment = (state.enlightenment || 0) + codexBonus;
-      setTimeout(() => toast(`📖 도감 신규 등록: Lv ${newLv} · 깨달음(悟) +${codexBonus}`), 400);
-      sfx('spawn');
-      // Q-Leap 96: 도감 완성 마일스톤 — 누적 등록 수가 임계값 도달 시 1회성 보상
-      const codexN = Object.keys(state.codex).length;
-      state.stats.codexMilestones = state.stats.codexMilestones || {};
-      const codexRewards = { 10: { gem: 10, en: 2 }, 25: { gem: 25, en: 5 }, 40: { gem: 50, en: 10 }, 60: { gem: 120, en: 25 } };
-      if (codexRewards[codexN] && !state.stats.codexMilestones[codexN]) {
-        state.stats.codexMilestones[codexN] = true;
-        const rw = codexRewards[codexN];
-        state.gem += rw.gem;
-        state.enlightenment = (state.enlightenment || 0) + rw.en;
-        setTimeout(() => toast(`📚 도감 ${codexN}종 완성! · 💎+${rw.gem} · 깨달음 +${rw.en}`), 560);
-        addEvent('milestone', `도감 ${codexN}종 마일스톤 · 💎+${rw.gem}`);
-        flashJumpScreen(5);
-      }
-    }
+    // Q-Leap 39/50/96/116: codex registration + milestones (shared helper)
+    registerCodex(newLv);
     flashCell(toIdx);
     // Floating +N gold popup at target cell center
     const popCell = gridEl.querySelector(`[data-idx="${toIdx}"]`);
