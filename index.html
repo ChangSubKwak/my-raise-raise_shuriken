@@ -5744,44 +5744,48 @@ function renderPrestige() {
     // confirm path → executes the actual prestige
     document.getElementById('prestige-confirm').onclick = () => {
       document.getElementById('prestige-modal').classList.remove('show');
-      // 깨달음 earned this prestige
-      const enlightGain = getEnlightenmentGain();
-      state.enlightenment = (state.enlightenment || 0) + enlightGain;
-      state.prestigeCount++;
-      state.gold = 0;
-      state.stage = 1;
-      state.enemiesInStage = 0;
-      state.runBestLevel = 1;
-      // Q-Leap 91: 윤회 후 첫 10 spawn은 시작 Lv +2 보너스
-      state.postPrestigeSpawns = 10;
-      // preserve capital investments on prestige: grid size, spawn batch, luck chance, autoMerge unlock
-      const keepMax = state.upgrades.maxShuriken;
-      const keepBatch = state.upgrades.spawnBatch;
-      const keepLuck = state.upgrades.luckChance;
-      state.upgrades = { maxShuriken: keepMax, spawnRate:0, spawnBatch: keepBatch, firerate:0, baseDmg:0, goldMul:0, spawnLevel:0, luckChance: keepLuck };
-      // 계승(inheritance) skill: keep N highest-level shurikens through prestige
-      const keepN = getSkillLv('inheritance');
-      let kept = [];
-      if (keepN > 0) {
-        kept = state.grid.filter(c => c).sort((a, b) => b.level - a.level).slice(0, keepN);
-      }
-      state.grid = new Array(getGridSize()).fill(null);
-      kept.forEach((c, i) => { state.grid[i] = { id: state.nextShurikenId++, level: c.level, fireTimer: 0 }; });
-      // reset blessed cell — new run, fresh blessing
-      state.blessedIdx = -1;
-      state.blessedTimer = 0;
-      // Q-Leap 92: clear stale line-bonus claims so a fresh grid can re-trigger
-      state._claimedLines = {};
-      startStage();
-      // Q-Leap 43: start trial round immediately after prestige
-      startTrial();
-      checkAchievements();
-      refreshUI();
-      save();
-      toast(`🌟 윤회! 깨달음(悟) +${enlightGain}${keepN > 0 ? ` · 표창 ${kept.length}개 계승` : ''}`);
-      addEvent('prestige', `윤회 ${state.prestigeCount}회 · 깨달음 +${enlightGain}`);
+      doPrestige();
     };
   }
+}
+// Core prestige operation, extracted for testability (Q-Leap 123).
+// Preserves: prestigeCount, bestLevel, enlightenment/skills, codex, gridSize/batch/luck
+//   upgrades, autoMergeUnlock, lifetime stats, attendance, growthLog.
+// Resets: gold, stage, run-best, the rest of upgrades, grid (minus inheritance), blessed.
+function doPrestige() {
+  if ((state.bestLevel || 1) < 8) return false; // guard — matches UI gate
+  const enlightGain = getEnlightenmentGain();
+  state.enlightenment = (state.enlightenment || 0) + enlightGain;
+  state.prestigeCount++;
+  state.gold = 0;
+  state.stage = 1;
+  state.enemiesInStage = 0;
+  state.runBestLevel = 1;
+  state.postPrestigeSpawns = 10; // Q-Leap 91
+  // preserve capital investments on prestige: grid size, spawn batch, luck chance, autoMerge unlock
+  const keepMax = state.upgrades.maxShuriken;
+  const keepBatch = state.upgrades.spawnBatch;
+  const keepLuck = state.upgrades.luckChance;
+  state.upgrades = { maxShuriken: keepMax, spawnRate:0, spawnBatch: keepBatch, firerate:0, baseDmg:0, goldMul:0, spawnLevel:0, luckChance: keepLuck };
+  // 계승(inheritance) skill: keep N highest-level shurikens through prestige
+  const keepN = getSkillLv('inheritance');
+  let kept = [];
+  if (keepN > 0) {
+    kept = state.grid.filter(c => c).sort((a, b) => b.level - a.level).slice(0, keepN);
+  }
+  state.grid = new Array(getGridSize()).fill(null);
+  kept.forEach((c, i) => { state.grid[i] = { id: state.nextShurikenId++, level: c.level, fireTimer: 0 }; });
+  state.blessedIdx = -1;
+  state.blessedTimer = 0;
+  state._claimedLines = {}; // Q-Leap 92
+  startStage();
+  startTrial();        // Q-Leap 43
+  checkAchievements();
+  refreshUI();
+  save();
+  toast(`🌟 윤회! 깨달음(悟) +${enlightGain}${keepN > 0 ? ` · 표창 ${kept.length}개 계승` : ''}`);
+  addEvent('prestige', `윤회 ${state.prestigeCount}회 · 깨달음 +${enlightGain}`);
+  return true;
 }
 
 // ---------- Toast ----------

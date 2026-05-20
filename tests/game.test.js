@@ -727,6 +727,60 @@ group('save/load round-trip persistence (QA)', () => {
   eq(st.grid.filter(Boolean).length, 3, 'grid pieces persisted');
 });
 
+group('prestige preserve/reset rules (Q-Leap 123 refactor + QA)', () => {
+  // guard: below Lv8 → no prestige
+  let s = withState({ bestLevel: 5, prestigeCount: 0 });
+  s.stats = {};
+  eq(F.doPrestige(), false, 'prestige blocked below Lv8');
+  eq(G.getState().prestigeCount, 0, 'prestigeCount unchanged when blocked');
+
+  // full prestige from a rich run
+  s = withState({
+    bestLevel: 40, runBestLevel: 30, prestigeCount: 2, gold: 999999, enlightenment: 10,
+    upgrades: { maxShuriken: 6, spawnRate: 9, spawnBatch: 3, firerate: 7, baseDmg: 8, goldMul: 5, spawnLevel: 4, luckChance: 2 },
+    autoMergeUnlocked: true, skills: { inheritance: 0 },
+    codex: { 1: true, 20: true, 40: true },
+    grid: gridFrom([10, 12, 8, null, null, null]),
+  });
+  s.stats = { totalMerges: 500 };
+  const enlightBefore = G.getState().enlightenment;
+  const ok2 = F.doPrestige();
+  const st = G.getState();
+  ok(ok2 === true, 'prestige executes at Lv40');
+  // preserved
+  eq(st.prestigeCount, 3, 'prestigeCount incremented');
+  eq(st.bestLevel, 40, 'bestLevel preserved (all-time record)');
+  ok(st.enlightenment > enlightBefore, 'enlightenment increased by gain');
+  eq(st.upgrades.maxShuriken, 6, 'gridSize upgrade preserved');
+  eq(st.upgrades.spawnBatch, 3, 'spawnBatch upgrade preserved');
+  eq(st.upgrades.luckChance, 2, 'luckChance upgrade preserved');
+  eq(st.autoMergeUnlocked, true, 'autoMerge unlock preserved');
+  eq(Object.keys(st.codex).length, 3, 'codex preserved');
+  eq((st.stats || {}).totalMerges, 500, 'lifetime stats preserved');
+  // reset
+  eq(st.gold, 0, 'gold reset to 0');
+  eq(st.runBestLevel, 1, 'run-best reset');
+  eq(st.upgrades.spawnRate, 0, 'spawnRate upgrade reset');
+  eq(st.upgrades.baseDmg, 0, 'baseDmg upgrade reset');
+  eq(st.upgrades.goldMul, 0, 'goldMul upgrade reset');
+  eq(st.grid.filter(Boolean).length, 0, 'grid cleared (no inheritance skill)');
+  eq(st.postPrestigeSpawns, 10, 'post-prestige spawn boost armed');
+
+  // inheritance skill keeps top-N pieces
+  s = withState({
+    bestLevel: 40, runBestLevel: 30, prestigeCount: 1, gold: 100,
+    upgrades: { maxShuriken: 6, spawnRate: 0, spawnBatch: 0, firerate: 0, baseDmg: 0, goldMul: 0, spawnLevel: 0, luckChance: 0 },
+    skills: { inheritance: 2 },
+    grid: gridFrom([5, 12, 9, 3, null, null]),
+  });
+  s.stats = {};
+  F.doPrestige();
+  const kept = G.getState().grid.filter(Boolean).map(c => c.level).sort((a, b) => b - a);
+  eq(kept.length, 2, 'inheritance 2 → keeps 2 pieces');
+  eq(kept[0], 12, 'keeps highest level');
+  eq(kept[1], 9, 'keeps 2nd highest');
+});
+
 group('findNextAutoMergePair priority', () => {
   // low priority: lowest level pair first
   withState({ grid: gridFrom([2, 5, 5, 2, null, null]), autoMergePriority: 'low', autoMergeCap: 99 });
