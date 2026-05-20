@@ -932,12 +932,18 @@
     transition: background 0.3s;
     min-height: 0; /* allow flex shrink; the stage itself scrolls if content overflows */
   }
-  /* Header is a single horizontally-scrollable strip so the ~19 action buttons
-     never wrap/overflow into adjacent UI (was causing overlap + intercepting clicks). */
+  /* Header wraps cleanly; secondary buttons live in a collapsible ☰ menu so the
+     header stays compact and never overflows into adjacent UI. */
   #grid-header > * { flex: 0 0 auto; white-space: nowrap; }
-  #grid-header::-webkit-scrollbar { height: 5px; }
-  #grid-header::-webkit-scrollbar-thumb { background: #33334a; border-radius: 3px; }
-  #grid-header::-webkit-scrollbar-track { background: transparent; }
+  #grid-menu {
+    width: 100%; max-width: 380px;
+    flex-wrap: wrap; justify-content: center; gap: 6px;
+    padding: 8px; border-radius: 10px;
+    background: rgba(20,20,34,0.92); border: 1px solid #33334a;
+  }
+  #grid-menu.open { display: flex; }
+  #grid-menu > * { flex: 0 0 auto; white-space: nowrap; }
+  #menu-btn.on { background: rgba(102,204,255,0.25); border-color: #66ccff; color: #cff; }
   #grid-wrap.full {
     animation: gridFullPulse 1.4s ease-in-out infinite;
   }
@@ -1451,28 +1457,33 @@
       <div id="weekday-banner" title="요일 보너스 — 매일 자정 변경"></div>
     </div>
     <div id="grid-wrap">
-      <div id="grid-header" style="display:flex;flex-wrap:nowrap;overflow-x:auto;overflow-y:hidden;justify-content:flex-start;align-items:center;width:100%;max-width:380px;font-size:11px;font-weight:700;gap:6px;flex-shrink:0;padding-bottom:4px;">
+      <div id="grid-stats" style="display:flex;flex-wrap:wrap;justify-content:center;align-items:center;gap:8px;width:100%;max-width:380px;font-size:11px;font-weight:700;">
         <span style="color:#aaa;">보유 <span id="shuriken-count" style="color:#ffd966;">0</span>/<span id="shuriken-max">6</span></span>
         <span style="color:#aaa;">제작 <span id="batch-info" style="color:#a8e6ff;">×1</span></span>
         <span style="color:#aaa;" title="다음 spawn될 표창 레벨">다음 Lv <span id="next-spawn-lv" style="color:#88ddff;">1</span></span>
         <span style="color:#aaa;" title="진형 등급 — 그리드 평균 레벨이 최고기록에 근접할수록 높음">진형 <span id="formation-grade" style="color:#88ddff;font-weight:900;">—</span></span>
+      </div>
+      <div id="grid-header" style="display:flex;flex-wrap:wrap;justify-content:center;align-items:center;width:100%;max-width:380px;font-size:11px;font-weight:700;gap:6px;flex-shrink:0;">
         <button id="hint-btn" class="grid-action-btn" title="합칠 수 있는 모든 페어 항상 강조">💡 힌트</button>
         <button id="sell-btn" class="grid-action-btn" title="판매 모드 — 표창을 탭하면 골드로 환전">💸 판매</button>
         <button id="info-btn" class="grid-action-btn" title="정보 모드 — 표창을 탭하면 상세 정보">ℹ 정보</button>
         <button id="merge-all-btn" class="grid-action-btn" title="가능한 모든 같은 Lv 페어를 즉시 합치기 (잠금/상한 적용)">⚡ 모두</button>
         <button id="sort-btn" class="grid-action-btn" title="레벨 순으로 자동 정렬">↕ 정렬</button>
         <button id="compact-btn" class="grid-action-btn" title="빈칸만 제거 — 표창 배치 순서는 유지">⬇ 압축</button>
+        <button id="ritual-btn" class="grid-action-btn" title="의식 합성 — 같은 Lv 3+ 연결 그룹을 한 번에 합쳐 큰 점프" disabled>✨ 의식</button>
+        <button id="frenzy-btn" class="grid-action-btn" title="폭주 — 합성으로 충전, 가득 차면 발동 시 30s spawn ×2">⚡ 폭주 <span id="frenzy-count">0/100</span></button>
+        <button id="menu-btn" class="grid-action-btn" title="메뉴 — 도감/미션/상점/명예/로그/도움말/보관/명상/전당">☰ 메뉴</button>
+      </div>
+      <div id="grid-menu" style="display:none;">
         <button id="codex-btn" class="grid-action-btn" title="표창 도감 — 처음 도달한 레벨이 영구 기록됩니다">📖 도감</button>
         <button id="quest-btn" class="grid-action-btn" title="일일 미션 — 매일 3개의 목표, 보석 보상">📋 미션</button>
         <button id="shop-btn" class="grid-action-btn" title="보석 상점 — 일회성 효과 구매">🛒 상점</button>
         <button id="trophy-btn" class="grid-action-btn" title="명예 & 통계 — 도달한 명예와 일생 통계 확인">🏆 명예</button>
-        <button id="ritual-btn" class="grid-action-btn" title="의식 합성 — 같은 Lv 3+ 연결 그룹을 한 번에 합쳐 큰 점프" disabled>✨ 의식</button>
+        <button id="hof-btn" class="grid-action-btn" title="명예의 전당 — 평생 기록 쇼케이스">🏛 전당</button>
         <button id="log-btn" class="grid-action-btn" title="활동 로그 — 최근 30개 사건">📜 로그</button>
         <button id="help-btn" class="grid-action-btn" title="도움말 — 게임 시스템 가이드">❓ 도움말</button>
         <button id="storage-btn" class="grid-action-btn" title="보관소 — 그리드 외 3칸 보관">📦 보관 <span id="storage-count">0/3</span></button>
         <button id="meditation-btn" class="grid-action-btn" title="명상 모드 — 모든 자동화 ON">🧘 명상</button>
-        <button id="frenzy-btn" class="grid-action-btn" title="폭주 — 합성으로 충전, 가득 차면 발동 시 30s spawn ×2">⚡ 폭주 <span id="frenzy-count">0/100</span></button>
-        <button id="hof-btn" class="grid-action-btn" title="명예의 전당 — 평생 기록 쇼케이스">🏛 전당</button>
       </div>
       <div id="set-badges" title="표창 세트 효과 — 그리드 구성으로 활성화"></div>
       <div id="grid"></div>
@@ -5836,6 +5847,20 @@ document.getElementById('sort-btn').addEventListener('click', () => {
 document.getElementById('compact-btn').addEventListener('click', () => {
   getAudio();
   compactGrid();
+});
+// ☰ menu toggle — collapsible container for secondary/modal buttons
+document.getElementById('menu-btn').addEventListener('click', () => {
+  getAudio();
+  const menu = document.getElementById('grid-menu');
+  const open = menu.classList.toggle('open');
+  document.getElementById('menu-btn').classList.toggle('on', open);
+});
+// Any button inside the menu closes it after acting (handlers run via their own id listeners)
+document.getElementById('grid-menu').addEventListener('click', (e) => {
+  if (e.target.closest('button')) {
+    document.getElementById('grid-menu').classList.remove('open');
+    document.getElementById('menu-btn').classList.remove('on');
+  }
 });
 // Q-Leap 39: Codex modal
 function renderCodex() {
