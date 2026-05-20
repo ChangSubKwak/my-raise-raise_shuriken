@@ -2069,6 +2069,10 @@ function defaultState() {
     lastSpinReward: 0,
     // Q-Leap 104: 골드 러시 — 합성 시 낮은 확률로 발동하는 임시 ×2 골드 버프
     goldRushTimer: 0,
+    // Q-Leap 110: 일일 합성 마일스톤 (자정 리셋)
+    dailyMergeDate: '',
+    dailyMergeCount: 0,
+    dailyMergeClaimed: {},
     // Q-Leap 89: 합성 보장 부적 — 100 합성마다 +1 charge, 다음 합성 +1 점프
     luckyCharms: 0,
     // Q-Leap 91: 윤회 직후 신생 부스트 카운터
@@ -2214,6 +2218,9 @@ const ACHIEVEMENTS = [
   { id: 'a_elite',        name: '정예 진형',       icon: '🎖', desc: '정예 진형 첫 구성',     check: (s) => !!(typeof getActiveSets === 'function' && getActiveSets().elite) },
   { id: 'a_combo_100',    name: '연쇄의 극치',     icon: '🌟', desc: '콤보 ×100 달성',        check: (s) => ((s.stats || {}).bestCombo || 0) >= 100 },
   { id: 'a_perfect',      name: '완전 진형',       icon: '👑', desc: '4대 세트 동시 구성',     check: (s) => !!(typeof getActiveSets === 'function' && getActiveSets().perfect) },
+  { id: 'a_daily_merge',  name: '하루의 정진',     icon: '📆', desc: '일일 합성 마일스톤 첫 달성', check: (s) => ((s.stats || {}).dailyMergeTiers || 0) >= 1 },
+  { id: 'a_cashout',      name: '콤보 정산가',     icon: '🎁', desc: '콤보 캐시아웃 첫 발동',   check: (s) => ((s.stats || {}).comboCashouts || 0) >= 1 },
+  { id: 'a_grade_s',      name: 'S급 진형',        icon: '🎌', desc: '진형 등급 S 달성',       check: (s) => !!(typeof getFormationGrade === 'function' && getFormationGrade().grade === 'S') },
 ];
 
 // Q-Leap 41: Daily quest templates. Generator picks 3 each day (seeded by date).
@@ -2812,6 +2819,10 @@ function load() {
     state.autoFrenzyEnabled = !!s.autoFrenzyEnabled;
     // Q-Leap 104: gold rush
     state.goldRushTimer = Math.max(0, +s.goldRushTimer || 0);
+    // Q-Leap 110: daily merge milestones
+    state.dailyMergeDate = s.dailyMergeDate || '';
+    state.dailyMergeCount = +s.dailyMergeCount || 0;
+    state.dailyMergeClaimed = (s.dailyMergeClaimed && typeof s.dailyMergeClaimed === 'object') ? s.dailyMergeClaimed : {};
     // Q-Leap 88: spin
     state.lastSpinDate = s.lastSpinDate || '';
     state.lastSpinReward = +s.lastSpinReward || 0;
@@ -2998,6 +3009,22 @@ function getActiveSets() {
 }
 function hasSet(id) { return !!getActiveSets()[id]; }
 
+// Q-Leap 111: 진형 등급 — 그리드 평균 레벨이 최고기록에 얼마나 근접한지로 S/A/B/C/—.
+// 높은 표창만 유지할수록 평균이 best에 근접 → 좋은 등급. 빈 그리드는 '—'.
+function getFormationGrade() {
+  let sum = 0, count = 0;
+  for (const c of state.grid) { if (c) { sum += c.level; count++; } }
+  if (count === 0) return { grade: '—', avg: 0, ratio: 0 };
+  const avg = sum / count;
+  const best = Math.max(1, state.bestLevel || 1);
+  const ratio = avg / best;
+  let grade = 'C';
+  if (ratio >= 0.8) grade = 'S';
+  else if (ratio >= 0.6) grade = 'A';
+  else if (ratio >= 0.4) grade = 'B';
+  return { grade, avg, ratio };
+}
+
 // Q-Leap 87: 요일 보너스 — small persistent bonus depending on day
 const WEEKDAY_BONUS = {
   0: { id: 'sun', icon: '🌌', label: '일 — 도감 신규시 깨달음 +1', codexBonus: 1 },
@@ -3013,6 +3040,27 @@ function weekdayBonus() { return WEEKDAY_BONUS[new Date().getDay()] || {}; }
 const TRANSCEND_BASE = 60;
 function getTranscendence() { return Math.max(0, (state.bestLevel || 1) - TRANSCEND_BASE); }
 function getTranscendMul() { return 1 + getTranscendence() * 0.02; } // +2% dmg & gold per pt
+// Q-Leap 110: 일일 합성 마일스톤 — 그날 누적 합성 수에 따른 1회성 보석 (자정 리셋).
+const DAILY_MERGE_TIERS = { 50: 5, 150: 10, 300: 20, 600: 40 };
+function dailyMergeRewardFor(count) { return DAILY_MERGE_TIERS[count] || 0; }
+function addDailyMergeCount() {
+  const today = todayString();
+  if (state.dailyMergeDate !== today) {
+    state.dailyMergeDate = today;
+    state.dailyMergeCount = 0;
+    state.dailyMergeClaimed = {};
+  }
+  state.dailyMergeCount = (state.dailyMergeCount || 0) + 1;
+  const reward = dailyMergeRewardFor(state.dailyMergeCount);
+  if (reward && !state.dailyMergeClaimed[state.dailyMergeCount]) {
+    state.dailyMergeClaimed[state.dailyMergeCount] = true;
+    state.gem += reward;
+    state.stats.dailyMergeTiers = (state.stats.dailyMergeTiers || 0) + 1;
+    setTimeout(() => toast(`📆 오늘 합성 ${state.dailyMergeCount}회 · 💎+${reward}`), 340);
+    addEvent('milestone', `일일 합성 ${state.dailyMergeCount}회 · 💎+${reward}`);
+    flashJumpScreen(3);
+  }
+}
 // Q-Leap 102: 초월 마일스톤 — 초월 5/10/15/20 최초 도달 시 1회성 보석.
 const TRANSCEND_MILESTONES = { 5: 30, 10: 80, 15: 150, 20: 300 };
 function grantTranscendMilestone() {
@@ -3035,6 +3083,11 @@ function getTotalDPS() {
   let sum = 0;
   for (const c of state.grid) if (c) sum += shurikenDmg(c.level);
   return sum / interval;
+}
+// Q-Leap 112: 콤보 캐시아웃 — 정점 콤보(peak) 비례 골드. 정점² 스케일 + 골드배율.
+function comboCashout(peak) {
+  if (peak < 10) return 0;
+  return Math.floor(peak * peak * 5 * getGoldMul());
 }
 // Q-Leap 108: a piece's share of total grid damage output (0..1). Empty/no-damage → 0.
 function getPieceDpsShare(idx) {
@@ -3334,6 +3387,8 @@ function tryMerge(fromIdx, toIdx) {
       flashJumpScreen(2);
       addEvent('lucky', '일일 첫 합성 보너스');
     }
+    // Q-Leap 110: 일일 합성 마일스톤 (오늘 누적, 자정 리셋)
+    addDailyMergeCount();
     // Q-Leap 41: quest progress hooks
     addQuestProgress('merges', 1);
     addQuestProgress('gold', mergeGold);
@@ -3920,6 +3975,16 @@ function update(dt) {
   if (state.comboTimer > 0) {
     state.comboTimer -= dt;
     if (state.comboTimer <= 0) {
+      // Q-Leap 112: 콤보 캐시아웃 — 콤보 ×10+ 로 끝나면 정점 비례 골드 지급
+      const peak = state.comboCount || 0;
+      if (peak >= 10) {
+        const payout = comboCashout(peak);
+        state.gold += payout;
+        state.stats.totalGoldEarned = (state.stats.totalGoldEarned || 0) + payout;
+        state.stats.comboCashouts = (state.stats.comboCashouts || 0) + 1;
+        toast(`🎁 콤보 정산 ×${peak} · 💰+${fmt(payout)}`);
+        addEvent('milestone', `콤보 캐시아웃 ×${peak} · 💰+${fmt(payout)}`);
+      }
       state.comboCount = 0;
       hideComboToast();
     }
@@ -6221,6 +6286,7 @@ function renderHallOfFame() {
   const rows = [
     { ico: '🏔', label: '최고 표창', val: `Lv ${state.bestLevel || 1}`, sub: levelName(state.bestLevel || 1), featured: true },
     ...(trans > 0 ? [{ ico: '🌌', label: '초월 경지', val: `초월 ${trans}`, sub: `데미지/골드 +${trans * 2}%`, featured: true }] : []),
+    { ico: '🎌', label: '진형 등급', val: getFormationGrade().grade, sub: `평균 Lv ${getFormationGrade().avg.toFixed(1)}` },
     { ico: '💎', label: '윤회 횟수', val: `${state.prestigeCount || 0}회` },
     { ico: '🌟', label: '깨달음(悟)', val: `${state.enlightenment || 0}` },
     { ico: '📖', label: '도감 수집', val: `${codexN} / 60` },

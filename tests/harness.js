@@ -86,6 +86,7 @@ function loadGame() {
     getSpawnInterval, getSpawnStartLevel, findNextAutoMergePair,
     checkLineBonus, countStars, getGridSize, getGridCols,
     grantTranscendMilestone, getCenterIndex, getPieceDpsShare, getPassiveGoldRate,
+    dailyMergeRewardFor, getFormationGrade, comboCashout,
   },
   consts: { FRENZY_MAX, FRENZY_DURATION, TRANSCEND_BASE, DAILY_CHALLENGE_TARGET, SET_DEFS, ACHIEVEMENTS, LEVEL_NAMES, TRANSCEND_NAMES_61_80 },
 };

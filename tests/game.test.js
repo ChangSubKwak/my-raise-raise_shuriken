@@ -237,6 +237,37 @@ group('perfect gold multiplier (Q-Leap 109)', () => {
   approx(F.getGoldMul(), plain * 1.15 * 1.5, 'perfect+trinity stack on gold', 1e-6);
 });
 
+group('daily merge tiers (Q-Leap 110)', () => {
+  eq(F.dailyMergeRewardFor(50), 5, '50 merges → 5 gem');
+  eq(F.dailyMergeRewardFor(150), 10, '150 → 10');
+  eq(F.dailyMergeRewardFor(300), 20, '300 → 20');
+  eq(F.dailyMergeRewardFor(600), 40, '600 → 40');
+  eq(F.dailyMergeRewardFor(51), 0, 'non-threshold → 0');
+  eq(F.dailyMergeRewardFor(0), 0, 'zero → 0');
+});
+
+group('formation grade (Q-Leap 111)', () => {
+  withState({ bestLevel: 10, grid: gridFrom([null, null, null, null, null, null]) });
+  eq(F.getFormationGrade().grade, '—', 'empty grid → no grade');
+  withState({ bestLevel: 10, grid: gridFrom([9, 10, 8, null, null, null]) }); // avg 9 / 10 = 0.9 ≥0.8
+  eq(F.getFormationGrade().grade, 'S', 'avg 90% of best → S');
+  withState({ bestLevel: 10, grid: gridFrom([6, 7, 6, null, null, null]) }); // avg 6.33/10=0.63 ≥0.6
+  eq(F.getFormationGrade().grade, 'A', 'avg ~63% → A');
+  withState({ bestLevel: 10, grid: gridFrom([4, 5, 4, null, null, null]) }); // avg 4.33/10=0.43 ≥0.4
+  eq(F.getFormationGrade().grade, 'B', 'avg ~43% → B');
+  withState({ bestLevel: 10, grid: gridFrom([1, 2, 1, null, null, null]) }); // avg 1.33/10=0.13
+  eq(F.getFormationGrade().grade, 'C', 'low avg → C');
+});
+
+group('combo cashout (Q-Leap 112)', () => {
+  withState({ prestigeCount: 0, bestLevel: 1, upgrades: defaultUpgrades(), grid: gridFrom([null, null, null, null, null, null]) });
+  eq(F.comboCashout(9), 0, 'below 10 combo → no cashout');
+  const gm = F.getGoldMul();
+  approx(F.comboCashout(10), Math.floor(10 * 10 * 5 * gm), 'combo 10 cashout = 100*5*goldMul');
+  // higher peak scales quadratically
+  ok(F.comboCashout(20) > F.comboCashout(10) * 3, 'cashout scales super-linearly with peak');
+});
+
 group('findNextAutoMergePair priority', () => {
   // low priority: lowest level pair first
   withState({ grid: gridFrom([2, 5, 5, 2, null, null]), autoMergePriority: 'low', autoMergeCap: 99 });
