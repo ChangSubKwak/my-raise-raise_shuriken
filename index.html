@@ -812,6 +812,16 @@
   #combo-indicator .combo-x { font-size: 18px; }
   #combo-indicator .combo-label { font-size: 11px; letter-spacing: 1px; }
   #combo-indicator .combo-mul { font-size: 13px; color: #5a2200; }
+  /* Q-Leap 93: combo timer bar — shows time left in the chain window */
+  #combo-indicator .combo-timer-bar {
+    position: absolute; left: 8px; right: 8px; bottom: 3px; height: 3px;
+    background: rgba(90,34,0,0.3); border-radius: 2px; overflow: hidden;
+  }
+  #combo-indicator .combo-timer-fill {
+    display: block; height: 100%; width: 100%;
+    background: #5a2200; border-radius: 2px;
+    transform-origin: left center;
+  }
 
   /* New-level-record celebration overlay */
   #record-overlay {
@@ -1693,6 +1703,7 @@
   <span class="combo-x" id="combo-x">×3</span>
   <span class="combo-label">콤보!</span>
   <span class="combo-mul" id="combo-mul">+40%</span>
+  <span class="combo-timer-bar"><span class="combo-timer-fill" id="combo-timer-fill"></span></span>
 </div>
 
 <div id="record-overlay">
@@ -1928,6 +1939,11 @@ function defaultState() {
     // Q-Leap 54: 일일 도전 — date-seeded daily modifier
     dailyChallengeId: '',     // template id
     dailyChallengeDate: '',
+    // Q-Leap 94: 일일 도전 완수 — N 합성으로 완수, 연속 완수 streak 보상
+    dailyChallengeProgress: 0,
+    dailyChallengeDone: false,
+    challengeStreak: 0,
+    lastChallengeDoneDate: '',
     // Q-Leap 67: 일일 첫 합성 보너스 — daily first merge gem reward
     lastFirstMergeDate: '',
     // Q-Leap 70: 자동 합치기 우선순위 — 'low' (default), 'high', 'preserve'
@@ -2079,6 +2095,10 @@ const ACHIEVEMENTS = [
   { id: 'a_spin_30',      name: '꾸준한 운',       icon: '🎰', desc: '일일 룰렛 30회',        check: (s) => ((s.stats || {}).spinsUsed || 0) >= 30 },
   { id: 'a_charm_1',      name: '부적의 손',       icon: '🔮', desc: '합성 보장 부적 첫 소비', check: (s) => ((s.stats || {}).luckyCharmsUsed || 0) >= 1 },
   { id: 'a_charm_10',     name: '부적 장인',       icon: '🔮', desc: '보장 부적 10회 소비',   check: (s) => ((s.stats || {}).luckyCharmsUsed || 0) >= 10 },
+  { id: 'a_line_1',       name: '정렬의 미',       icon: '📏', desc: '라인 보너스 첫 발동',   check: (s) => ((s.stats || {}).lineBonuses || 0) >= 1 },
+  { id: 'a_line_25',      name: '정렬의 달인',     icon: '📐', desc: '라인 보너스 25회',      check: (s) => ((s.stats || {}).lineBonuses || 0) >= 25 },
+  { id: 'a_chal_done_1',  name: '도전 완수',       icon: '🎯', desc: '일일 도전 첫 완수',     check: (s) => ((s.stats || {}).challengesCompleted || 0) >= 1 },
+  { id: 'a_chal_streak_7',name: '도전 연속 7일',   icon: '🏆', desc: '도전 7일 연속 완수',    check: (s) => (s.challengeStreak || 0) >= 7 },
 ];
 
 // Q-Leap 41: Daily quest templates. Generator picks 3 each day (seeded by date).
@@ -2433,6 +2453,7 @@ const DAILY_CHALLENGES = [
   { id: 'comboKeep',  icon: '🔥', name: '연쇄의 날',   desc: '콤보 타이머 ×2 (5초)' },
   { id: 'questBoost', icon: '📋', name: '미션의 날',   desc: '일일 미션 보석 보상 ×2' },
 ];
+const DAILY_CHALLENGE_TARGET = 30; // Q-Leap 94: merges needed to complete the day's challenge
 function ensureDailyChallenge() {
   const today = todayString();
   if (state.dailyChallengeDate !== today) {
@@ -2440,7 +2461,34 @@ function ensureDailyChallenge() {
     const tpl = DAILY_CHALLENGES[Math.floor(rand() * DAILY_CHALLENGES.length)];
     state.dailyChallengeId = tpl.id;
     state.dailyChallengeDate = today;
+    // Q-Leap 94: reset daily completion tracking
+    state.dailyChallengeProgress = 0;
+    state.dailyChallengeDone = false;
     save();
+  }
+}
+// Q-Leap 94: advance daily-challenge progress on each merge
+function addChallengeProgress() {
+  if (state.dailyChallengeDone) return;
+  state.dailyChallengeProgress = (state.dailyChallengeProgress || 0) + 1;
+  if (state.dailyChallengeProgress >= DAILY_CHALLENGE_TARGET) {
+    state.dailyChallengeDone = true;
+    const today = todayString();
+    // streak: consecutive days completed
+    if (state.lastChallengeDoneDate && daysBetween(state.lastChallengeDoneDate, today) === 1) {
+      state.challengeStreak = (state.challengeStreak || 0) + 1;
+    } else {
+      state.challengeStreak = 1;
+    }
+    state.lastChallengeDoneDate = today;
+    const reward = 5 + Math.min(10, state.challengeStreak - 1);
+    state.gem += reward;
+    state.stats.challengesCompleted = (state.stats.challengesCompleted || 0) + 1;
+    const ch = activeChallenge();
+    setTimeout(() => toast(`🎯 일일 도전 완수${ch ? ' (' + ch.name + ')' : ''} · 연속 ${state.challengeStreak}일 · 💎+${reward}`), 320);
+    addEvent('milestone', `일일 도전 완수 ${state.challengeStreak}일 연속 · 💎+${reward}`);
+    flashJumpScreen(4);
+    sfx('mergeMystic');
   }
 }
 function activeChallenge() {
@@ -2613,6 +2661,11 @@ function load() {
     state.eventLog = Array.isArray(s.eventLog) ? s.eventLog.slice(-30) : [];
     state.dailyChallengeId = s.dailyChallengeId || '';
     state.dailyChallengeDate = s.dailyChallengeDate || '';
+    // Q-Leap 94: challenge completion tracking
+    state.dailyChallengeProgress = +s.dailyChallengeProgress || 0;
+    state.dailyChallengeDone = !!s.dailyChallengeDone;
+    state.challengeStreak = +s.challengeStreak || 0;
+    state.lastChallengeDoneDate = s.lastChallengeDoneDate || '';
     state.autoSellEnabled = !!s.autoSellEnabled;
     state.autoSellThreshold = s.autoSellThreshold || 1;
     state.lastFirstMergeDate = s.lastFirstMergeDate || '';
@@ -2973,6 +3026,7 @@ function tryMerge(fromIdx, toIdx) {
     // Combo: chain merges within 2.5s → escalating bonus (Q-Leap 54: comboKeep doubles to 5s)
     state.comboCount = (state.comboCount || 0) + 1;
     state.comboTimer = (isChallenge('comboKeep') ? 5 : 2.5) + (weekdayBonus().comboPlus || 0); // Q-Leap 87
+    state.comboTimerMax = state.comboTimer; // Q-Leap 93
     if (state.comboCount > (state.stats.bestCombo || 0)) state.stats.bestCombo = state.comboCount;
     const comboMult = 1 + (state.comboCount - 1) * 0.2;
     // Jump bonus on gold reward (skipping tiers yields disproportionate gold)
@@ -3051,6 +3105,7 @@ function tryMerge(fromIdx, toIdx) {
     addQuestProgress('merges', 1);
     addQuestProgress('gold', mergeGold);
     addQuestProgress('combo', state.comboCount);
+    addChallengeProgress(); // Q-Leap 94
     if (jump >= 2) addQuestProgress('lucky', 1);
     if (blessed) addQuestProgress('blessed', 1);
     if (childGolden) addQuestProgress('golden', 1);
@@ -3124,6 +3179,7 @@ function tryMerge(fromIdx, toIdx) {
                          : mTier === 'silver' ? 1
                          : 0;
     if (shakeIntensity > 0) shakeStage(shakeIntensity);
+    checkLineBonus(); // Q-Leap 92
     checkAchievements();
     return 'merge';
   } else {
@@ -3133,6 +3189,59 @@ function tryMerge(fromIdx, toIdx) {
     sfx('move');
     return 'swap';
   }
+}
+// Q-Leap 92: 그리드 라인 보너스 — 한 행/열이 모두 같은 Lv로 채워지면 1회 보상.
+// 같은 라인+레벨 조합은 한 번만 지급, 라인이 깨지면 재트리거 가능.
+function checkLineBonus() {
+  const cols = getGridCols();
+  const size = getGridSize();
+  const rows = Math.ceil(size / cols);
+  state._claimedLines = state._claimedLines || {};
+  const activeSigs = new Set();
+  const tryLine = (cellsIdx, kind, key) => {
+    let lv = -1, full = true;
+    for (const idx of cellsIdx) {
+      if (idx >= size) { full = false; break; }
+      const cell = state.grid[idx];
+      if (!cell) { full = false; break; }
+      if (lv === -1) lv = cell.level;
+      else if (cell.level !== lv) { full = false; break; }
+    }
+    if (full && lv > 0 && cellsIdx.length >= 3) {
+      const sig = `${key}:${lv}`;
+      activeSigs.add(sig);
+      if (!state._claimedLines[sig]) {
+        state._claimedLines[sig] = true;
+        awardLineBonus(kind, lv, cellsIdx.length);
+      }
+    }
+  };
+  for (let r = 0; r < rows; r++) {
+    const idxs = [];
+    for (let c = 0; c < cols; c++) idxs.push(r * cols + c);
+    tryLine(idxs, '행', `row${r}`);
+  }
+  for (let c = 0; c < cols; c++) {
+    const idxs = [];
+    for (let r = 0; r < rows; r++) idxs.push(r * cols + c);
+    tryLine(idxs, '열', `col${c}`);
+  }
+  // drop stale claims so the same line can re-trigger with a new config
+  for (const k of Object.keys(state._claimedLines)) {
+    if (!activeSigs.has(k)) delete state._claimedLines[k];
+  }
+}
+function awardLineBonus(kind, lv, len) {
+  const gold = Math.floor(Math.pow(2, lv) * getGoldMul() * len * 2);
+  const gem = lv >= 10 ? 3 : lv >= 5 ? 2 : 1;
+  state.gold += gold;
+  state.gem += gem;
+  state.stats.totalGoldEarned = (state.stats.totalGoldEarned || 0) + gold;
+  state.stats.lineBonuses = (state.stats.lineBonuses || 0) + 1;
+  setTimeout(() => toast(`📏 ${kind} 정렬 보너스! (Lv ${lv} ×${len}) · 💰+${fmt(gold)} 💎+${gem}`), 260);
+  addEvent('milestone', `${kind} 라인 보너스 Lv ${lv} · 💎+${gem}`);
+  flashJumpScreen(3);
+  sfx('mergeGold');
 }
 // Q-Leap 79: extracted — finds the next pair autoMergeStep would consume, or null
 function findNextAutoMergePair() {
@@ -3650,7 +3759,13 @@ function updateHUD() {
     const ch = activeChallenge();
     if (ch) {
       banner.classList.add('active');
-      banner.innerHTML = `${ch.icon} <b>${ch.name}</b> · ${ch.desc}`;
+      // Q-Leap 94: show completion progress / streak
+      const prog = Math.min(state.dailyChallengeProgress || 0, DAILY_CHALLENGE_TARGET);
+      const done = state.dailyChallengeDone;
+      const tail = done
+        ? ` · ✅ 완수 (연속 ${state.challengeStreak || 1}일)`
+        : ` · 🎯 ${prog}/${DAILY_CHALLENGE_TARGET}`;
+      banner.innerHTML = `${ch.icon} <b>${ch.name}</b> · ${ch.desc}${tail}`;
     } else {
       banner.classList.remove('active');
     }
@@ -3713,6 +3828,13 @@ function updateHUD() {
   document.body.classList.toggle('combo-aura-lo',  cc >= 5  && cc < 15);
   document.body.classList.toggle('combo-aura-hi',  cc >= 15 && cc < 30);
   document.body.classList.toggle('combo-aura-max', cc >= 30);
+  // Q-Leap 93: combo timer bar fill
+  const ctFill = document.getElementById('combo-timer-fill');
+  if (ctFill) {
+    const maxT = state.comboTimerMax || 2.5;
+    const ratio = Math.max(0, Math.min(1, (state.comboTimer || 0) / maxT));
+    ctFill.style.transform = `scaleX(${ratio})`;
+  }
   // Q-Leap 65: spawn-soon pulse when next spawn is imminent
   document.body.classList.toggle('spawn-soon', !isFull && state.spawnProgress >= 0.9);
   document.getElementById('spawn-progress-fill').style.width = fillPct + '%';
