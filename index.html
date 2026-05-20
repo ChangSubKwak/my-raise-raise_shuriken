@@ -1612,6 +1612,7 @@
       <button class="help-tab" data-tab="systems">시스템</button>
       <button class="help-tab" data-tab="missions">미션/도전</button>
       <button class="help-tab" data-tab="combat">윤회/도전</button>
+      <button class="help-tab" data-tab="convenience">자동화/편의</button>
     </div>
     <div class="help-content" id="help-content"></div>
     <button class="codex-close" id="help-close">닫기</button>
@@ -6577,18 +6578,34 @@ const HELP_SECTIONS = {
     { title: '🌟 콤보', body: '2.5초 안 chain merge 시 콤보 ×N. 콤보당 +20% 골드. 5/10/15/20/30/50 마일스톤 보너스.' },
     { title: '🔺 세트 효과', body: '그리드 구성으로 패시브 발동 (그리드 위 배지 표시): <span class="hk">삼위일체</span>(같은 Lv 3+·골드+15%) / <span class="hk">황금 진형</span>(황금 2+·변종×1.5) / <span class="hk">만재</span>(90%+·폭주충전×2) / <span class="hk">승천</span>(Lv20+ 3개·콤보+1s) / <span class="hk">무지개</span>(황금·별·검은 동시·골드+25%).' },
     { title: '🌌 초월', body: 'Lv 60 초과 최고기록 = 초월 포인트. <span class="hk">포인트당 데미지·골드 +2%</span> (윤회 보존). 초월 5/10/15/20에 보석 마일스톤. Lv 61~80 고유 명명.' },
+    { title: '⚡ 폭주 게이지', body: '합성 1회당 +1 충전(만재 진형 시 ×2). 100 도달 시 ⚡폭주 버튼 발동 → <span class="hk">30초 생성 ×2 + 골드 +20% + 황금 ×1.5</span>. Shift+클릭 = 자동 발동 토글.' },
+    { title: '💰 골드 러시', body: '합성 시 낮은 확률(또는 콤보 ×100)로 발동 → <span class="hk">15초 골드 ×2</span>.' },
+    { title: '◈ 중앙 칸', body: '그리드 정중앙 칸(◈ 표시)의 표창은 <span class="hk">골드 기여 +25%</span>. 최고 earner를 중앙에 두는 배치 전략.' },
+    { title: '🎌 진형 등급', body: '그리드 평균 Lv ÷ 최고 Lv 비율로 S/A/B/C 등급. 헤더에 실시간 표시. 약한 표창을 정리할수록 등급↑.' },
+    { title: '🎁 콤보 캐시아웃', body: '콤보 ×10 이상으로 끝나면 <span class="hk">정점²×5×골드배수</span> 골드 정산 지급.' },
   ],
   missions: [
-    { title: '📋 일일 미션', body: '매일 자정 9종 중 3개 무작위. 보석 3~6 보상. <span class="hk">매일 다른 조합</span> (date-seeded).' },
+    { title: '📋 일일 미션', body: '매일 자정 9종 중 3개 무작위. 보석 3~6 보상. <span class="hk">매일 다른 조합</span> (date-seeded). 3개 전부 완료 시 추가 보너스.' },
     { title: '🏅 주간 미션', body: '매주 월요일 자정 1개. 큰 도전, 큰 보상 (보석 25~40 + 깨달음 +2~4).' },
-    { title: '📅 일일 도전', body: '매일 1개 특수 룰 활성. 점프 보장/spawn 2x/판매 3x/시너지 2x 등 7종.' },
-    { title: '📅 출석', body: '매일 접속 시 보석 +1, 7일 보너스. 연속 끊김 시 reset.' },
+    { title: '📅 일일 도전', body: '매일 1개 특수 룰 활성. 30 합성으로 완수 → 보석 + <span class="hk">연속 완수 streak</span> 보너스.' },
+    { title: '📆 일일 합성 마일스톤', body: '그날 누적 합성 50/150/300/600 회 도달 시 보석 5/10/20/40 (자정 리셋).' },
+    { title: '🎲 일일 룰렛', body: '하루 1회 (보석 상점 내). <span class="hk">날짜 시드</span> 기반 1~13 보석 — 결과는 그날 고정.' },
+    { title: '📅 출석', body: '매일 접속 시 보석 +1, 7일 보너스. 7/30/100일 마일스톤에 변종 표창 보상. 연속 끊김 시 reset.' },
   ],
   combat: [
     { title: '⚔ 윤회 도전 (Trial)', body: '윤회 직후 60초 도전 시작. <span class="hk">spawn ×2</span>, 목표 Lv 달성 시 깨달음 +5 (윤회 횟수에 따라 증가).' },
     { title: '🎆 마일스톤', body: 'Lv 20/30/40/50/60 첫 도달 시 화면 폭발 + 보석 5~60. <span class="hk">최고 Lv 60 = 무한(無限)</span>.' },
-    { title: '🛒 보석 상점', body: '5종 일회성 효과: 셔플/축복재배치/시간가속/행운의손/표창강화. 가격 자연 제한.' },
+    { title: '🛒 보석 상점', body: '일회성 효과: 셔플/축복재배치/시간가속/행운의손/표창강화/분할/<span class="hk">황금 코팅</span>. 가격 자연 제한.' },
+    { title: '💱 보석 환산소', body: '상점 내. 골드를 보석으로 환산 (비율 = 10000 − 윤회×1000, 최소 2000). 후기 정체 해소.' },
     { title: '🌌 깨달음 스킬', body: '9종 트리 — 골드/spawn/행운/계승/축복지속/도감/황금운/별운 등. 윤회 시 누적.' },
+    { title: '🏛 명예의 전당', body: '평생 기록 + 🎯다음 목표 + 💰골드 배수 분해 + 📈성장 스파크라인을 한눈에.' },
+  ],
+  convenience: [
+    { title: '🤖 자동화', body: '자동합치기(💎50 영구해금)·자동매도·자동잠금·자동의식·자동폭주. 각각 토글.' },
+    { title: '🧘 명상 모드', body: '<span class="hk">모든 자동화를 한 번에 ON</span>. 끄면 개별 설정은 유지. 손 안 대고 진행.' },
+    { title: '📦 보관소', body: '그리드 밖 3칸. 강한 변종 표창을 합성 위험에서 잠시 빼두었다 되돌리기.' },
+    { title: '↕ 정렬 / ⬇ 압축', body: '정렬 = Lv 내림차순 재배치. 압축 = 빈칸만 제거(배치 순서 유지). 압축은 중앙 보너스 위치를 바꿀 수 있음.' },
+    { title: '🔒 잠금 / 💡 힌트', body: '길게 누름 = 잠금(자동합치기·판매 보호). 힌트 = 합칠 수 있는 모든 페어 강조 + 최고 페어 표시.' },
   ],
 };
 let helpTab = 'basics';
