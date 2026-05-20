@@ -18,6 +18,9 @@ const G = loadGame();
 const F = G.fns;
 const C = G.consts;
 
+// Raw HTML for structural guards (button presence + handler wiring survives UI rebuilds).
+const RAW_HTML = require('fs').readFileSync(require('path').join(__dirname, '..', 'index.html'), 'utf8');
+
 // Helper: build a clean state and patch fields, then install it.
 function withState(patch) {
   const s = G.defaultState();
@@ -817,6 +820,29 @@ group('all achievement checks are safe (Q-Leap 124)', () => {
     catch (e) { threwRich++; }
   }
   eq(threwRich, 0, 'no achievement check throws on rich state');
+});
+
+group('UI structure guard — buttons present + wired (Q-Leap 125)', () => {
+  // Every interactive control must exist in the HTML AND have a click handler wired,
+  // so a future layout rebuild can't silently drop a button. (Catches the class of
+  // bug where moving buttons into a menu accidentally removes one.)
+  const buttons = [
+    'hint-btn', 'sell-btn', 'info-btn', 'merge-all-btn', 'sort-btn', 'compact-btn',
+    'ritual-btn', 'frenzy-btn', 'menu-btn',
+    'codex-btn', 'quest-btn', 'shop-btn', 'trophy-btn', 'hof-btn', 'log-btn',
+    'help-btn', 'storage-btn', 'meditation-btn',
+    'auto-merge-btn', 'burn-btn', 'instant-spawn-btn',
+  ];
+  for (const id of buttons) {
+    ok(RAW_HTML.includes(`id="${id}"`), `button #${id} present in HTML`);
+    ok(RAW_HTML.includes(`getElementById('${id}').addEventListener`), `button #${id} has a click handler wired`);
+  }
+  // the collapsible menu container exists
+  ok(RAW_HTML.includes('id="grid-menu"'), '#grid-menu container present');
+  // status readouts the HUD updates by id must exist
+  for (const id of ['shuriken-count', 'shuriken-max', 'batch-info', 'next-spawn-lv', 'formation-grade', 'frenzy-count', 'storage-count']) {
+    ok(RAW_HTML.includes(`id="${id}"`), `HUD readout #${id} present`);
+  }
 });
 
 group('findNextAutoMergePair priority', () => {
