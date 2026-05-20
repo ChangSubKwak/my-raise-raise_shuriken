@@ -686,6 +686,47 @@ group('mondayOfWeek ISO correctness (QA)', () => {
   }
 });
 
+group('save/load round-trip persistence (QA)', () => {
+  // Build a rich, distinctive state, persist it, wipe to defaults, reload.
+  // Catches "added a state field but forgot to persist/restore it" regressions.
+  const rich = withState({
+    gold: 123456, gem: 789, bestLevel: 42, runBestLevel: 30, prestigeCount: 7,
+    enlightenment: 55, frenzyCharge: 50, autoFrenzyEnabled: true,
+    goldRushTimer: 0, lastSpinDate: '2026-5-21', lastSpinReward: 8,
+    luckyCharms: 3, challengeStreak: 4, dailyMergeCount: 120,
+    autoMergeUnlocked: true, autoSellEnabled: true, autoLockThreshold: 18,
+    meditationMode: true, storage: [{ id: 1, level: 9, golden: true }],
+    growthLog: [{ date: '2026-5-20', best: 40, prestige: 7 }, { date: '2026-5-21', best: 42, prestige: 7 }],
+    codex: { 1: true, 2: true, 40: true },
+    grid: gridFrom([5, 5, 9, null, null, null]),
+  });
+  rich.stats = Object.assign(rich.stats || {}, { totalMerges: 999, divineMerges: 2 });
+  F.save();
+  // wipe to a fresh default state, then reload from the saved blob
+  G.setState(G.defaultState());
+  const loaded = F.load();
+  ok(loaded === true, 'load() succeeds from saved blob');
+  const st = G.getState();
+  eq(st.gold, 123456, 'gold persisted');
+  eq(st.gem, 789, 'gem persisted');
+  eq(st.bestLevel, 42, 'bestLevel persisted');
+  eq(st.prestigeCount, 7, 'prestigeCount persisted');
+  eq(st.enlightenment, 55, 'enlightenment persisted');
+  eq(st.frenzyCharge, 50, 'frenzyCharge persisted (Q-Leap 77)');
+  eq(st.autoFrenzyEnabled, true, 'autoFrenzyEnabled persisted (Q-Leap 80)');
+  eq(st.lastSpinDate, '2026-5-21', 'lastSpinDate persisted (Q-Leap 88)');
+  eq(st.luckyCharms, 3, 'luckyCharms persisted (Q-Leap 89)');
+  eq(st.challengeStreak, 4, 'challengeStreak persisted (Q-Leap 94)');
+  eq(st.dailyMergeCount, 120, 'dailyMergeCount persisted (Q-Leap 110)');
+  eq(st.meditationMode, true, 'meditationMode persisted (Q-Leap 75)');
+  eq(st.autoMergeUnlocked, true, 'autoMergeUnlocked persisted');
+  eq((st.storage || []).length, 1, 'storage persisted (Q-Leap 74)');
+  eq((st.growthLog || []).length, 2, 'growthLog persisted (Q-Leap 120)');
+  eq(Object.keys(st.codex || {}).length, 3, 'codex persisted');
+  eq((st.stats || {}).totalMerges, 999, 'lifetime stats persisted');
+  eq(st.grid.filter(Boolean).length, 3, 'grid pieces persisted');
+});
+
 group('findNextAutoMergePair priority', () => {
   // low priority: lowest level pair first
   withState({ grid: gridFrom([2, 5, 5, 2, null, null]), autoMergePriority: 'low', autoMergeCap: 99 });
