@@ -567,6 +567,56 @@ group('save integrity repair (Q-Leap 121)', () => {
   eq(F.validateAndRepairState(), 0, 'clean state → 0 repairs');
 });
 
+group('stress: random ops preserve invariants (property test)', () => {
+  // Deterministic LCG so any failure is reproducible from this seed.
+  let seed = 0x2bad4f3d;
+  const rnd = () => { seed = (Math.imul(seed, 1103515245) + 12345) & 0x7fffffff; return seed / 0x7fffffff; };
+  const realRandom = Math.random;
+  Math.random = rnd;
+  try {
+    const s = withState({
+      upgrades: Object.assign(defaultUpgrades(), { maxShuriken: 6 }), // grid size 12
+      gold: 0, gem: 0, bestLevel: 1, prestigeCount: 0, spawnProgress: 0,
+      grid: new Array(12).fill(null),
+    });
+    s.stats = {};
+    s.codex = {};
+    const size = F.getGridSize();
+    let prevBest = 1;
+    const violations = [];
+    for (let step = 0; step < 3000; step++) {
+      const roll = rnd();
+      if (roll < 0.55) {
+        F.spawnShuriken();
+      } else {
+        const g = G.getState().grid;
+        const a = Math.floor(rnd() * g.length);
+        const b = Math.floor(rnd() * g.length);
+        if (a !== b) F.tryMerge(a, b);
+      }
+      const st = G.getState();
+      if (!isFinite(st.gold) || st.gold < 0) violations.push(`gold@${step}=${st.gold}`);
+      if (!isFinite(st.gem) || st.gem < 0) violations.push(`gem@${step}=${st.gem}`);
+      if (!isFinite(st.bestLevel) || st.bestLevel < 1) violations.push(`best@${step}=${st.bestLevel}`);
+      if (st.bestLevel < prevBest) violations.push(`bestRegress@${step}`);
+      prevBest = st.bestLevel;
+      if (st.grid.length > size) violations.push(`gridGrow@${step}=${st.grid.length}`);
+      let gridMax = 0;
+      for (const c of st.grid) {
+        if (c == null) continue;
+        if (typeof c !== 'object' || !isFinite(c.level) || c.level < 1) { violations.push(`piece@${step}`); continue; }
+        if (c.level > gridMax) gridMax = c.level;
+      }
+      if (gridMax > st.bestLevel) violations.push(`bestBelowGrid@${step}(${gridMax}>${st.bestLevel})`);
+      if (violations.length > 8) break; // stop early on repeated failure
+    }
+    eq(violations.length, 0, '3000 random ops keep invariants: ' + violations.slice(0, 8).join(' | '));
+    ok(G.getState().bestLevel > 1, 'stress run actually progressed (bestLevel grew)');
+  } finally {
+    Math.random = realRandom;
+  }
+});
+
 group('findNextAutoMergePair priority', () => {
   // low priority: lowest level pair first
   withState({ grid: gridFrom([2, 5, 5, 2, null, null]), autoMergePriority: 'low', autoMergeCap: 99 });
