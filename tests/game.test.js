@@ -484,17 +484,30 @@ group('sell value formula (Q-Leap 119 refactor + QA)', () => {
   eq(F.sellValue(null), 0, 'null → 0');
 });
 
-group('prestige gain formula (QA)', () => {
-  withState({ bestLevel: 7 });
-  eq(F.getPrestigeGain(), 0, 'below Lv8 → 0 prestige gain');
-  withState({ bestLevel: 8 });
-  eq(F.getPrestigeGain(), 1, 'Lv8 → floor(1^1.3) = 1');
-  withState({ bestLevel: 17 });
-  eq(F.getPrestigeGain(), Math.floor(Math.pow(10, 1.3)), 'Lv17 → floor(10^1.3)');
-  // monotonic non-decreasing
+group('enlightenment gain formula (QA)', () => {
+  // actual prestige reward = max(1, floor(runBestLevel/3))
+  withState({ runBestLevel: 1 });
+  eq(F.getEnlightenmentGain(), 1, 'min gain is 1');
+  withState({ runBestLevel: 9 });
+  eq(F.getEnlightenmentGain(), 3, 'runBest 9 → 3');
+  withState({ runBestLevel: 60 });
+  eq(F.getEnlightenmentGain(), 20, 'runBest 60 → 20');
+  // monotonic non-decreasing in runBestLevel
   let prev = 0, ok2 = true;
-  for (let lv = 8; lv <= 60; lv++) { withState({ bestLevel: lv }); const g = F.getPrestigeGain(); if (g < prev) ok2 = false; prev = g; }
-  ok(ok2, 'prestige gain is monotonic non-decreasing in bestLevel');
+  for (let lv = 1; lv <= 80; lv++) { withState({ runBestLevel: lv }); const g = F.getEnlightenmentGain(); if (g < prev) ok2 = false; prev = g; }
+  ok(ok2, 'enlightenment gain is monotonic non-decreasing');
+});
+
+group('prestige advice (Q-Leap 122)', () => {
+  withState({ bestLevel: 5, prestigeCount: 0 });
+  eq(F.getPrestigeAdvice().recommend, false, 'below Lv8 → not recommended');
+  withState({ bestLevel: 12, runBestLevel: 12, prestigeCount: 0, enlightenment: 0 });
+  eq(F.getPrestigeAdvice().recommend, true, 'first prestige at Lv8+ → recommended');
+  // subsequent: recommend only when gain is a big boost to current enlightenment
+  withState({ bestLevel: 30, runBestLevel: 30, prestigeCount: 3, enlightenment: 5 }); // gain=10 >= max(2,2.5)
+  eq(F.getPrestigeAdvice().recommend, true, 'large relative gain → recommended');
+  withState({ bestLevel: 30, runBestLevel: 9, prestigeCount: 3, enlightenment: 100 }); // gain=3 < 50
+  eq(F.getPrestigeAdvice().recommend, false, 'small relative gain → hold');
 });
 
 group('damage scales with fire interval (QA)', () => {
