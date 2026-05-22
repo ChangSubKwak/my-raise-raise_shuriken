@@ -894,6 +894,32 @@ group('creditMerges — milestone/charm crossing (drift + robustness bugfix)', (
   eq(G.getState().gem, 0, 'already-claimed milestone not re-granted');
 });
 
+group('passive gold rate: synergy + center unified (consistency bugfix)', () => {
+  // adjacency synergy must raise the rate (was missing from getPassiveGoldRate/display+offline)
+  withState({ prestigeCount: 0, upgrades: defaultUpgrades(), dailyChallengeId: '',
+    grid: gridFrom([3, 9, null, null, null, null]) }); // not adjacent (cols=3: idx0,idx1 ARE adjacent though)
+  // build a clean non-adjacent baseline: single piece
+  withState({ prestigeCount: 0, upgrades: defaultUpgrades(), dailyChallengeId: '',
+    grid: gridFrom([5, null, null, null, null, null]) });
+  const single = F.getPassiveGoldRate();
+  // two same-level adjacent (idx0,idx1 adjacent in 3-col grid) → each gets +20% synergy
+  withState({ prestigeCount: 0, upgrades: defaultUpgrades(), dailyChallengeId: '',
+    grid: gridFrom([5, 5, null, null, null, null]) });
+  const pair = F.getPassiveGoldRate();
+  const base5 = 0.5 * Math.pow(2, 4); // one Lv5 piece weight
+  // pair: idx0(non-center) 1.2x + idx1(non-center) 1.2x... but idx? center of size6=idx4, so neither is center
+  approx(pair, single * 2 * 1.2 / 1, 'adjacent same-level pair gets +20% synergy each', 1e-6);
+  // center bonus: a piece at center index earns +25%
+  const ci = 4; // center for size-6 grid
+  withState({ prestigeCount: 0, upgrades: defaultUpgrades(), dailyChallengeId: '',
+    grid: place(6, { [ci]: 7 }) });
+  const centered = F.getPassiveGoldRate();
+  withState({ prestigeCount: 0, upgrades: defaultUpgrades(), dailyChallengeId: '',
+    grid: place(6, { 0: 7 }) });
+  const offCenter = F.getPassiveGoldRate();
+  approx(centered, offCenter * 1.25, 'center cell still earns +25% in unified rate', 1e-6);
+});
+
 group('jumpBonus challenge applies to ritual too (drift bugfix)', () => {
   if (typeof F.doRitualMerge !== 'function') { ok(true, 'not exposed — skip'); return; }
   const realRandom = Math.random; Math.random = () => 0.999999;

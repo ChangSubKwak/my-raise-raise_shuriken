@@ -4133,27 +4133,8 @@ function update(dt) {
   }
   _prevFullState = emptySlots().length === 0;
 
-  // Passive gold: each shuriken contributes exponentially by level
-  // Lv1 = 0.5 / sec, Lv2 = 1, Lv3 = 2, Lv5 = 8, Lv10 = 256, etc.
-  // Q-Leap 44: adjacency synergy — same-Lv 4-neighbors grant +20% each (max +80%)
-  let goldRate = 0;
-  const _cols = getGridCols();
-  const _gsize = state.grid.length;
-  for (let i = 0; i < _gsize; i++) {
-    const c = state.grid[i];
-    if (!c) continue;
-    let adj = 0;
-    const row = Math.floor(i / _cols);
-    const col = i % _cols;
-    if (col > 0          && state.grid[i - 1]     && state.grid[i - 1].level     === c.level) adj++;
-    if (col < _cols - 1  && state.grid[i + 1]     && state.grid[i + 1].level     === c.level) adj++;
-    if (row > 0          && state.grid[i - _cols] && state.grid[i - _cols].level === c.level) adj++;
-    if (i + _cols < _gsize && state.grid[i + _cols] && state.grid[i + _cols].level === c.level) adj++;
-    const synergyBoost = isChallenge('synergy2x') ? 0.4 : 0.2; // Q-Leap 54
-    const synergyMul = 1 + adj * synergyBoost;
-    goldRate += 0.5 * Math.pow(2, c.level - 1) * synergyMul;
-  }
-  goldRate *= getGoldMul();
+  // Passive gold: single source of truth (synergy + center bonus + goldMul).
+  const goldRate = getPassiveGoldRate();
   // Combo timer tick — resets count when expired
   if (state.comboTimer > 0) {
     state.comboTimer -= dt;
@@ -5668,15 +5649,28 @@ function renderAchievements() {
     grid.appendChild(cell);
   }
 }
+// Single source of truth for gold/sec. Includes BOTH adjacency synergy (Q-Leap 44)
+// AND the center-cell bonus (Q-Leap 107). update()'s live income, the HUD readout, and the
+// offline reward all call this — previously update() and this fn diverged (each missing one
+// bonus), so the center bonus never affected live income and synergy never showed in the readout.
 function getPassiveGoldRate() {
-  // Q-Leap 107: center cell occupant earns CENTER_BONUS× its base gold weight.
+  const cols = getGridCols();
+  const size = state.grid.length;
   const centerIdx = getCenterIndex();
   let r = 0;
-  for (let i = 0; i < state.grid.length; i++) {
+  for (let i = 0; i < size; i++) {
     const c = state.grid[i];
     if (!c) continue;
-    const w = 0.5 * Math.pow(2, c.level - 1);
-    r += (i === centerIdx) ? w * CENTER_BONUS : w;
+    let adj = 0;
+    const row = Math.floor(i / cols), col = i % cols;
+    if (col > 0           && state.grid[i - 1]     && state.grid[i - 1].level     === c.level) adj++;
+    if (col < cols - 1    && state.grid[i + 1]     && state.grid[i + 1].level     === c.level) adj++;
+    if (row > 0           && state.grid[i - cols]  && state.grid[i - cols].level  === c.level) adj++;
+    if (i + cols < size   && state.grid[i + cols]  && state.grid[i + cols].level  === c.level) adj++;
+    const synergyMul = 1 + adj * (isChallenge('synergy2x') ? 0.4 : 0.2); // Q-Leap 44/54
+    let w = 0.5 * Math.pow(2, c.level - 1) * synergyMul;
+    if (i === centerIdx) w *= CENTER_BONUS; // Q-Leap 107
+    r += w;
   }
   return r * getGoldMul();
 }
