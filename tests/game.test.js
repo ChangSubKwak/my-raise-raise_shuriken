@@ -894,6 +894,27 @@ group('creditMerges — milestone/charm crossing (drift + robustness bugfix)', (
   eq(G.getState().gem, 0, 'already-claimed milestone not re-granted');
 });
 
+group('ritual variant inheritance incl. dark (asymmetry bugfix)', () => {
+  if (typeof F.doRitualMerge !== 'function') { ok(true, 'not exposed — skip'); return; }
+  const realRandom = Math.random; Math.random = () => 0.999999; // suppress single-parent procs
+  // 2 dark parents in a ritual group → guaranteed dark child (was dropped before)
+  let s = withState({ bestLevel: 4, runBestLevel: 4, upgrades: defaultUpgrades(),
+    grid: gridFrom([{ level: 4, dark: true }, { level: 4, dark: true }, { level: 4 }, null, null, null]) });
+  s.stats = {};
+  F.doRitualMerge();
+  const child = G.getState().grid.filter(Boolean).find(c => c.level >= 5);
+  ok(child && child.dark === true, 'ritual with 2 dark parents → dark child preserved');
+  // 2 golden parents → guaranteed golden child + stat tracked
+  s = withState({ bestLevel: 4, runBestLevel: 4, upgrades: defaultUpgrades(),
+    grid: gridFrom([{ level: 4, golden: true }, { level: 4, golden: true }, { level: 4 }, null, null, null]) });
+  s.stats = {};
+  F.doRitualMerge();
+  const gchild = G.getState().grid.filter(Boolean).find(c => c.level >= 5);
+  ok(gchild && gchild.golden === true, 'ritual golden inheritance still works');
+  ok((G.getState().stats.goldenSpawned || 0) >= 1, 'ritual golden child counted in stats');
+  Math.random = realRandom;
+});
+
 group('daily first-merge bonus shared by ritual (drift bugfix)', () => {
   if (typeof F.grantDailyFirstMerge !== 'function') { ok(true, 'not exposed — skip'); return; }
   // first call of the day grants 💎+3 and stamps the date; second call same day → nothing

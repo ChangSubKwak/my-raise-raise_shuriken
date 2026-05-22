@@ -2697,10 +2697,11 @@ function doRitualMerge() {
   const g = groups[0];
   const bonus = g.indices.length - 2; // 3→+1, 4→+2, 5→+3
   const newLv = g.level + 1 + bonus;
-  let goldensIn = 0, starsIn = 0;
+  let goldensIn = 0, starsIn = 0, darksIn = 0;
   for (const idx of g.indices) {
     if (state.grid[idx].golden) goldensIn++;
     if (state.grid[idx].star) starsIn++;
+    if (state.grid[idx].dark) darksIn++; // Q-Leap: dark was dropped by ritual (asymmetry bug)
   }
   const toIdx = g.indices[0];
   for (const idx of g.indices) state.grid[idx] = null;
@@ -2710,7 +2711,13 @@ function doRitualMerge() {
   let childStar = false;
   if (starsIn >= 2) childStar = true;
   else if (starsIn === 1) childStar = Math.random() < 0.7;
-  state.grid[toIdx] = { id: state.nextShurikenId++, level: newLv, fireTimer: 0, golden: childGolden, star: childStar };
+  let childDark = false;
+  if (darksIn >= 2) childDark = true;
+  else if (darksIn === 1) childDark = Math.random() < 0.7;
+  state.grid[toIdx] = { id: state.nextShurikenId++, level: newLv, fireTimer: 0, golden: childGolden, star: childStar, dark: childDark };
+  if (childGolden) state.stats.goldenSpawned = (state.stats.goldenSpawned || 0) + 1;
+  if (childStar)   state.stats.starSpawned   = (state.stats.starSpawned || 0) + 1;
+  if (childDark)   state.stats.darkSpawned   = (state.stats.darkSpawned || 0) + 1;
   if (newLv > state.bestLevel) {
     const prevBest = state.bestLevel;
     state.bestLevel = newLv;
