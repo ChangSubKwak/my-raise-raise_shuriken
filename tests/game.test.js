@@ -580,7 +580,17 @@ group('save integrity repair (Q-Leap 121)', () => {
   eq(G.getState().bestLevel, 10, 'bestLevel raised to highest grid piece');
   // clean state needs no repair
   s = withState({ upgrades: defaultUpgrades(), gold: 100, gem: 5, bestLevel: 10, spawnProgress: 0.5, grid: gridFrom([5, 5, null, null, null, null]) });
+  s.stats = { totalMerges: 10, playTimeSec: 100 };
   eq(F.validateAndRepairState(), 0, 'clean state → 0 repairs');
+  // corrupt lifetime stats are sanitized
+  s = withState({ upgrades: defaultUpgrades(), grid: gridFrom([null,null,null,null,null,null]) });
+  s.stats = { totalMerges: NaN, playTimeSec: -5, totalGoldEarned: Infinity, bestCombo: 7 };
+  F.validateAndRepairState();
+  const st2 = G.getState().stats;
+  eq(st2.totalMerges, 0, 'NaN stat → 0');
+  eq(st2.playTimeSec, 0, 'negative stat → 0');
+  eq(st2.totalGoldEarned, 0, 'Infinity stat → 0');
+  eq(st2.bestCombo, 7, 'valid stat preserved');
 });
 
 group('stress: random ops preserve invariants (property test)', () => {

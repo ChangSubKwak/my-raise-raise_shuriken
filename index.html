@@ -2897,6 +2897,17 @@ function validateAndRepairState() {
   state.spawnProgress = Math.max(0, Math.min(1, state.spawnProgress));
   // bestLevel must be ≥ the highest level currently on the grid.
   for (const c of state.grid) if (c && c.level > state.bestLevel) { state.bestLevel = c.level; repairs++; }
+  // lifetime stat counters must be finite ≥ 0 — a corrupt NaN here would poison
+  // displays (playtime, totals) and accumulation forever.
+  if (state.stats && typeof state.stats === 'object') {
+    for (const k of Object.keys(state.stats)) {
+      const v = state.stats[k];
+      if (typeof v === 'number' && (!isFinite(v) || v < 0)) { state.stats[k] = 0; repairs++; }
+    }
+  } else {
+    state.stats = { totalMerges: 0, totalSpawned: 0, totalGoldEarned: 0, sessionStart: Date.now(), playTimeSec: 0, bestCombo: 0 };
+    repairs++;
+  }
   return repairs;
 }
 
