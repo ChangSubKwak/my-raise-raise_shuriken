@@ -6410,7 +6410,8 @@ function showShurikenInfo(idx) {
   if (idx + cols < size && state.grid[idx + cols] && state.grid[idx + cols].level === c.level) adj++;
   const synergyBoost = isChallenge('synergy2x') ? 0.4 : 0.2;
   const synergyMul = 1 + adj * synergyBoost;
-  const baseGoldRate = 0.5 * Math.pow(2, c.level - 1) * synergyMul * getGoldMul();
+  const centerMul = (idx === getCenterIndex()) ? CENTER_BONUS : 1; // Q-Leap 107: reflect center bonus in the readout
+  const baseGoldRate = 0.5 * Math.pow(2, c.level - 1) * synergyMul * centerMul * getGoldMul();
   const sellVal = sellValue(c); // Q-Leap 119: shared formula (0 if locked)
   document.getElementById('info-title').textContent = `${levelName(c.level)} (Lv ${c.level})`;
   let traits = '';
