@@ -2729,6 +2729,7 @@ function doRitualMerge() {
   // Q-Leap 116: ritual merges also progress daily merge tiers + line bonus
   for (let k = 0; k < g.indices.length - 1; k++) addDailyMergeCount();
   checkLineBonus();
+  grantDailyFirstMerge(); // Q-Leap 67: ritual can be the day's first merge
   toast(`✨ 의식 발동! ${g.indices.length}개 → Lv ${newLv} · 💰 +${fmt(ritualGold)}`);
   addEvent('ritual', `의식 ${g.indices.length}개 → Lv ${newLv}`);
   flashJumpScreen(5);
@@ -2738,6 +2739,7 @@ function doRitualMerge() {
   flashCell(toIdx);
   addQuestProgress('merges', g.indices.length - 1);
   addQuestProgress('gold', ritualGold);
+  if (childGolden) addQuestProgress('golden', 1); // Q-Leap 41: ritual golden child counts too
   renderGrid();
   refreshUI();
   checkAchievements();
@@ -3119,6 +3121,18 @@ function creditMerges(count) {
     state.luckyCharms = (state.luckyCharms || 0) + newCharms;
     setTimeout(() => toast(`🔮 합성 보장 부적 ×${state.luckyCharms} 획득`), 360);
     addEvent('lucky', `보장 부적 획득 (총 ×${state.luckyCharms})`);
+  }
+}
+// Q-Leap 67: daily first-merge bonus — shared so ritual/pairwise both grant it
+// (a 3-group left overnight could make a ritual the day's first merge).
+function grantDailyFirstMerge() {
+  const today = todayString();
+  if (state.lastFirstMergeDate !== today) {
+    state.lastFirstMergeDate = today;
+    state.gem += 3;
+    setTimeout(() => toast('🌅 오늘의 첫 합성 · 💎 +3'), 200);
+    flashJumpScreen(2);
+    addEvent('lucky', '일일 첫 합성 보너스');
   }
 }
 
@@ -3579,15 +3593,7 @@ function tryMerge(fromIdx, toIdx) {
     if (luckyCharmUsed) {
       state.stats.luckyCharmsUsed = (state.stats.luckyCharmsUsed || 0) + 1;
     }
-    // Q-Leap 67: daily first merge bonus (per-day, persists through prestige)
-    const today = todayString();
-    if (state.lastFirstMergeDate !== today) {
-      state.lastFirstMergeDate = today;
-      state.gem += 3;
-      setTimeout(() => toast('🌅 오늘의 첫 합성 · 💎 +3'), 200);
-      flashJumpScreen(2);
-      addEvent('lucky', '일일 첫 합성 보너스');
-    }
+    grantDailyFirstMerge(); // Q-Leap 67 (shared)
     // Q-Leap 110: 일일 합성 마일스톤 (오늘 누적, 자정 리셋)
     addDailyMergeCount();
     // Q-Leap 41: quest progress hooks

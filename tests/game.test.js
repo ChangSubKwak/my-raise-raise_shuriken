@@ -894,6 +894,27 @@ group('creditMerges — milestone/charm crossing (drift + robustness bugfix)', (
   eq(G.getState().gem, 0, 'already-claimed milestone not re-granted');
 });
 
+group('daily first-merge bonus shared by ritual (drift bugfix)', () => {
+  if (typeof F.grantDailyFirstMerge !== 'function') { ok(true, 'not exposed — skip'); return; }
+  // first call of the day grants 💎+3 and stamps the date; second call same day → nothing
+  let s = withState({ gem: 0, lastFirstMergeDate: '' });
+  s.stats = {};
+  F.grantDailyFirstMerge();
+  eq(G.getState().gem, 3, 'first merge of day → 💎+3');
+  const dateStamp = G.getState().lastFirstMergeDate;
+  ok(dateStamp && dateStamp.length > 0, 'date stamped');
+  F.grantDailyFirstMerge();
+  eq(G.getState().gem, 3, 'second merge same day → no extra bonus');
+  // ritual path: a ritual as the day's first merge also grants it
+  s = withState({ gem: 0, lastFirstMergeDate: '', runBestLevel: 4, bestLevel: 4,
+    upgrades: defaultUpgrades(), grid: gridFrom([4, 4, 4, null, null, null]) });
+  s.stats = {};
+  const realRandom = Math.random; Math.random = () => 0.999999;
+  F.doRitualMerge();
+  Math.random = realRandom;
+  eq(G.getState().gem >= 3, true, 'ritual as first merge of day grants the daily bonus');
+});
+
 group('trial completes via ritual merge (drift bugfix)', () => {
   if (typeof F.doRitualMerge !== 'function') { ok(true, 'doRitualMerge not exposed — skip'); return; }
   // Active trial with goal Lv 5. A 3-in-a-row ritual of Lv4 → Lv5 must register the win
