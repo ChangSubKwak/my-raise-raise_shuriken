@@ -856,6 +856,28 @@ group('auto-merge end-to-end via update() (reproduce toggle report)', () => {
   eq(G.getState().grid.filter(Boolean).length, before2, 'no auto-merge when toggled OFF (state respected)');
 });
 
+group('spawn gauge pause/resume via update() (user-critical behavior)', () => {
+  if (typeof F.update !== 'function') { ok(true, 'update() not exposed — skip'); return; }
+  // FULL grid (no same-level pairs → no auto-merge), auto-merge OFF → gauge paused at 1.0
+  let s = withState({
+    autoMerge: false, autoMergeUnlocked: false, burningTimer: 0,
+    upgrades: defaultUpgrades(), spawnProgress: 0.3, bestLevel: 6,
+    grid: gridFrom([1, 2, 3, 4, 5, 6]), // full, all distinct
+  });
+  s.stats = {};
+  F.update(0.1);
+  eq(G.getState().grid.filter(Boolean).length, 6, 'grid is full');
+  eq(G.getState().spawnProgress, 1, 'gauge pinned to 1.0 (paused) while full');
+  // free a slot → gauge must resume (drop from 1 and tick), never stay stuck
+  const st = G.getState();
+  st.grid[0] = null;
+  F.update(0.1); // first tick after full → resets to 0 (resume)
+  ok(G.getState().spawnProgress < 1, 'gauge resumed (dropped below 1) once a slot freed');
+  // advance enough time to actually spawn into the freed slot
+  for (let i = 0; i < 200; i++) F.update(0.2);
+  eq(G.getState().grid.filter(Boolean).length, 6, 'freed slot eventually refilled by spawn (gauge works when grid has space)');
+});
+
 group('variant inheritance on merge (core mechanic)', () => {
   const realRandom = Math.random;
   Math.random = () => 0.999999; // suppress spontaneous/single-parent procs
