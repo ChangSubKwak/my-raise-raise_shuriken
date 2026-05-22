@@ -91,7 +91,7 @@ function loadGame() {
     registerCodex, announceTranscendIfNeeded,
     getNextGoal, getGoldMulBreakdown, sellValue, getPrestigeAdvice, getEnlightenmentGain, getFireInterval, getTotalDPS,
     pushGrowthSnapshot, sparkline, validateAndRepairState,
-    generateDailyQuests, mondayOfWeek, save, load, doPrestige, fmt,
+    generateDailyQuests, mondayOfWeek, save, load, doPrestige, fmt, fmtPlaytime,
     // integration-level (DOM calls are stubbed to no-ops):
     tryMerge, autoMergeStep, emptySlots, spawnShuriken, doExchange, doRitualMerge, sellShuriken, update,
   },

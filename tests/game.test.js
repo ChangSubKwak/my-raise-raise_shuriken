@@ -878,6 +878,15 @@ group('spawn gauge pause/resume via update() (user-critical behavior)', () => {
   eq(G.getState().grid.filter(Boolean).length, 6, 'freed slot eventually refilled by spawn (gauge works when grid has space)');
 });
 
+group('playtime formatter fmtPlaytime() (long sessions + guards)', () => {
+  eq(F.fmtPlaytime(30), '30초', 'seconds');
+  eq(F.fmtPlaytime(90), '1분 30초', 'minutes+seconds');
+  eq(F.fmtPlaytime(3661), '1시 1분', 'hours+minutes');
+  eq(F.fmtPlaytime(90000), '1일 1시', '25h → days+hours');
+  eq(F.fmtPlaytime(NaN), '0초', 'NaN → 0초 (no "NaN시")');
+  eq(F.fmtPlaytime(-100), '0초', 'negative → 0초');
+});
+
 group('number formatter fmt() (endgame + guards)', () => {
   eq(F.fmt(0), '0', 'zero');
   eq(F.fmt(999), '999', 'below 1000 → integer');

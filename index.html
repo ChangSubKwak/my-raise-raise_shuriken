@@ -5545,11 +5545,15 @@ function syncSpawnGaugeAfterMutation() {
   }
 }
 function fmtPlaytime(sec) {
+  sec = Math.floor(sec);
+  if (!isFinite(sec) || sec < 0) sec = 0; // guard NaN/negative → never render "NaN시"
   if (sec < 60) return sec + '초';
   const m = Math.floor(sec / 60);
   if (m < 60) return m + '분 ' + (sec % 60) + '초';
   const h = Math.floor(m / 60);
-  return h + '시 ' + (m % 60) + '분';
+  if (h < 24) return h + '시 ' + (m % 60) + '분';
+  const d = Math.floor(h / 24);
+  return d + '일 ' + (h % 24) + '시'; // very long playtimes read cleanly
 }
 function renderStats() {
   const s = state.stats || {};
