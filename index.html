@@ -3188,6 +3188,14 @@ function getActiveSets() {
   return sets;
 }
 function hasSet(id) { return !!getActiveSets()[id]; }
+// All-variant spontaneous-spawn multiplier: Saturday 변종 자연발생 ×2 (Q-Leap 87) and
+// 황금 진형 변종 발생 ×1.5 (Q-Leap 95). Applies to golden/star/dark alike (labels say "변종").
+function getVariantSpontaneousMul() {
+  let m = 1;
+  if (weekdayBonus().variantMul) m *= weekdayBonus().variantMul;
+  if (hasSet('goldFormation')) m *= 1.5;
+  return m;
+}
 
 // Q-Leap 111: 진형 등급 — 그리드 평균 레벨이 최고기록에 얼마나 근접한지로 S/A/B/C/—.
 // 높은 표창만 유지할수록 평균이 best에 근접 → 좋은 등급. 빈 그리드는 '—'.
@@ -3461,12 +3469,13 @@ function tryMerge(fromIdx, toIdx) {
     // Child golden inheritance: 2 parents=100%, 1 parent=50%, 0 parents=0.5% spontaneous
     // Q-Leap 50: goldenLuck skill — +0.2%/Lv to spontaneous rate
     // Q-Leap 54: goldenLuck challenge — ×3 spontaneous rate
+    // All-variant spontaneous multiplier (these bonuses say "변종"/variant, so apply to
+    // golden, star AND dark — previously only golden got them, contradicting the labels).
+    const variantMul = getVariantSpontaneousMul();
     let childGolden = false;
-    let goldenSpontaneous = 0.005 + getSkillLv('goldenLuck') * 0.002;
-    if (isChallenge('goldenLuck')) goldenSpontaneous *= 3;
-    if (weekdayBonus().variantMul) goldenSpontaneous *= weekdayBonus().variantMul; // Q-Leap 87
-    if ((state.frenzyTimer || 0) > 0) goldenSpontaneous *= 1.5; // Q-Leap 90: 폭주 중 황금 ×1.5
-    if (hasSet('goldFormation')) goldenSpontaneous *= 1.5; // Q-Leap 95: 황금 진형
+    let goldenSpontaneous = (0.005 + getSkillLv('goldenLuck') * 0.002) * variantMul;
+    if (isChallenge('goldenLuck')) goldenSpontaneous *= 3;       // golden-specific challenge (황금의 날)
+    if ((state.frenzyTimer || 0) > 0) goldenSpontaneous *= 1.5;  // golden-specific (Q-Leap 90: 폭주 중 황금)
     if (goldensIn === 2) childGolden = true;
     else if (goldensIn === 1) childGolden = Math.random() < 0.5;
     else childGolden = Math.random() < goldenSpontaneous;
@@ -3474,7 +3483,7 @@ function tryMerge(fromIdx, toIdx) {
     // Q-Leap 50: starLuck skill — +0.1%/Lv to spontaneous rate
     const starsIn = (a.star ? 1 : 0) + (b.star ? 1 : 0);
     let childStar = false;
-    const starSpontaneous = 0.0025 + getSkillLv('starLuck') * 0.001;
+    const starSpontaneous = (0.0025 + getSkillLv('starLuck') * 0.001) * variantMul;
     if (starsIn === 2) childStar = true;
     else if (starsIn === 1) childStar = Math.random() < 0.5;
     else childStar = Math.random() < starSpontaneous;
@@ -3483,7 +3492,7 @@ function tryMerge(fromIdx, toIdx) {
     let childDark = false;
     if (darksIn === 2) childDark = true;
     else if (darksIn === 1) childDark = Math.random() < 0.5;
-    else childDark = Math.random() < 0.0015;
+    else childDark = Math.random() < (0.0015 * variantMul);
     state.grid[toIdx] = { id: state.nextShurikenId++, level: newLv, fireTimer: rand(0, getFireInterval()), golden: childGolden, star: childStar, dark: childDark };
     state.grid[fromIdx] = null;
     if (childGolden) {

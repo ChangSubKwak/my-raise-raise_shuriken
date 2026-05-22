@@ -90,6 +90,7 @@ function loadGame() {
     compactGridArray, sortGridByLevel, getLevelFlavor,
     registerCodex, announceTranscendIfNeeded,
     getNextGoal, getGoldMulBreakdown, sellValue, getPrestigeAdvice, getEnlightenmentGain, getFireInterval, getTotalDPS,
+    getVariantSpontaneousMul,
     pushGrowthSnapshot, sparkline, validateAndRepairState,
     generateDailyQuests, mondayOfWeek, save, load, doPrestige, fmt, fmtPlaytime,
     // integration-level (DOM calls are stubbed to no-ops):

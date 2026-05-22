@@ -894,6 +894,17 @@ group('creditMerges — milestone/charm crossing (drift + robustness bugfix)', (
   eq(G.getState().gem, 0, 'already-claimed milestone not re-granted');
 });
 
+group('variant spontaneous multiplier applies to all variants (bugfix)', () => {
+  if (typeof F.getVariantSpontaneousMul !== 'function') { ok(true, 'not exposed — skip'); return; }
+  // goldFormation (2+ golden) must multiply variant spontaneous ×1.5 — date-independent check.
+  withState({ grid: gridFrom([3, 4, null, null, null, null]) }); // no goldFormation
+  const base = F.getVariantSpontaneousMul();
+  withState({ grid: gridFrom([{ level: 3, golden: true }, { level: 4, golden: true }, null, null, null, null]) });
+  const withGF = F.getVariantSpontaneousMul();
+  approx(withGF, base * 1.5, 'goldFormation set multiplies variant spontaneous ×1.5');
+  ok(base >= 1, 'baseline multiplier ≥ 1');
+});
+
 group('passive gold rate: synergy + center unified (consistency bugfix)', () => {
   // adjacency synergy must raise the rate (was missing from getPassiveGoldRate/display+offline)
   withState({ prestigeCount: 0, upgrades: defaultUpgrades(), dailyChallengeId: '',
