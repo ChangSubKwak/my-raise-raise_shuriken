@@ -2719,6 +2719,7 @@ function doRitualMerge() {
     announceTranscendIfNeeded(newLv, prevBest); // Q-Leap 116: ritual path now grants transcend milestones too
   }
   if (newLv > state.runBestLevel) state.runBestLevel = newLv;
+  if (state.trialActive) checkTrialProgress(); // Q-Leap: ritual jumps can complete a trial goal too
   registerCodex(newLv); // Q-Leap 116: shared — ritual now grants codex milestones + weekday bonus
   const ritualGold = Math.floor(Math.pow(2, newLv) * getGoldMul() * g.indices.length * 2);
   state.gold += ritualGold;

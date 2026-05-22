@@ -866,6 +866,27 @@ group('auto-merge end-to-end via update() (reproduce toggle report)', () => {
   eq(G.getState().grid.filter(Boolean).length, before2, 'no auto-merge when toggled OFF (state respected)');
 });
 
+group('trial completes via ritual merge (drift bugfix)', () => {
+  if (typeof F.doRitualMerge !== 'function') { ok(true, 'doRitualMerge not exposed — skip'); return; }
+  // Active trial with goal Lv 5. A 3-in-a-row ritual of Lv4 → Lv5 must register the win
+  // immediately (previously only tryMerge checked trial progress).
+  const s = withState({
+    trialActive: true, trialTimer: 60, trialGoalLv: 5, trialReward: 5, trialStartBestLv: 1,
+    runBestLevel: 4, bestLevel: 4, enlightenment: 0,
+    upgrades: defaultUpgrades(), prestigeCount: 0,
+    grid: gridFrom([4, 4, 4, null, null, null]), // row 0 connected → ritual group of 3
+  });
+  s.stats = {};
+  const realRandom = Math.random;
+  Math.random = () => 0.999999;
+  F.doRitualMerge(); // 3×Lv4 → Lv5 (4+1+1=... bonus = 3-2=1 → newLv 5)
+  Math.random = realRandom;
+  const st = G.getState();
+  ok(st.runBestLevel >= 5, `ritual reached the goal level (runBest ${st.runBestLevel})`);
+  eq(st.trialActive, false, 'trial ended (won) immediately via ritual, not left hanging');
+  ok((st.stats.trialsWon || 0) >= 1, 'trial counted as won');
+});
+
 group('spawn gauge pause/resume via update() (user-critical behavior)', () => {
   if (typeof F.update !== 'function') { ok(true, 'update() not exposed — skip'); return; }
   // FULL grid (no same-level pairs → no auto-merge), auto-merge OFF → gauge paused at 1.0
