@@ -894,6 +894,25 @@ group('creditMerges — milestone/charm crossing (drift + robustness bugfix)', (
   eq(G.getState().gem, 0, 'already-claimed milestone not re-granted');
 });
 
+group('jumpBonus challenge applies to ritual too (drift bugfix)', () => {
+  if (typeof F.doRitualMerge !== 'function') { ok(true, 'not exposed — skip'); return; }
+  const realRandom = Math.random; Math.random = () => 0.999999;
+  // 3-group → newLv = level + 1 + (len-2) = 4+1+1 = Lv6 normally; jumpBonus adds +1 → Lv7.
+  let s = withState({ dailyChallengeId: 'jumpBonus', bestLevel: 4, runBestLevel: 4,
+    upgrades: defaultUpgrades(), grid: gridFrom([4, 4, 4, null, null, null]) });
+  s.stats = {};
+  F.doRitualMerge();
+  const lv = Math.max(...G.getState().grid.filter(Boolean).map(c => c.level));
+  eq(lv, 7, 'jumpBonus day: 3×Lv4 ritual → Lv7 (+1 from challenge)');
+  // without the challenge → Lv6
+  s = withState({ dailyChallengeId: '', bestLevel: 4, runBestLevel: 4,
+    upgrades: defaultUpgrades(), grid: gridFrom([4, 4, 4, null, null, null]) });
+  s.stats = {};
+  F.doRitualMerge();
+  eq(Math.max(...G.getState().grid.filter(Boolean).map(c => c.level)), 6, 'no challenge → Lv6');
+  Math.random = realRandom;
+});
+
 group('ritual variant inheritance incl. dark (asymmetry bugfix)', () => {
   if (typeof F.doRitualMerge !== 'function') { ok(true, 'not exposed — skip'); return; }
   const realRandom = Math.random; Math.random = () => 0.999999; // suppress single-parent procs

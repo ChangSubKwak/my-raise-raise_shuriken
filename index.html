@@ -2696,7 +2696,8 @@ function doRitualMerge() {
   groups.sort((a, b) => b.indices.length - a.indices.length || b.level - a.level);
   const g = groups[0];
   const bonus = g.indices.length - 2; // 3→+1, 4→+2, 5→+3
-  const newLv = g.level + 1 + bonus;
+  // Q-Leap 54: "점프의 날" promises +1 to ALL merges — ritual must honor it too.
+  const newLv = g.level + 1 + bonus + (isChallenge('jumpBonus') ? 1 : 0);
   let goldensIn = 0, starsIn = 0, darksIn = 0;
   for (const idx of g.indices) {
     if (state.grid[idx].golden) goldensIn++;
