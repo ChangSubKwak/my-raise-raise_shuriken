@@ -2725,7 +2725,7 @@ function doRitualMerge() {
   state.gold += ritualGold;
   state.stats.totalGoldEarned = (state.stats.totalGoldEarned || 0) + ritualGold;
   state.stats.ritualsPerformed = (state.stats.ritualsPerformed || 0) + 1;
-  state.stats.totalMerges = (state.stats.totalMerges || 0) + g.indices.length - 1;
+  creditMerges(g.indices.length - 1); // Q-Leap 76/89: ritual now grants merge milestones + charms
   // Q-Leap 116: ritual merges also progress daily merge tiers + line bonus
   for (let k = 0; k < g.indices.length - 1; k++) addDailyMergeCount();
   checkLineBonus();
@@ -3090,6 +3090,36 @@ function sparkline(values) {
   const max = Math.max(...values), min = Math.min(...values);
   const span = max - min || 1;
   return values.map(v => blocks[Math.min(blocks.length - 1, Math.floor(((v - min) / span) * (blocks.length - 1)))]).join('');
+}
+
+// Shared merge crediting (Q-Leap 76 + 89): increment totalMerges by `count` and award any
+// cumulative-merge milestone + lucky charm thresholds CROSSED in this step. Range-based so a
+// ritual that jumps over a threshold (e.g. 98→103) still grants it — previously tryMerge used
+// exact equality and doRitualMerge didn't check at all (both bugs fixed here).
+const MERGE_MILESTONES = { 100: 5, 500: 15, 1000: 30, 5000: 100, 10000: 250 };
+function creditMerges(count) {
+  const before = state.stats.totalMerges || 0;
+  const after = before + count;
+  state.stats.totalMerges = after;
+  state.stats.mergeMilestones = state.stats.mergeMilestones || {};
+  for (const thr of Object.keys(MERGE_MILESTONES)) {
+    const t = +thr;
+    if (before < t && after >= t && !state.stats.mergeMilestones[t]) {
+      state.stats.mergeMilestones[t] = true;
+      const gem = MERGE_MILESTONES[t];
+      state.gem += gem;
+      setTimeout(() => toast(`🏵 합성 ${t}회 마일스톤 · 💎+${gem}`), 300);
+      addEvent('milestone', `합성 ${t}회 · 💎+${gem}`);
+      flashJumpScreen(3);
+    }
+  }
+  // Q-Leap 89: one lucky charm per 100-merge boundary crossed.
+  const newCharms = Math.floor(after / 100) - Math.floor(before / 100);
+  if (newCharms > 0) {
+    state.luckyCharms = (state.luckyCharms || 0) + newCharms;
+    setTimeout(() => toast(`🔮 합성 보장 부적 ×${state.luckyCharms} 획득`), 360);
+    addEvent('lucky', `보장 부적 획득 (총 ×${state.luckyCharms})`);
+  }
 }
 
 // Q-Leap 95: 표창 세트 효과 — 그리드 구성을 읽어 활성 세트 id 배열 반환.
@@ -3504,7 +3534,7 @@ function tryMerge(fromIdx, toIdx) {
     }
     const mergeGold = Math.floor(Math.pow(2, newLv) * getGoldMul() * comboMult * jumpMult);
     state.gold += mergeGold;
-    state.stats.totalMerges = (state.stats.totalMerges || 0) + 1;
+    creditMerges(1); // Q-Leap 76/89: totalMerges + milestone + charm (shared, range-based)
     state.stats.totalGoldEarned = (state.stats.totalGoldEarned || 0) + mergeGold;
     // Q-Leap 77: 폭주 게이지 충전 (캡 도달 시 알림 + Q-Leap 80 auto-fire)
     // Q-Leap 95: 만재 진형이면 충전 ×2
@@ -3545,23 +3575,6 @@ function tryMerge(fromIdx, toIdx) {
         addEvent('milestone', '골드 러시 발동 (×2, 15s)');
         flashJumpScreen(4);
       }
-    }
-    // Q-Leap 76: cumulative merge milestones — one-shot gem bonus
-    state.stats.mergeMilestones = state.stats.mergeMilestones || {};
-    const mm = state.stats.totalMerges;
-    const milestones = { 100: 5, 500: 15, 1000: 30, 5000: 100, 10000: 250 };
-    if (milestones[mm] && !state.stats.mergeMilestones[mm]) {
-      state.stats.mergeMilestones[mm] = true;
-      state.gem += milestones[mm];
-      setTimeout(() => toast(`🏵 합성 ${mm}회 마일스톤 · 💎+${milestones[mm]}`), 300);
-      addEvent('milestone', `합성 ${mm}회 · 💎+${milestones[mm]}`);
-      flashJumpScreen(3);
-    }
-    // Q-Leap 89: 합성 보장 부적 — 매 100 합성마다 1 charge 지급
-    if (mm % 100 === 0) {
-      state.luckyCharms = (state.luckyCharms || 0) + 1;
-      setTimeout(() => toast(`🔮 합성 보장 부적 ×${state.luckyCharms} 획득`), 360);
-      addEvent('lucky', `보장 부적 획득 (총 ×${state.luckyCharms})`);
     }
     if (luckyCharmUsed) {
       state.stats.luckyCharmsUsed = (state.stats.luckyCharmsUsed || 0) + 1;

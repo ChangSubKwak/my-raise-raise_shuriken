@@ -94,7 +94,7 @@ function loadGame() {
     generateDailyQuests, mondayOfWeek, save, load, doPrestige, fmt, fmtPlaytime,
     // integration-level (DOM calls are stubbed to no-ops):
     tryMerge, autoMergeStep, emptySlots, spawnShuriken, doExchange, doRitualMerge, sellShuriken, update,
-    startTrial, checkTrialProgress, endTrial,
+    startTrial, checkTrialProgress, endTrial, creditMerges,
   },
   consts: { FRENZY_MAX, FRENZY_DURATION, TRANSCEND_BASE, DAILY_CHALLENGE_TARGET, SET_DEFS, ACHIEVEMENTS, LEVEL_NAMES, TRANSCEND_NAMES_61_80 },
 };

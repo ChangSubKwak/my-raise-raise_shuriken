@@ -866,6 +866,34 @@ group('auto-merge end-to-end via update() (reproduce toggle report)', () => {
   eq(G.getState().grid.filter(Boolean).length, before2, 'no auto-merge when toggled OFF (state respected)');
 });
 
+group('creditMerges — milestone/charm crossing (drift + robustness bugfix)', () => {
+  if (typeof F.creditMerges !== 'function') { ok(true, 'creditMerges not exposed — skip'); return; }
+  // single merge hits exact 100 → milestone gem + 1 charm
+  let s = withState({ gem: 0, luckyCharms: 0 });
+  s.stats = { totalMerges: 99 };
+  F.creditMerges(1);
+  eq(G.getState().stats.totalMerges, 100, 'totalMerges advanced');
+  eq(G.getState().gem, 5, '100-merge milestone granted 💎5');
+  eq(G.getState().luckyCharms, 1, 'crossing 100 granted 1 charm');
+  // batch (ritual) JUMPS OVER a milestone (98→103) — must still grant it (old exact-match bug)
+  s = withState({ gem: 0, luckyCharms: 0 });
+  s.stats = { totalMerges: 98 };
+  F.creditMerges(5); // 98 → 103, crosses 100
+  eq(G.getState().gem, 5, 'milestone granted even when jumped over (98→103)');
+  eq(G.getState().luckyCharms, 1, 'charm granted when 100 boundary crossed by batch');
+  // big batch crossing multiple 100-boundaries → multiple charms
+  s = withState({ gem: 0, luckyCharms: 0 });
+  s.stats = { totalMerges: 50 };
+  F.creditMerges(250); // 50 → 300: crosses 100,200,300 = 3 charms; milestone 100 = 💎5
+  eq(G.getState().luckyCharms, 3, 'three 100-boundaries crossed → 3 charms');
+  eq(G.getState().gem, 5, '100 milestone granted once in the batch');
+  // milestone is one-shot (re-credit past it grants nothing)
+  s = withState({ gem: 0, luckyCharms: 0 });
+  s.stats = { totalMerges: 100, mergeMilestones: { 100: true } };
+  F.creditMerges(1);
+  eq(G.getState().gem, 0, 'already-claimed milestone not re-granted');
+});
+
 group('trial completes via ritual merge (drift bugfix)', () => {
   if (typeof F.doRitualMerge !== 'function') { ok(true, 'doRitualMerge not exposed — skip'); return; }
   // Active trial with goal Lv 5. A 3-in-a-row ritual of Lv4 → Lv5 must register the win
