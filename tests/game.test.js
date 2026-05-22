@@ -856,6 +856,37 @@ group('auto-merge end-to-end via update() (reproduce toggle report)', () => {
   eq(G.getState().grid.filter(Boolean).length, before2, 'no auto-merge when toggled OFF (state respected)');
 });
 
+group('variant inheritance on merge (core mechanic)', () => {
+  const realRandom = Math.random;
+  Math.random = () => 0.999999; // suppress spontaneous/single-parent procs
+  // two golden parents → guaranteed golden child
+  let s = withState({ grid: gridFrom([{ level: 5, golden: true }, { level: 5, golden: true }, null, null, null, null]),
+    upgrades: defaultUpgrades(), prestigeCount: 0, bestLevel: 5 });
+  s.stats = {};
+  F.tryMerge(0, 1);
+  ok(G.getState().grid[1] && G.getState().grid[1].golden === true, 'two golden parents → golden child (guaranteed)');
+  // two star parents → guaranteed star child
+  s = withState({ grid: gridFrom([{ level: 5, star: true }, { level: 5, star: true }, null, null, null, null]),
+    upgrades: defaultUpgrades(), prestigeCount: 0, bestLevel: 5 });
+  s.stats = {};
+  F.tryMerge(0, 1);
+  ok(G.getState().grid[1] && G.getState().grid[1].star === true, 'two star parents → star child (guaranteed)');
+  // two dark parents → guaranteed dark child
+  s = withState({ grid: gridFrom([{ level: 5, dark: true }, { level: 5, dark: true }, null, null, null, null]),
+    upgrades: defaultUpgrades(), prestigeCount: 0, bestLevel: 5 });
+  s.stats = {};
+  F.tryMerge(0, 1);
+  ok(G.getState().grid[1] && G.getState().grid[1].dark === true, 'two dark parents → dark child (guaranteed)');
+  // plain parents (random suppressed) → no variant child
+  s = withState({ grid: gridFrom([5, 5, null, null, null, null]),
+    upgrades: defaultUpgrades(), prestigeCount: 0, bestLevel: 5 });
+  s.stats = {};
+  F.tryMerge(0, 1);
+  const child = G.getState().grid[1];
+  ok(child && !child.golden && !child.star && !child.dark, 'plain parents → plain child (no spontaneous variant at rng=max)');
+  Math.random = realRandom;
+});
+
 group('UI structure guard — buttons present + wired (Q-Leap 125)', () => {
   // Every interactive control must exist in the HTML AND have a click handler wired,
   // so a future layout rebuild can't silently drop a button. (Catches the class of
