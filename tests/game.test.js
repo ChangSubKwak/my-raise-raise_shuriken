@@ -878,6 +878,24 @@ group('spawn gauge pause/resume via update() (user-critical behavior)', () => {
   eq(G.getState().grid.filter(Boolean).length, 6, 'freed slot eventually refilled by spawn (gauge works when grid has space)');
 });
 
+group('number formatter fmt() (endgame + guards)', () => {
+  eq(F.fmt(0), '0', 'zero');
+  eq(F.fmt(999), '999', 'below 1000 → integer');
+  eq(F.fmt(1000), '1.00K', '1000 → 1.00K');
+  eq(F.fmt(1500000), '1.50M', '1.5M');
+  eq(F.fmt(2.5e9), '2.50B', 'billions');
+  eq(F.fmt(1e12), '1.00T', 'trillions');
+  ok(/aa$/.test(F.fmt(1e15)), '1e15 uses aa suffix');
+  // deep endgame: large but within extended table → suffixed, not raw digits
+  ok(!/^\d{7,}/.test(F.fmt(1e30)), '1e30 not rendered as a giant raw number');
+  // beyond the table → scientific notation, never "NaN"/garbage
+  ok(/e\+?\d+/.test(F.fmt(1e60)), '1e60 → scientific notation');
+  // guards
+  eq(F.fmt(NaN), '0', 'NaN → 0 (never renders NaN)');
+  eq(F.fmt(Infinity), '0', 'Infinity → 0');
+  eq(F.fmt(-5000), '-5.00K', 'negative handled');
+});
+
 group('variant inheritance on merge (core mechanic)', () => {
   const realRandom = Math.random;
   Math.random = () => 0.999999; // suppress spontaneous/single-parent procs

@@ -1840,10 +1840,14 @@ function rand(a, b) { return a + Math.random() * (b - a); }
 function randI(a, b) { return Math.floor(rand(a, b + 1)); }
 function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
 function fmt(n) {
+  if (!isFinite(n)) return '0';            // guard NaN / Infinity → never render "NaN"
+  if (n < 0) return '-' + fmt(-n);
   if (n < 1000) return Math.floor(n).toString();
-  const units = ['', 'K', 'M', 'B', 'T', 'aa', 'bb', 'cc', 'dd', 'ee'];
+  // extended suffix table covers up to ~1e48; beyond that fall back to scientific.
+  const units = ['', 'K', 'M', 'B', 'T', 'aa', 'bb', 'cc', 'dd', 'ee', 'ff', 'gg', 'hh', 'ii', 'jj', 'kk', 'll', 'mm'];
   let i = 0;
   while (n >= 1000 && i < units.length - 1) { n /= 1000; i++; }
+  if (n >= 1000) return n.toExponential(2); // exhausted table (extreme endgame) → 1.23e+50
   return n.toFixed(n < 10 ? 2 : n < 100 ? 1 : 0) + units[i];
 }
 
