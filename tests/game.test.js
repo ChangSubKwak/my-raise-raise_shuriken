@@ -1656,6 +1656,21 @@ group('fusion achievements track fusionsUsed (+ capstone gem override)', () => {
   if (typeof F.getAchievementGem === 'function') eq(F.getAchievementGem(f10), 8, 'a_fusion_10 per-entry gem override = 8');
 });
 
+group('integration: fusion unlocks its achievement + grants reward', () => {
+  if (typeof F.tryVariantFusion !== 'function' || typeof F.checkAchievements !== 'function') { ok(true, 'not exposed — skip'); return; }
+  const ACH = C.ACHIEVEMENTS;
+  // pre-unlock everything except a_fusion_1, and pre-claim completion tiers, so only a_fusion_1 fires.
+  const pre = {}; for (const a of ACH) if (a.id !== 'a_fusion_1') pre[a.id] = 1;
+  const done = {}; for (const n of [10, 25, 50, 75, ACH.length]) done[n] = 1;
+  const s = withState({ grid: place(9, { 0: 4, 1: 5, 2: 6 }), gem: 0 });
+  s.grid[0].golden = true; s.grid[1].golden = true; s.grid[2].golden = true;
+  s.achievements = pre;
+  s.stats = { achCompletions: done };
+  ok(F.tryVariantFusion('golden'), 'fusion performed (calls checkAchievements internally)');
+  ok(!!s.achievements['a_fusion_1'], 'fusion unlocked a_fusion_1 end-to-end');
+  ok(s.gem >= 3, 'achievement reward granted (≥3 💎)');
+});
+
 group('variant fusion: 3 same-variant → 1 next-tier, keeps highest level', () => {
   if (typeof F.tryVariantFusion !== 'function') { ok(true, 'tryVariantFusion not exposed — skip'); return; }
   // 3 golden pieces (Lv 4,6,5) → 1 star at Lv 6 (highest), other two cleared.
