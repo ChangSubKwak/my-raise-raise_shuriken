@@ -819,6 +819,32 @@ group('all achievement checks are safe (Q-Leap 124)', () => {
   eq(threwRich, 0, 'no achievement check throws on rich state');
 });
 
+group('ritual on the blessed cell counts as a blessed merge (parity with tryMerge)', () => {
+  if (typeof F.doRitualMerge !== 'function') { ok(true, 'doRitualMerge not exposed — skip'); return; }
+  const realRandom = Math.random;
+  Math.random = () => 0.99;
+  try {
+    // blessed cell (idx 1) is inside the ritual group [0,1,2] → should credit blessedMerges + consume.
+    const s = withState({
+      grid: place(9, { 0: 5, 1: 5, 2: 5 }), bestLevel: 10, blessedIdx: 1,
+      dailyQuests: [], lastFirstMergeDate: F.todayString(),
+    });
+    s.stats = {};
+    ok(F.doRitualMerge(), 'ritual including blessed cell performed');
+    eq(s.stats.blessedMerges, 1, 'ritual on blessed cell credited blessedMerges (was 0 — drift fix)');
+    eq(s.blessedIdx, -1, 'blessing consumed by the ritual');
+    // blessed cell (idx 8) is outside the group → no credit, not consumed
+    const s2 = withState({
+      grid: place(9, { 0: 5, 1: 5, 2: 5 }), bestLevel: 10, blessedIdx: 8,
+      dailyQuests: [], lastFirstMergeDate: F.todayString(),
+    });
+    s2.stats = {};
+    ok(F.doRitualMerge(), 'ritual not including blessed cell');
+    eq(s2.stats.blessedMerges || 0, 0, 'no blessed credit when blessed cell is outside the ritual group');
+    eq(s2.blessedIdx, 8, 'blessing not consumed when outside the group');
+  } finally { Math.random = realRandom; }
+});
+
 group('ritual merge advances daily challenge progress (N-1 merges, parity with tryMerge)', () => {
   if (typeof F.doRitualMerge !== 'function') { ok(true, 'doRitualMerge not exposed — skip'); return; }
   const realRandom = Math.random;

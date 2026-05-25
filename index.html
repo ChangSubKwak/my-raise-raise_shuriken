@@ -2766,6 +2766,14 @@ function doRitualMerge() {
   sfx('mergeMystic');
   setTimeout(() => sfx('mergeGold'), 100);
   flashCell(toIdx);
+  // A ritual that consumes the blessed cell counts as a blessed merge — parity with tryMerge's
+  // consumeBlessing (feeds blessedMerges achievements + weekly/daily blessed quests). Was missing.
+  if (state.blessedIdx >= 0 && g.indices.includes(state.blessedIdx)) {
+    state.blessedIdx = -1;
+    state.blessedTimer = blessedDuration();
+    state.stats.blessedMerges = (state.stats.blessedMerges || 0) + 1;
+    addQuestProgress('blessed', 1);
+  }
   addQuestProgress('merges', g.indices.length - 1);
   addQuestProgress('gold', ritualGold);
   if (childGolden) addQuestProgress('golden', 1); // Q-Leap 41: ritual golden child counts too
