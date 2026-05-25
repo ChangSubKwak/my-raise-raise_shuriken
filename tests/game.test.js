@@ -817,6 +817,15 @@ group('getAchievementGem: capstones grant more than the flat default', () => {
   ok(ACH.every(a => F.getAchievementGem(a) >= 3), 'every achievement grants at least the default');
 });
 
+group('getNextCodexMilestone returns the next un-reached codex tier', () => {
+  if (typeof F.getNextCodexMilestone !== 'function') { ok(true, 'not exposed — skip'); return; }
+  eq(F.getNextCodexMilestone(0).n, 10, 'at 0 → next codex tier 10');
+  eq(F.getNextCodexMilestone(10).n, 25, 'at 10 → 25');
+  eq(F.getNextCodexMilestone(39).n, 40, 'at 39 → 40');
+  eq(F.getNextCodexMilestone(60), null, 'all codex milestones reached → null');
+  ok(F.getNextCodexMilestone(0).gem > 0, 'codex tier carries a gem reward');
+});
+
 group('getNextAchievementMilestone returns the next un-reached tier', () => {
   if (typeof F.getNextAchievementMilestone !== 'function') { ok(true, 'not exposed — skip'); return; }
   const total = C.ACHIEVEMENTS.length;

@@ -3348,6 +3348,13 @@ function grantTranscendMilestone() {
 // all grant the codex enlightenment + milestone rewards identically. Previously only
 // tryMerge had the milestone block, so ritual/shop level-ups silently skipped 도감 보상.
 const CODEX_MILESTONE_REWARDS = { 10: { gem: 10, en: 2 }, 25: { gem: 25, en: 5 }, 40: { gem: 50, en: 10 }, 60: { gem: 120, en: 25 } };
+// Next un-reached codex collection milestone for a given registered-level count (null once all reached).
+// Pure helper so the codex panel's next-goal readout stays testable (parallel to achievements).
+function getNextCodexMilestone(codexN) {
+  const tiers = Object.keys(CODEX_MILESTONE_REWARDS).map(Number).sort((a, b) => a - b);
+  for (const t of tiers) if (codexN < t) return Object.assign({ n: t }, CODEX_MILESTONE_REWARDS[t]);
+  return null;
+}
 function registerCodex(newLv) {
   if (!state.codex) state.codex = {};
   if (state.codex[newLv]) return;
@@ -5426,7 +5433,12 @@ function renderCodex() {
   // Show up to bestLevel + 5 (peek 5 levels ahead)
   const peek = 5;
   const maxLv = Math.max(state.bestLevel + peek, 15);
-  if (count) count.textContent = `해금 ${state.bestLevel} / 도전 ${maxLv}`;
+  if (count) {
+    const codexN = Object.keys(state.codex || {}).length;
+    const next = getNextCodexMilestone(codexN);
+    count.textContent = `해금 ${state.bestLevel} / 도전 ${maxLv}`
+      + (next ? ` · 다음 📚 ${next.n}종 (💎+${next.gem})` : ' · 도감 마스터 🏆');
+  }
   grid.innerHTML = '';
   // Identify which level is currently the highest on the grid
   let currentGridMax = 0;
