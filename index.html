@@ -35,15 +35,7 @@
   #hud .gold { color: #ffd966; }
   #hud .gem  { color: #a8e6ff; }
 
-  /* Stage progress */
-  #wave-bar {
-    height: 4px; background: rgba(255,255,255,0.08);
-    position: relative;
-  }
-  #wave-fill {
-    height: 100%; background: linear-gradient(90deg,#4af,#fa4); width: 0%;
-    transition: width 0.15s;
-  }
+  /* (v3.36) #wave-bar/#wave-fill CSS removed — orphaned combat-era top progress bar, no element. */
 
   /* combat removed in v2.5 — gold is passive based on grid */
 
@@ -4117,9 +4109,6 @@ function updateHUD() {
   if (pctEl) pctEl.textContent = isFull
     ? '⏸ 일시정지 ' + fillPct.toFixed(0) + '%'
     : fillPct.toFixed(1) + '%';
-  // mirror to top wave-bar
-  const waveFill = document.getElementById('wave-fill');
-  if (waveFill) waveFill.style.width = fillPct + '%';
   const interval = getSpawnInterval();
   const remaining = isFull ? 0 : Math.max(0, (1 - state.spawnProgress) * interval);
   document.getElementById('spawn-time-label').textContent = isFull
