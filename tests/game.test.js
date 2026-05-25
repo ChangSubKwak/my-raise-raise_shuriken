@@ -1671,6 +1671,14 @@ group('integration: fusion unlocks its achievement + grants reward', () => {
   ok(s.gem >= 3, 'achievement reward granted (≥3 💎)');
 });
 
+group('strategy achievement tracks strategyUsed', () => {
+  const ACH = C.ACHIEVEMENTS;
+  const a = ACH.find(x => x.id === 'a_strategy_1');
+  ok(a, 'a_strategy_1 defined');
+  eq(a.check({ stats: { strategyUsed: 1 } }), true, 'unlocks after first strategy selection');
+  eq(a.check({ stats: { strategyUsed: 0 } }), false, 'not before any selection');
+});
+
 group('strategy mode: trade-off run modifiers wired into gold/spawn/variant', () => {
   if (typeof F.getStrategyGoldMul !== 'function') { ok(true, 'strategy helpers not exposed — skip'); return; }
   // none = neutral

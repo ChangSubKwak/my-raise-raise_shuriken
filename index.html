@@ -2259,6 +2259,7 @@ const ACHIEVEMENTS = [
   { id: 'a_autosell',     name: '자동화의 시작',   icon: '🤖', desc: '자동 매도 첫 활성',   check: (s) => !!s.autoSellEnabled || (s.stats.autoSells || 0) >= 1 },
   { id: 'a_split',        name: '분할의 수',       icon: '🔱', desc: '표창 분할 첫 사용',   check: (s) => (s.stats.splitsUsed || 0) >= 1 },
   { id: 'a_fusion_1',     name: '융합의 시작',     icon: '⚗', desc: '변종 융합 첫 사용',   check: (s) => ((s.stats || {}).fusionsUsed || 0) >= 1 },
+  { id: 'a_strategy_1',   name: '전략가',          icon: '⚖', desc: '전략 모드 첫 선택',   check: (s) => ((s.stats || {}).strategyUsed || 0) >= 1 },
   { id: 'a_fusion_10',    name: '연금의 길',       icon: '⚗', desc: '변종 융합 10회',      check: (s) => ((s.stats || {}).fusionsUsed || 0) >= 10, gem: 8 },
   { id: 'a_attend_60',    name: '한 갑(甲)의 수행',icon: '🏯', desc: '60일 연속 출석',      check: (s) => (s.attendStreak || 0) >= 60 },
   { id: 'a_attend_100',   name: '백 일의 정진',    icon: '🌌', desc: '100일 연속 출석',     check: (s) => (s.attendStreak || 0) >= 100 },
@@ -5665,6 +5666,10 @@ function renderPrestige() {
       const i = STRATEGY_MODES.findIndex(m => m.id === (state.strategyMode || 'none'));
       const nextMode = STRATEGY_MODES[(i + 1) % STRATEGY_MODES.length];
       state.strategyMode = nextMode.id;
+      if (nextMode.id !== 'none') {
+        state.stats.strategyUsed = (state.stats.strategyUsed || 0) + 1;
+        checkAchievements();
+      }
       toast(`전략: ${nextMode.label} — ${nextMode.desc}`);
       sfx('move');
       renderPrestige(); refreshUI(); save();
@@ -6682,6 +6687,7 @@ const HELP_SECTIONS = {
     { title: '🛒 보석 상점', body: '일회성 효과: 셔플/축복재배치/시간가속/행운의손/표창강화/분할/<span class="hk">황금 코팅</span>. 가격 자연 제한.' },
     { title: '💱 보석 환산소', body: '상점 내. 골드를 보석으로 환산 (비율 = 10000 − 윤회×1000, 최소 2000). 후기 정체 해소.' },
     { title: '🌌 깨달음 스킬', body: '9종 트리 — 골드/spawn/행운/계승/축복지속/도감/황금운/별운 등. 윤회 시 누적.' },
+    { title: '⚖ 전략 모드', body: 'Lv 8+ 윤회 패널의 <span class="hk">전략 버튼</span>으로 런 스타일 선택: <span class="hk">부유</span>(골드+30%·생성18%↓) / <span class="hk">신속</span>(생성18%↑·골드−15%) / <span class="hk">변종</span>(변종×2·골드−12%) / 균형(없음). 이득마다 상응하는 손실 — 지배적 선택이 없는 트레이드오프.' },
     { title: '🏛 명예의 전당', body: '평생 기록 + 🎯다음 목표 + 💰골드 배수 분해 + 📈성장 스파크라인을 한눈에.' },
   ],
   convenience: [
