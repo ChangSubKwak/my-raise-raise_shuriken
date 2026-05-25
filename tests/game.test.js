@@ -1484,6 +1484,23 @@ group('load fills missing skills from defaults (single source of truth)', () => 
   ok(sk.starLuck !== undefined && sk.blessTime !== undefined, 'all skills defined, none undefined');
 });
 
+group('sortGridByLevel compacts + sorts descending, preserving pieces/variants', () => {
+  if (typeof F.sortGridByLevel !== 'function') { ok(true, 'sortGridByLevel not exposed — skip'); return; }
+  const s = withState({ grid: place(6, { 0: 3, 2: 7, 3: 5, 5: 5 }) });
+  s.grid[2].golden = true; // the Lv7 piece is golden
+  F.sortGridByLevel();
+  const g = G.getState().grid;
+  eq(g[0].level, 7, 'highest level first');
+  ok(g[0].golden, 'variant flag preserved through sort');
+  eq(g[1].level, 5, '2nd descending');
+  eq(g[2].level, 5, '3rd descending');
+  eq(g[3].level, 3, '4th descending');
+  eq(g[4], null, 'nulls compacted to the end');
+  eq(g[5], null, 'nulls compacted to the end');
+  eq(g.filter(c => c).length, 4, 'piece count preserved (no loss/duplication)');
+  eq(g.length, 6, 'grid length unchanged');
+});
+
 group('spawn batch / start level / star count formulas', () => {
   // getSpawnBatch = min(SPAWN_BATCH_CAP=6, 1 + spawnBatch upgrade)
   if (typeof F.getSpawnBatch === 'function') {
