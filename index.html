@@ -5894,7 +5894,11 @@ document.getElementById('auto-sell-toggle').addEventListener('click', () => {
   getAudio();
   state.autoSellEnabled = !state.autoSellEnabled;
   refreshAutoSellUI();
-  if (state.autoSellEnabled) { toast(`🤖 자동 매도 ON (Lv ≤ ${state.autoSellThreshold})`); autoSellPass(); }
+  if (state.autoSellEnabled) {
+    state.stats.autoSells = (state.stats.autoSells || 0) + 1;
+    checkAchievements();
+    toast(`🤖 자동 매도 ON (Lv ≤ ${state.autoSellThreshold})`); autoSellPass();
+  }
   else toast('자동 매도 OFF');
   save();
 });
@@ -6403,6 +6407,8 @@ document.getElementById('meditation-btn').addEventListener('click', () => {
     state.autoLockEnabled = true;
     state.autoFrenzyEnabled = true; // Q-Leap 80
     if ((state.prestigeCount || 0) >= 5) state.prestigeSpeedEnabled = true;
+    state.stats.meditationsUsed = (state.stats.meditationsUsed || 0) + 1;
+    checkAchievements();
     toast('🧘 명상 모드 ON — 모든 자동화 활성');
     sfx('mergeMystic');
     flashJumpScreen(3);

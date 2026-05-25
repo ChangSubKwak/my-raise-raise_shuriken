@@ -819,6 +819,27 @@ group('all achievement checks are safe (Q-Leap 124)', () => {
   eq(threwRich, 0, 'no achievement check throws on rich state');
 });
 
+group('autosell/meditation achievements: flag path AND counter path both fire', () => {
+  const ACH = C.ACHIEVEMENTS;
+  const autoSell = ACH.find(a => a.id === 'a_autosell');
+  const meditate = ACH.find(a => a.id === 'a_meditation');
+  ok(autoSell && meditate, 'both achievements present');
+  // default: neither earned
+  withState({}); G.getState().stats = {};
+  eq(autoSell.check(G.getState()), false, 'a_autosell false by default');
+  eq(meditate.check(G.getState()), false, 'a_meditation false by default');
+  // flag path (toggle on, no merge yet)
+  withState({ autoSellEnabled: true }); G.getState().stats = {};
+  eq(autoSell.check(G.getState()), true, 'a_autosell fires via autoSellEnabled flag');
+  withState({ meditationMode: true }); G.getState().stats = {};
+  eq(meditate.check(G.getState()), true, 'a_meditation fires via meditationMode flag');
+  // counter path (flag toggled back off, but stat recorded the prior use)
+  withState({ autoSellEnabled: false }); G.getState().stats = { autoSells: 1 };
+  eq(autoSell.check(G.getState()), true, 'a_autosell stays earned via autoSells counter');
+  withState({ meditationMode: false }); G.getState().stats = { meditationsUsed: 1 };
+  eq(meditate.check(G.getState()), true, 'a_meditation stays earned via meditationsUsed counter');
+});
+
 group('auto-merge end-to-end via update() (reproduce toggle report)', () => {
   if (typeof F.update !== 'function') { ok(true, 'update() not exposed — skip'); return; }
   // unlocked + on, a grid of mergeable pairs; advance time → auto-merge should consume pairs.
