@@ -1644,6 +1644,18 @@ group('integration: merge → bestLevel → prestige → reset/preserve + gold i
   } finally { Math.random = realRandom; }
 });
 
+group('fusion achievements track fusionsUsed (+ capstone gem override)', () => {
+  const ACH = C.ACHIEVEMENTS;
+  const f1 = ACH.find(a => a.id === 'a_fusion_1');
+  const f10 = ACH.find(a => a.id === 'a_fusion_10');
+  ok(f1 && f10, 'fusion achievements defined');
+  eq(f1.check({ stats: { fusionsUsed: 1 } }), true, 'a_fusion_1 unlocks at 1 fusion');
+  eq(f1.check({ stats: { fusionsUsed: 0 } }), false, 'a_fusion_1 not before first fusion');
+  eq(f10.check({ stats: { fusionsUsed: 10 } }), true, 'a_fusion_10 at 10');
+  eq(f10.check({ stats: { fusionsUsed: 9 } }), false, 'a_fusion_10 not at 9');
+  if (typeof F.getAchievementGem === 'function') eq(F.getAchievementGem(f10), 8, 'a_fusion_10 per-entry gem override = 8');
+});
+
 group('variant fusion: 3 same-variant → 1 next-tier, keeps highest level', () => {
   if (typeof F.tryVariantFusion !== 'function') { ok(true, 'tryVariantFusion not exposed — skip'); return; }
   // 3 golden pieces (Lv 4,6,5) → 1 star at Lv 6 (highest), other two cleared.

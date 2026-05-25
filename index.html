@@ -2256,6 +2256,8 @@ const ACHIEVEMENTS = [
   { id: 'a_dark_absorb',  name: '흡수의 술',       icon: '🌀', desc: '검은 흡수 첫 발동',   check: (s) => (s.stats.darkAbsorbs || 0) >= 1 },
   { id: 'a_autosell',     name: '자동화의 시작',   icon: '🤖', desc: '자동 매도 첫 활성',   check: (s) => !!s.autoSellEnabled || (s.stats.autoSells || 0) >= 1 },
   { id: 'a_split',        name: '분할의 수',       icon: '🔱', desc: '표창 분할 첫 사용',   check: (s) => (s.stats.splitsUsed || 0) >= 1 },
+  { id: 'a_fusion_1',     name: '융합의 시작',     icon: '⚗', desc: '변종 융합 첫 사용',   check: (s) => ((s.stats || {}).fusionsUsed || 0) >= 1 },
+  { id: 'a_fusion_10',    name: '연금의 길',       icon: '⚗', desc: '변종 융합 10회',      check: (s) => ((s.stats || {}).fusionsUsed || 0) >= 10, gem: 8 },
   { id: 'a_attend_60',    name: '한 갑(甲)의 수행',icon: '🏯', desc: '60일 연속 출석',      check: (s) => (s.attendStreak || 0) >= 60 },
   { id: 'a_attend_100',   name: '백 일의 정진',    icon: '🌌', desc: '100일 연속 출석',     check: (s) => (s.attendStreak || 0) >= 100 },
   { id: 'a_storage_1',    name: '보관의 시작',     icon: '📦', desc: '보관소 첫 사용',     check: (s) => Array.isArray(s.storage) && s.storage.length >= 1 },
