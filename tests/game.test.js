@@ -819,6 +819,26 @@ group('all achievement checks are safe (Q-Leap 124)', () => {
   eq(threwRich, 0, 'no achievement check throws on rich state');
 });
 
+group('ritual merge auto-locks high-Lv result when auto-lock enabled (parity with tryMerge)', () => {
+  if (typeof F.doRitualMerge !== 'function') { ok(true, 'doRitualMerge not exposed — skip'); return; }
+  const realRandom = Math.random;
+  Math.random = () => 0.99;
+  try {
+    // 3 adjacent Lv4 → Lv6. bestLevel=10 so it is NOT a new best (isolates lock from gem reward).
+    const s = withState({
+      grid: place(9, { 0: 4, 1: 4, 2: 4 }), bestLevel: 10,
+      autoLockEnabled: true, autoLockThreshold: 6, dailyQuests: [],
+      lastFirstMergeDate: F.todayString(),
+    });
+    s.stats = {};
+    ok(F.doRitualMerge(), 'ritual performed (Lv4×3 → Lv6)');
+    const result = s.grid[0];
+    ok(result && result.level === 6, 'result piece is Lv6 at idx 0');
+    eq(result.locked, true, 'Lv6 result auto-locked (≥ threshold 6) — parity with tryMerge');
+    ok((s.stats.locksUsed || 0) >= 1, 'locksUsed stat incremented by ritual auto-lock');
+  } finally { Math.random = realRandom; }
+});
+
 group('prestige resets run-transient activity state (fresh run starts clean)', () => {
   if (typeof F.doPrestige !== 'function') { ok(true, 'doPrestige not exposed — skip'); return; }
   const s = withState({
