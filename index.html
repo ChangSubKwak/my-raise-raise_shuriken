@@ -3567,7 +3567,8 @@ function tryMerge(fromIdx, toIdx) {
       }
     }
     // Combo: chain merges within 2.5s → escalating bonus (Q-Leap 54: comboKeep doubles to 5s)
-    state.comboCount = (state.comboCount || 0) + 1;
+    const prevCombo = state.comboCount || 0; // for milestone crossing check (blessed merge jumps +2)
+    state.comboCount = prevCombo + 1;
     state.comboTimer = (isChallenge('comboKeep') ? 5 : 2.5) + (weekdayBonus().comboPlus || 0) + (hasSet('ascension') ? 1 : 0); // Q-Leap 87 + 95
     state.comboTimerMax = state.comboTimer; // Q-Leap 93
     if (state.comboCount > (state.stats.bestCombo || 0)) state.stats.bestCombo = state.comboCount;
@@ -3631,8 +3632,13 @@ function tryMerge(fromIdx, toIdx) {
       if (luckyHandUsed) setTimeout(() => toast(`🌟 행운의 손 (남은 ${state.luckyHandCharges})`), 360);
     }
     if (state.comboCount >= 3) showComboToast(state.comboCount, comboMult);
-    // Q-Leap 53: combo milestone reward
-    if (COMBO_MILESTONES[state.comboCount]) triggerComboMilestone(state.comboCount);
+    // Q-Leap 53: combo milestone reward. A blessed merge bumps comboCount by 2, so fire
+    // every threshold crossed in (prevCombo, comboCount] — not just the exact landing value,
+    // otherwise a +2 jump (e.g. 9→11) silently skips the ×10 milestone + its 행운의 손 effect.
+    for (const key of Object.keys(COMBO_MILESTONES)) {
+      const thr = +key;
+      if (thr > prevCombo && thr <= state.comboCount) triggerComboMilestone(thr);
+    }
     const isNewRecord = newLv > state.bestLevel;
     if (isNewRecord) {
       const prevBest = state.bestLevel;

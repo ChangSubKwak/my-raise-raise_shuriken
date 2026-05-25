@@ -819,6 +819,25 @@ group('all achievement checks are safe (Q-Leap 124)', () => {
   eq(threwRich, 0, 'no achievement check throws on rich state');
 });
 
+group('combo milestone fires on blessed +2 jump (crossing threshold, not just exact)', () => {
+  if (typeof F.tryMerge !== 'function') { ok(true, 'tryMerge not exposed — skip'); return; }
+  const realRandom = Math.random;
+  Math.random = () => 0.99; // suppress variant/proc randomness
+  try {
+    // blessed merge bumps comboCount by 2: 9 → 11, jumping over the ×10 milestone.
+    // ×10's effect grants 행운의 손 +1 (luckyHandCharges), a clean observable.
+    const s = withState({
+      grid: place(9, { 0: 3, 1: 3 }), comboCount: 9, blessedIdx: 1,
+      luckyHandCharges: 0, bestLevel: 10, dailyQuests: [],
+      lastFirstMergeDate: F.todayString(),
+    });
+    s.stats = {};
+    F.tryMerge(0, 1);
+    eq(s.comboCount, 11, 'blessed merge bumped combo 9 → 11 (×10 not the landing value)');
+    ok((s.luckyHandCharges || 0) >= 1, '×10 combo milestone still fired (행운의 손 +1) despite the +2 jump');
+  } finally { Math.random = realRandom; }
+});
+
 group('transcend milestones: a jump grants all crossed thresholds (not just exact t)', () => {
   if (typeof F.grantTranscendMilestone !== 'function') { ok(true, 'grantTranscendMilestone not exposed — skip'); return; }
   // jump to t=7 (bestLevel 67) — old exact-match check skipped the t=5 (+30) milestone
