@@ -2152,6 +2152,17 @@ function defaultState() {
 // Default 💎 granted when an achievement first unlocks (per-entry `gem` overrides this).
 // Achievements were previously cosmetic-only badges; this gives the 90+ of them a purpose.
 const ACHIEVEMENT_REWARD_GEM = 3;
+// Curated capstone rewards — the hardest endgame achievements grant more than the flat default.
+// (Per-entry `gem` field still overrides this; most achievements keep the default 3.)
+const ACHIEVEMENT_CAPSTONES = {
+  a_merge_1000: 8, a_merge_5000: 15, a_lucky_100: 8, a_prestige_10: 10,
+  a_attend_30: 8, a_attend_100: 20, a_codex_25: 8, a_trial_10: 8, a_weekly_10: 8,
+  a_allquest_10: 10, a_enlighten_max: 10, a_combo_100: 12,
+  a_transcend_1: 10, a_transcend_10: 15, a_transcend_20: 25,
+};
+function getAchievementGem(a) {
+  return a.gem || ACHIEVEMENT_CAPSTONES[a.id] || ACHIEVEMENT_REWARD_GEM;
+}
 // Q-Leap: collection-arc rewards for reaching N total unlocked achievements (gems only — no
 // skill-tree economy impact). The "all" tier is added dynamically from ACHIEVEMENTS.length.
 const ACHIEVEMENT_COMPLETION_TIERS = [
@@ -5020,7 +5031,7 @@ function checkAchievements() {
     try { unlocked = !!a.check(state); } catch (e) { unlocked = false; }
     if (unlocked) {
       state.achievements[a.id] = Date.now();
-      state.gem = (state.gem || 0) + (a.gem || ACHIEVEMENT_REWARD_GEM); // achievements now grant 💎 on unlock
+      state.gem = (state.gem || 0) + getAchievementGem(a); // achievements now grant 💎 on unlock (capstones grant more)
       _achvQueue.push(a);
     }
   }
@@ -5034,7 +5045,7 @@ function drainAchvQueue() {
   _achvShowing = true;
   document.getElementById('achv-toast-icon').textContent = a.icon;
   document.getElementById('achv-toast-name').textContent = a.name;
-  document.getElementById('achv-toast-desc').textContent = `${a.desc} · 💎+${a.gem || ACHIEVEMENT_REWARD_GEM}`;
+  document.getElementById('achv-toast-desc').textContent = `${a.desc} · 💎+${getAchievementGem(a)}`;
   const el = document.getElementById('achv-toast');
   el.classList.add('show');
   sfx('mergeGold');
@@ -5459,7 +5470,7 @@ function renderAchievements() {
     const cell = document.createElement('div');
     cell.className = 'achv-cell' + (got[a.id] ? ' unlocked' : '');
     cell.textContent = a.icon;
-    cell.dataset.tip = (got[a.id] ? '✓ ' : '✗ ') + a.name + ' — ' + a.desc + ` · 💎+${a.gem || ACHIEVEMENT_REWARD_GEM}`;
+    cell.dataset.tip = (got[a.id] ? '✓ ' : '✗ ') + a.name + ' — ' + a.desc + ` · 💎+${getAchievementGem(a)}`;
     grid.appendChild(cell);
   }
 }

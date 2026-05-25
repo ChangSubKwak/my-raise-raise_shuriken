@@ -803,6 +803,20 @@ group('achievements grant 💎 on unlock (previously cosmetic-only)', () => {
   eq(s.gem, expected, 'no re-grant for an already-unlocked achievement');
 });
 
+group('getAchievementGem: capstones grant more than the flat default', () => {
+  if (typeof F.getAchievementGem !== 'function') { ok(true, 'not exposed — skip'); return; }
+  const ACH = C.ACHIEVEMENTS;
+  const find = id => ACH.find(a => a.id === id);
+  // a regular achievement gets the flat 3
+  eq(F.getAchievementGem(find('a_first_merge')), 3, 'ordinary achievement → flat 3');
+  // capstones grant their tiered amount
+  eq(F.getAchievementGem(find('a_transcend_20')), 25, 'Lv80 transcend capstone → 25');
+  eq(F.getAchievementGem(find('a_attend_100')), 20, '100-day attendance → 20');
+  eq(F.getAchievementGem(find('a_merge_5000')), 15, '5000 merges → 15');
+  // explicit per-entry gem (if any) still wins; and every achievement yields a positive reward
+  ok(ACH.every(a => F.getAchievementGem(a) >= 3), 'every achievement grants at least the default');
+});
+
 group('getNextAchievementMilestone returns the next un-reached tier', () => {
   if (typeof F.getNextAchievementMilestone !== 'function') { ok(true, 'not exposed — skip'); return; }
   const total = C.ACHIEVEMENTS.length;
