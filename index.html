@@ -2157,6 +2157,13 @@ const ACHIEVEMENT_REWARD_GEM = 3;
 const ACHIEVEMENT_COMPLETION_TIERS = [
   { n: 10, gem: 10 }, { n: 25, gem: 25 }, { n: 50, gem: 50 }, { n: 75, gem: 100 },
 ];
+// Next un-reached completion tier for a given unlocked count (null once all are reached).
+// Pure helper so the achievements-panel readout stays testable.
+function getNextAchievementMilestone(unlocked) {
+  const tiers = ACHIEVEMENT_COMPLETION_TIERS.concat([{ n: ACHIEVEMENTS.length, gem: 200, all: true }]);
+  for (const t of tiers) if (unlocked < t.n) return t;
+  return null;
+}
 // Grant any completion tier crossed in (before, after]. Count can JUMP (multiple achievements
 // can unlock in one checkAchievements pass), so this uses the range-crossing pattern — not an
 // exact `[after]` check — matching the milestone jump-skip invariant in CLAUDE.md.
@@ -5441,13 +5448,18 @@ function renderAchievements() {
   if (!grid) return;
   const got = state.achievements || {};
   const unlocked = ACHIEVEMENTS.filter(a => got[a.id]).length;
-  if (count) count.textContent = `${unlocked}/${ACHIEVEMENTS.length}`;
+  if (count) {
+    const next = getNextAchievementMilestone(unlocked);
+    count.textContent = next
+      ? `${unlocked}/${ACHIEVEMENTS.length} · 다음 🎖 ${next.n}개 (💎+${next.gem})`
+      : `${unlocked}/${ACHIEVEMENTS.length} · 전부 수집 🏆`;
+  }
   grid.innerHTML = '';
   for (const a of ACHIEVEMENTS) {
     const cell = document.createElement('div');
     cell.className = 'achv-cell' + (got[a.id] ? ' unlocked' : '');
     cell.textContent = a.icon;
-    cell.dataset.tip = (got[a.id] ? '✓ ' : '✗ ') + a.name + ' — ' + a.desc;
+    cell.dataset.tip = (got[a.id] ? '✓ ' : '✗ ') + a.name + ' — ' + a.desc + ` · 💎+${a.gem || ACHIEVEMENT_REWARD_GEM}`;
     grid.appendChild(cell);
   }
 }

@@ -803,6 +803,18 @@ group('achievements grant 💎 on unlock (previously cosmetic-only)', () => {
   eq(s.gem, expected, 'no re-grant for an already-unlocked achievement');
 });
 
+group('getNextAchievementMilestone returns the next un-reached tier', () => {
+  if (typeof F.getNextAchievementMilestone !== 'function') { ok(true, 'not exposed — skip'); return; }
+  const total = C.ACHIEVEMENTS.length;
+  eq(F.getNextAchievementMilestone(0).n, 10, 'at 0 unlocked → next tier 10');
+  eq(F.getNextAchievementMilestone(10).n, 25, 'at 10 → next tier 25');
+  eq(F.getNextAchievementMilestone(24).n, 25, 'at 24 → still 25');
+  eq(F.getNextAchievementMilestone(74).n, 75, 'at 74 → 75');
+  eq(F.getNextAchievementMilestone(75).n, total, 'at 75 → final "all" tier');
+  eq(F.getNextAchievementMilestone(total), null, 'all reached → null');
+  ok(F.getNextAchievementMilestone(0).gem > 0, 'tier carries a gem reward');
+});
+
 group('achievement completion milestone fires on crossing 10 (jump-crossing)', () => {
   if (typeof F.checkAchievements !== 'function') { ok(true, 'checkAchievements not exposed — skip'); return; }
   const ACH = C.ACHIEVEMENTS;
