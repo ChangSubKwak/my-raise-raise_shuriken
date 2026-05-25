@@ -2681,6 +2681,32 @@ function findRitualGroups() {
   }
   return groups;
 }
+// Per-merge random rewards: gem drop (0.2%) + gold rush (0.3%). Rolled once per
+// merge-equivalent so ritual (N-1 units) gets the same expected procs as doing
+// N-1 normal merges. Single source of truth shared by tryMerge + doRitualMerge.
+function rollMergeProcs(units, newLv) {
+  for (let i = 0; i < units; i++) {
+    // Q-Leap 83: 합성 보석 드롭 (0.2%)
+    if (Math.random() < 0.002) {
+      state.gem += 1;
+      state.stats.mergeGemDrops = (state.stats.mergeGemDrops || 0) + 1;
+      setTimeout(() => toast('💎 합성 보석 드롭 · +1'), 380);
+      addEvent('lucky', `합성 보석 드롭 → 💎+1 (Lv ${newLv})`);
+      flashJumpScreen(2);
+    }
+    // Q-Leap 104: 골드 러시 — 0.3% 확률로 15초 ×2 골드 (이미 진행 중이면 갱신만)
+    if (Math.random() < 0.003) {
+      const wasActive = (state.goldRushTimer || 0) > 0;
+      state.goldRushTimer = GOLD_RUSH_DURATION;
+      if (!wasActive) {
+        state.stats.goldRushes = (state.stats.goldRushes || 0) + 1;
+        setTimeout(() => toast('💰 골드 러시! 15초간 골드 ×2'), 360);
+        addEvent('milestone', '골드 러시 발동 (×2, 15s)');
+        flashJumpScreen(4);
+      }
+    }
+  }
+}
 function doRitualMerge() {
   const groups = findRitualGroups();
   if (groups.length === 0) { toast('의식 발동 가능한 같은 Lv 3+ 연결 그룹이 없음'); sfx('move'); return false; }
@@ -2727,6 +2753,7 @@ function doRitualMerge() {
   state.stats.ritualsPerformed = (state.stats.ritualsPerformed || 0) + 1;
   creditMerges(g.indices.length - 1); // Q-Leap 76/89: ritual now grants merge milestones + charms
   addFrenzyCharge(g.indices.length - 1); // ritual charges frenzy like (N-1) merges (was missing — drift fix)
+  rollMergeProcs(g.indices.length - 1, newLv); // ritual rolls gem-drop/gold-rush like (N-1) merges (was missing — drift fix)
   // Q-Leap 116: ritual merges also progress daily merge tiers + line bonus
   for (let k = 0; k < g.indices.length - 1; k++) addDailyMergeCount();
   checkLineBonus();
@@ -3561,25 +3588,7 @@ function tryMerge(fromIdx, toIdx) {
       addEvent('lucky', `신성 합체 → Lv ${newLv}`);
       flashJumpScreen(4);
     }
-    // Q-Leap 83: 합성 보석 드롭 (0.2% base; scales with mergeGemLuck skill if exists)
-    if (Math.random() < 0.002) {
-      state.gem += 1;
-      state.stats.mergeGemDrops = (state.stats.mergeGemDrops || 0) + 1;
-      setTimeout(() => toast('💎 합성 보석 드롭 · +1'), 380);
-      addEvent('lucky', `합성 보석 드롭 → 💎+1 (Lv ${newLv})`);
-      flashJumpScreen(2);
-    }
-    // Q-Leap 104: 골드 러시 — 0.3% 확률로 15초 ×2 골드 (이미 진행 중이면 갱신만)
-    if (Math.random() < 0.003) {
-      const wasActive = (state.goldRushTimer || 0) > 0;
-      state.goldRushTimer = GOLD_RUSH_DURATION;
-      if (!wasActive) {
-        state.stats.goldRushes = (state.stats.goldRushes || 0) + 1;
-        setTimeout(() => toast('💰 골드 러시! 15초간 골드 ×2'), 360);
-        addEvent('milestone', '골드 러시 발동 (×2, 15s)');
-        flashJumpScreen(4);
-      }
-    }
+    rollMergeProcs(1, newLv); // Q-Leap 83/104: gem drop + gold rush (shared with ritual)
     if (luckyCharmUsed) {
       state.stats.luckyCharmsUsed = (state.stats.luckyCharmsUsed || 0) + 1;
     }

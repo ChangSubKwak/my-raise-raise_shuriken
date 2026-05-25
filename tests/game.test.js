@@ -819,6 +819,34 @@ group('all achievement checks are safe (Q-Leap 124)', () => {
   eq(threwRich, 0, 'no achievement check throws on rich state');
 });
 
+group('rollMergeProcs: per-merge gem-drop/gold-rush scale with units (ritual parity)', () => {
+  if (typeof F.rollMergeProcs !== 'function') { ok(true, 'rollMergeProcs not exposed — skip'); return; }
+  const realRandom = Math.random;
+  try {
+    // force both procs (0.002 + 0.003 thresholds) to always fire
+    Math.random = () => 0;
+    let s = withState({ gem: 0, goldRushTimer: 0 });
+    s.stats = {};
+    F.rollMergeProcs(3, 6); // ritual of 4 pieces = 3 units
+    eq(s.gem, 3, 'gem drop fires once per unit (3 units → +3 gem)');
+    eq(s.stats.mergeGemDrops, 3, 'mergeGemDrops counts each drop');
+    eq(s.stats.goldRushes, 1, 'gold rush counted once even across multiple units (wasActive guard)');
+    ok(s.goldRushTimer > 0, 'gold rush activated');
+    // never-fire case
+    Math.random = () => 0.5;
+    s = withState({ gem: 0, goldRushTimer: 0 });
+    s.stats = {};
+    F.rollMergeProcs(5, 6);
+    eq(s.gem, 0, 'no procs when random above thresholds');
+    // zero units = no-op
+    Math.random = () => 0;
+    s = withState({ gem: 0, goldRushTimer: 0 });
+    s.stats = {};
+    F.rollMergeProcs(0, 6);
+    eq(s.gem, 0, 'zero units rolls nothing');
+  } finally { Math.random = realRandom; }
+});
+
 group('ritual merge grants new-best even-level 💎 (parity with tryMerge)', () => {
   if (typeof F.doRitualMerge !== 'function') { ok(true, 'doRitualMerge not exposed — skip'); return; }
   const realRandom = Math.random;
