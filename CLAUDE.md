@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-표창키우기 — 합체 (Shuriken Merge). A grid-based merge game (2048-style) crossed with idle tower-defense. Two same-level shuriken on the grid merge into the next level; all shurikens on the grid auto-fire at enemies in a combat zone above. Goal: reach the highest shuriken level and clear stages.
+표창키우기 — 합체 (Shuriken Merge). A grid-based merge game (2048-style) with idle/incremental progression. Two same-level shuriken on the grid merge into the next level; shurikens on the grid passively generate gold by level. Goal: reach the highest shuriken level, prestige (윤회), and beyond into transcendence (초월). (An early combat sub-game was removed in v2.5; gold is now purely passive + merge rewards.)
 
 **v1 vs v2**: This repo previously held a different game (single-trajectory tower-defense idle with 30 systems, 5200+ lines). It is preserved at `index_v1.html` for reference but is **not the active design**. The merge mechanic in `index.html` is the canonical game. Do not port v1 systems into v2 unless asked — v2 is intentionally scoped down.
 
@@ -43,13 +43,13 @@ whenever you add a deterministic formula or a new derived stat.
 
 ## Architecture (v2 merge)
 
-**Two-region layout, by design**:
-- Top (combat-wrap): `<canvas id="combat">` — enemies walk left, projectiles fly up from below.
-- Middle (grid-wrap): `<div id="grid">` — DOM-based grid of cells. Each cell holds a shuriken or is empty.
-- Bottom: spawn button + auto-toggles.
-- Right (or stacked on mobile): upgrade panel.
+**Layout, by design**:
+- Top: HUD (gold/gem) + daily-challenge / weekday banners.
+- Middle (grid-wrap): `<div id="grid">` — DOM-based grid of cells. Each cell holds a shuriken or is empty. Header has core actions + a ☰ menu for modal buttons.
+- Bottom (spawn-bar): generation gauge + spawn/auto-merge/burn controls (wraps on narrow screens).
+- Right (or stacked on mobile): upgrade + skill-tree + prestige panel.
 
-The DOM-vs-canvas split is intentional: the **grid is DOM** because drag/select-target is much cleaner with element event handlers; **combat is canvas** because it has continuous animation, particles, and projectiles. Do NOT migrate the grid into canvas (you'll lose pointer-event sanity) and do NOT migrate combat into DOM (perf will tank).
+The **grid is DOM** because drag/select-target is much cleaner with element event handlers; do NOT migrate it to canvas (you'll lose pointer-event sanity). NOTE: the old combat sub-game (canvas, enemies, projectiles, particle FX) was removed in v2.5 and its dead code deleted in v3.34 — gold is now purely passive (`getPassiveGoldRate`) + merge rewards. There is no combat canvas.
 
 **Grid sprite rendering**: each cell contains a small `<canvas>` painted by `drawShurikenSprite(canvas, level)`. The sprites rotate via `setInterval(repaintGridSprites, 100)` — every 100ms all grid sprites repaint, reading `Date.now()` for rotation phase. Empty cells have no sprite (skip).
 
@@ -66,20 +66,7 @@ The DOM-vs-canvas split is intentional: the **grid is DOM** because drag/select-
 
 The UI is **tap-tap, not drag-drop**: tap source to select (highlights), tap target to act. Simpler on mobile and easier to reason about. `selectedIdx` tracks the first tap.
 
-**Auto-fire from the grid**:
-- Each cell's `fireTimer` ticks down independently in `tickGrid(dt)`.
-- On fire: spawn `Projectile` from a virtual position `(col + 0.5) / cols * W` at `y = H_combat + 6` (just below the combat canvas), aimed at `nearestEnemy()`.
-- This makes column position visually map to fire origin — left grid cells fire from the left, right cells from the right.
-- `nearestEnemy()` picks the **leftmost in-view** enemy (closest to player), not closest by Euclidean distance — strategically more useful.
-
-**Damage formula**:
-```
-shurikenDmg(level) = getBaseDmg() * 2^(level - 1) * (1 + prestige * 0.5)
-                   = (5 + baseDmg_lv * 2) * 2^(level - 1) * (1 + 0.5 * prestige)
-```
-Exponential in level — that's the whole point. Merging a Lv5 + Lv5 → Lv6 doubles your damage *for that single shuriken*; the new tier far outpaces having two of the lower tier.
-
-**Wave system**: identical structure to v1 — 10 waves per stage then a boss with a 30s timer. If boss timer expires, `stageFail()` rolls back to fresh stage 1 of current run (gold/grid/upgrades preserved). Boss HP multiplier is `×12` (v2 tuned lighter than v1's `×15`).
+**Gold income (passive, no combat)**: `getPassiveGoldRate()` is the single source of truth — `Σ 0.5·2^(level-1) · synergyMul · centerBonus · getGoldMul() · getPassiveGoldBonus()` over occupied cells. `update()` accrues this; the HUD readout and offline reward call the same fn (they must never diverge). Merge/ritual gold uses `2^newLv · getGoldMul() · combo · jump · getMergeGoldBonus()`.
 
 **Upgrades** (modeled after original 표창키우기 item names):
 - `maxShuriken` — **최대 표창 수** (field cap). +1 slot per level, base 6 → cap 30. The defining stat — limits how many shurikens you can hold while waiting to merge.
@@ -93,8 +80,6 @@ Exponential in level — that's the whole point. Merging a Lv5 + Lv5 → Lv6 dou
 **Time-based generation (NOT cost-based)**: No gold cost to spawn — generation is purely time-gated by `getSpawnInterval()`. This is the explicit design point: avoid making the game feel like a defense-driven economy. Gold/combat is a **side resource** that funds upgrades; shuriken count grows on its own clock. The HUD shows `현재/최대` next to the grid + spawn-batch multiplier.
 
 **Spawn full state**: when `emptySlots().length === 0`, `state.spawnProgress` is clamped to 1.0 (the bar shows "그리드 가득참 — 합쳐서 공간 확보"). This is the tension point — players must merge to free space, which is the entire loop.
-
-**Combat sub-game**: combat zone (top of stage) is intentionally smaller than the grid. Enemies walk, shurikens auto-fire, gold accumulates. Player never directly interacts with combat. The UI text under the grid says "전투는 백그라운드 서브게임" to make this clear.
 
 **Prestige (윤회)**: unlocked at `bestLevel >= 8`. Resets gold/stage/upgrades but preserves: `prestigeCount`, `bestLevel`, `gridSize` upgrade, and the global multiplier `(1 + 0.5 * prestigeCount)` on damage AND gold. Intentional that gridSize doesn't reset — players keep the larger field.
 
