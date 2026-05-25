@@ -2725,6 +2725,7 @@ function doRitualMerge() {
   state.stats.totalGoldEarned = (state.stats.totalGoldEarned || 0) + ritualGold;
   state.stats.ritualsPerformed = (state.stats.ritualsPerformed || 0) + 1;
   creditMerges(g.indices.length - 1); // Q-Leap 76/89: ritual now grants merge milestones + charms
+  addFrenzyCharge(g.indices.length - 1); // ritual charges frenzy like (N-1) merges (was missing — drift fix)
   // Q-Leap 116: ritual merges also progress daily merge tiers + line bonus
   for (let k = 0; k < g.indices.length - 1; k++) addDailyMergeCount();
   checkLineBonus();
@@ -3551,21 +3552,8 @@ function tryMerge(fromIdx, toIdx) {
     state.gold += mergeGold;
     creditMerges(1); // Q-Leap 76/89: totalMerges + milestone + charm (shared, range-based)
     state.stats.totalGoldEarned = (state.stats.totalGoldEarned || 0) + mergeGold;
-    // Q-Leap 77: 폭주 게이지 충전 (캡 도달 시 알림 + Q-Leap 80 auto-fire)
-    // Q-Leap 95: 만재 진형이면 충전 ×2
-    if ((state.frenzyCharge || 0) < FRENZY_MAX) {
-      const chargeGain = hasSet('packed') ? 2 : 1;
-      state.frenzyCharge = Math.min(FRENZY_MAX, (state.frenzyCharge || 0) + chargeGain);
-      if (state.frenzyCharge === FRENZY_MAX) {
-        if (state.autoFrenzyEnabled) {
-          setTimeout(() => activateFrenzy(true), 200);
-        } else {
-          setTimeout(() => toast('⚡ 폭주 게이지 가득참 — 클릭하여 발동!'), 350);
-          addEvent('milestone', '폭주 게이지 충전 완료');
-          flashJumpScreen(2);
-        }
-      }
-    }
+    // Q-Leap 77/80/95: 폭주 게이지 충전 (만재 진형 ×2, 캡 도달 시 알림/auto-fire) — shared helper
+    addFrenzyCharge(1);
     // Q-Leap 78: divine proc toast (after merge effects)
     if (divineProc) {
       setTimeout(() => toast(`✨ 신성 합체! Lv ${newLv} (+1 도약)`), 320);
@@ -6364,6 +6352,25 @@ document.getElementById('hof-close').addEventListener('click', () => {
 document.getElementById('hof-modal').addEventListener('click', (e) => {
   if (e.target.id === 'hof-modal') document.getElementById('hof-modal').classList.remove('show');
 });
+// Single source of truth for frenzy-meter charging. `units` = merge-equivalents
+// (normal merge = 1; ritual of N pieces = N-1, matching creditMerges). Packed set
+// doubles the gain. Must be called from EVERY merge path so ritual users charge at
+// the same rate as normal merges (Q-Leap 77/80/95).
+function addFrenzyCharge(units) {
+  if ((state.frenzyCharge || 0) >= FRENZY_MAX) return;
+  const gain = Math.max(0, units) * (hasSet('packed') ? 2 : 1);
+  if (gain <= 0) return;
+  state.frenzyCharge = Math.min(FRENZY_MAX, (state.frenzyCharge || 0) + gain);
+  if (state.frenzyCharge === FRENZY_MAX) {
+    if (state.autoFrenzyEnabled) {
+      setTimeout(() => activateFrenzy(true), 200);
+    } else {
+      setTimeout(() => toast('⚡ 폭주 게이지 가득참 — 클릭하여 발동!'), 350);
+      addEvent('milestone', '폭주 게이지 충전 완료');
+      flashJumpScreen(2);
+    }
+  }
+}
 // Q-Leap 77: frenzy activation (shared by manual click + Q-Leap 80 auto)
 function activateFrenzy(auto) {
   if ((state.frenzyTimer || 0) > 0) return false;

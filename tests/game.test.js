@@ -819,6 +819,32 @@ group('all achievement checks are safe (Q-Leap 124)', () => {
   eq(threwRich, 0, 'no achievement check throws on rich state');
 });
 
+group('addFrenzyCharge: shared meter-charge, ritual matches (N-1) merges', () => {
+  if (typeof F.addFrenzyCharge !== 'function') { ok(true, 'addFrenzyCharge not exposed — skip'); return; }
+  const MAX = C.FRENZY_MAX;
+  // normal merge = 1 unit (no packed set: grid empty)
+  let s = withState({ grid: new Array(9).fill(null), frenzyCharge: 0, autoFrenzyEnabled: false });
+  F.addFrenzyCharge(1);
+  eq(s.frenzyCharge, 1, 'normal merge charges 1');
+  // ritual of 3 pieces = 2 units
+  s = withState({ grid: new Array(9).fill(null), frenzyCharge: 0, autoFrenzyEnabled: false });
+  F.addFrenzyCharge(3 - 1);
+  eq(s.frenzyCharge, 2, 'ritual of 3 charges 2 (matches creditMerges N-1)');
+  // packed set (grid ≥90% full) doubles the gain
+  s = withState({ grid: place(9, {0:1,1:1,2:1,3:1,4:1,5:1,6:1,7:1,8:1}), frenzyCharge: 0, autoFrenzyEnabled: false });
+  ok(F.hasSet('packed'), 'full grid activates packed set');
+  F.addFrenzyCharge(1);
+  eq(s.frenzyCharge, 2, 'packed set doubles charge (1→2)');
+  // never exceeds FRENZY_MAX
+  s = withState({ grid: new Array(9).fill(null), frenzyCharge: MAX - 1, autoFrenzyEnabled: false });
+  F.addFrenzyCharge(10);
+  eq(s.frenzyCharge, MAX, 'charge clamps at FRENZY_MAX');
+  // zero/negative units are a no-op
+  s = withState({ grid: new Array(9).fill(null), frenzyCharge: 5, autoFrenzyEnabled: false });
+  F.addFrenzyCharge(0);
+  eq(s.frenzyCharge, 5, 'zero units is a no-op');
+});
+
 group('blessedDuration: weekday blessMul applies uniformly (single source of truth)', () => {
   if (typeof F.blessedDuration !== 'function') { ok(true, 'blessedDuration not exposed — skip'); return; }
   // helper must equal (30 + blessTime*5) * weekday blessMul, for any skill level.
