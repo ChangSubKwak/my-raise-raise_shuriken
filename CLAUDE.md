@@ -88,6 +88,12 @@ The UI is **tap-tap, not drag-drop**: tap source to select (highlights), tap tar
 
 **Prestige (윤회)**: unlocked at `bestLevel >= 8`. Resets gold/stage/most upgrades but preserves: `prestigeCount`, `bestLevel`, the `maxShuriken`/`spawnBatch`/`luckChance` upgrades, and the global multiplier `(1 + 0.5 * prestigeCount)` on gold. Intentional that `maxShuriken` doesn't reset — players keep the larger field. Also resets run-transient activity state (combo/frenzy/goldRush/burning timers + frenzy meter) so a fresh run starts clean.
 
+**Variant Fusion (변종 융합)**: sacrifice 3 same-variant pieces → 1 of the next-rarer tier (`VARIANT_FUSION_NEXT`: golden→star→dark; dark is top, no fusion). `tryVariantFusion(kind)` consumes the 3 highest-level carriers (non-locked), result keeps the highest level at the lowest consumed index. Gives passive variants a strategic hoard-vs-craft decision + a non-luck path to rare variants. UI = a conditional button injected into the info modal (`showShurikenInfo`). Additive/opt-in. Stat: `fusionsUsed`.
+
+**Strategy Mode (전략)**: a prestige-tier choice of mutually-exclusive **trade-off** run modifiers (`STRATEGY_MODES`: none/gold/fast/variant). Each gain has an offsetting loss (e.g. gold +30% / spawn 18% slower) → no dominant pick, a genuine playstyle decision. Effects via `getStrategy{Gold,Spawn,Variant}Mul()` wired into `getGoldMulBreakdown`/`getSpawnInterval`/`getVariantSpontaneousMul`. `state.strategyMode` is a persistent **setting** (survives prestige; validated on load). Selected via a cycling button injected into the prestige panel (`renderPrestige`); active mode shows in the weekday banner. Stat: `strategyUsed`.
+
+**Achievement rewards**: achievements now grant 💎 on unlock (`getAchievementGem`: per-entry `gem` → `ACHIEVEMENT_CAPSTONES` → default 3) + collection milestones (`grantAchievementCompletion`, range-crossing for jump-safety) at 10/25/50/75/all. No retroactive grant (migration-safe). Codex has a parallel next-milestone readout (`getNextCodexMilestone`).
+
 **Animations & feedback**:
 - `flashCell(idx)` scales + glow on successful merge.
 - `spawnExplosion` / `spawnGoldBurst` particle bursts on enemy death.
