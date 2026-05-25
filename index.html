@@ -1989,10 +1989,10 @@ const UPGRADES = [
     desc: '생성 주기 −5% / Lv (기본 12초)' },
   { id: 'spawnBatch', name: '제작 최대치',    base: 1,    costBase: 200, costMul: 2.20, effect: 'spawnbatch',
     desc: '한번에 동시 생성 +1 / Lv (최대 6)' },
-  { id: 'firerate',  name: '발사속도',       base: 2.0,  costBase: 50,  costMul: 1.18, effect: 'firerate',
-    desc: '전투 발사 간격 −5% / Lv (서브)' },
-  { id: 'baseDmg',   name: 'Lv1 데미지',     base: 5,    costBase: 40,  costMul: 1.16, effect: 'dmg',
-    desc: '기본 +2 / Lv (지수 곱 영향)' },
+  { id: 'firerate',  name: '연마 (패시브 골드)', base: 0, costBase: 50,  costMul: 1.18, effect: 'passivegold',
+    desc: '패시브 골드 +8% / Lv' },
+  { id: 'baseDmg',   name: '정밀 합성 (합성 골드)', base: 0, costBase: 40, costMul: 1.16, effect: 'mergegold',
+    desc: '합성·의식 골드 +8% / Lv' },
   { id: 'goldMul',   name: '골드 획득',      base: 1,    costBase: 80,  costMul: 1.16, effect: 'gold',
     desc: '+10% / Lv' },
   { id: 'spawnLevel',name: '시작 레벨',      base: 1,    costBase: 1500,costMul: 3.00, effect: 'spawnlv',
@@ -2729,7 +2729,7 @@ function doRitualMerge() {
   if (newLv > state.runBestLevel) state.runBestLevel = newLv;
   if (state.trialActive) checkTrialProgress(); // Q-Leap: ritual jumps can complete a trial goal too
   registerCodex(newLv); // Q-Leap 116: shared — ritual now grants codex milestones + weekday bonus
-  const ritualGold = Math.floor(Math.pow(2, newLv) * getGoldMul() * g.indices.length * 2);
+  const ritualGold = Math.floor(Math.pow(2, newLv) * getGoldMul() * g.indices.length * 2 * getMergeGoldBonus());
   state.gold += ritualGold;
   state.stats.totalGoldEarned = (state.stats.totalGoldEarned || 0) + ritualGold;
   state.stats.ritualsPerformed = (state.stats.ritualsPerformed || 0) + 1;
@@ -3058,6 +3058,10 @@ function getGoldMulBreakdown() {
 function getGoldMul() {
   return getGoldMulBreakdown().reduce((acc, f) => acc * f.mul, 1);
 }
+// Repurposed combat upgrades (combat sub-game removed) → real gold-economy levers:
+//   firerate → 패시브 골드 +8%/Lv (idle income) · baseDmg → 합성·의식 골드 +8%/Lv (active merging)
+function getPassiveGoldBonus() { return 1 + (state.upgrades.firerate || 0) * 0.08; }
+function getMergeGoldBonus()   { return 1 + (state.upgrades.baseDmg  || 0) * 0.08; }
 const GOLD_RUSH_DURATION = 15;
 // Q-Leap 117: 다음 목표 — 현재 상태에서 가장 가까운 메타 목표 하나 (길잡이).
 function getNextGoal() {
@@ -3563,7 +3567,7 @@ function tryMerge(fromIdx, toIdx) {
     if (blessed) {
       state.comboCount = (state.comboCount || 0) + 1; // extra combo step from blessing
     }
-    const mergeGold = Math.floor(Math.pow(2, newLv) * getGoldMul() * comboMult * jumpMult);
+    const mergeGold = Math.floor(Math.pow(2, newLv) * getGoldMul() * comboMult * jumpMult * getMergeGoldBonus());
     state.gold += mergeGold;
     creditMerges(1); // Q-Leap 76/89: totalMerges + milestone + charm (shared, range-based)
     state.stats.totalGoldEarned = (state.stats.totalGoldEarned || 0) + mergeGold;
@@ -5681,7 +5685,7 @@ function getPassiveGoldRate() {
     if (i === centerIdx) w *= CENTER_BONUS; // Q-Leap 107
     r += w;
   }
-  return r * getGoldMul();
+  return r * getGoldMul() * getPassiveGoldBonus(); // firerate→패시브 골드 보너스
 }
 function isUpgradeMaxed(id) {
   if (id === 'maxShuriken') return state.upgrades.maxShuriken >= MAX_SHURIKEN_CAP - 6;

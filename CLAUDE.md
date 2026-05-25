@@ -85,9 +85,9 @@ Exponential in level — that's the whole point. Merging a Lv5 + Lv5 → Lv6 dou
 - `maxShuriken` — **최대 표창 수** (field cap). +1 slot per level, base 6 → cap 30. The defining stat — limits how many shurikens you can hold while waiting to merge.
 - `spawnRate` — **제작시간 감소**. Interval × 0.95^lv, base 5s.
 - `spawnBatch` — **제작 최대치**. +1 shuriken spawned per tick (when progress hits 1.0). Cap 6.
-- `firerate` — combat fire rate (sub-game). 0.95^lv.
-- `baseDmg` — Lv1 base damage +2/lv (scales exponentially via 2^(level-1) factor).
-- `goldMul` — +10%/lv gold from combat.
+- `firerate` — **연마 (패시브 골드)**. Repurposed (combat sub-game removed): passive gold +8%/lv via `getPassiveGoldBonus()`. (id kept for save compat; legacy `getFireInterval`/`getTotalDPS` are now dead.)
+- `baseDmg` — **정밀 합성 (합성 골드)**. Repurposed: merge + ritual gold +8%/lv via `getMergeGoldBonus()`. (id kept; legacy `shurikenDmg` only feeds the info-modal DPS-share ratio where it cancels.)
+- `goldMul` — +10%/lv gold (applies to all gold via `getGoldMul`).
 - `spawnLevel` — `1 + lv`; spawned shurikens start at this level (huge mid-game power).
 
 **Time-based generation (NOT cost-based)**: No gold cost to spawn — generation is purely time-gated by `getSpawnInterval()`. This is the explicit design point: avoid making the game feel like a defense-driven economy. Gold/combat is a **side resource** that funds upgrades; shuriken count grows on its own clock. The HUD shows `현재/최대` next to the grid + spawn-batch multiplier.

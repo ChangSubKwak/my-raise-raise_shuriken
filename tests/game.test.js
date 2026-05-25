@@ -479,10 +479,12 @@ group('gold multiplier breakdown (Q-Leap 118 refactor)', () => {
 group('sell value formula (Q-Leap 119 refactor + QA)', () => {
   withState({ prestigeCount: 0, bestLevel: 1, upgrades: defaultUpgrades(), dailyChallengeId: '' });
   const gm = F.getGoldMul();
-  const base = (lv) => Math.floor(Math.pow(2, lv) * gm * 0.5);
-  eq(F.sellValue({ level: 5 }), base(5), 'plain sell = 2^lv * goldMul * 0.5');
-  eq(F.sellValue({ level: 5, golden: true }), base(5) * 5, 'golden sells 5x');
-  eq(F.sellValue({ level: 5, golden: true, star: true, dark: true }), base(5) * 125, 'all variants → 125x');
+  // match sellValue's single floor (floor-then-multiply is brittle when gm is fractional,
+  // e.g. on a weekday with a gold-mult bonus).
+  const expect = (lv, mul) => Math.floor(Math.pow(2, lv) * gm * 0.5 * mul);
+  eq(F.sellValue({ level: 5 }), expect(5, 1), 'plain sell = 2^lv * goldMul * 0.5');
+  eq(F.sellValue({ level: 5, golden: true }), expect(5, 5), 'golden sells 5x');
+  eq(F.sellValue({ level: 5, golden: true, star: true, dark: true }), expect(5, 125), 'all variants → 125x');
   eq(F.sellValue({ level: 5, locked: true }), 0, 'locked piece is unsellable');
   eq(F.sellValue(null), 0, 'null → 0');
 });
@@ -892,6 +894,23 @@ group('creditMerges — milestone/charm crossing (drift + robustness bugfix)', (
   s.stats = { totalMerges: 100, mergeMilestones: { 100: true } };
   F.creditMerges(1);
   eq(G.getState().gem, 0, 'already-claimed milestone not re-granted');
+});
+
+group('repurposed combat upgrades → gold (firerate/baseDmg)', () => {
+  // firerate now boosts passive gold +8%/Lv
+  eq(F.getPassiveGoldBonus ? F.getPassiveGoldBonus() : 1, 1, 'no firerate → 1x');
+  withState({ upgrades: Object.assign(defaultUpgrades(), { firerate: 5 }) });
+  approx(F.getPassiveGoldBonus(), 1 + 5 * 0.08, 'firerate 5 → passive gold ×1.4');
+  // it actually multiplies the passive rate
+  withState({ prestigeCount: 0, upgrades: defaultUpgrades(), dailyChallengeId: '', grid: gridFrom([5, null, null, null, null, null]) });
+  const ratePlain = F.getPassiveGoldRate();
+  withState({ prestigeCount: 0, upgrades: Object.assign(defaultUpgrades(), { firerate: 5 }), dailyChallengeId: '', grid: gridFrom([5, null, null, null, null, null]) });
+  approx(F.getPassiveGoldRate(), ratePlain * 1.4, 'firerate raises passive gold rate by its bonus', 1e-6);
+  // baseDmg now boosts merge/ritual gold +8%/Lv
+  withState({ upgrades: defaultUpgrades() });
+  eq(F.getMergeGoldBonus(), 1, 'no baseDmg → 1x');
+  withState({ upgrades: Object.assign(defaultUpgrades(), { baseDmg: 10 }) });
+  approx(F.getMergeGoldBonus(), 1 + 10 * 0.08, 'baseDmg 10 → merge gold ×1.8');
 });
 
 group('variant spontaneous multiplier applies to all variants (bugfix)', () => {
