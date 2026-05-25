@@ -1679,6 +1679,28 @@ group('strategy achievement tracks strategyUsed', () => {
   eq(a.check({ stats: { strategyUsed: 0 } }), false, 'not before any selection');
 });
 
+group('render functions run without throwing (UI-wiring smoke test)', () => {
+  // First coverage of the render path — catches reference errors in render code that
+  // pure-helper tests miss (e.g. the strategy button, next-milestone readouts I added).
+  // DOM is stubbed, so this exercises the JS logic, not visual output.
+  const renders = ['renderPrestige', 'renderAchievements', 'renderCodex', 'renderStats', 'renderGrid', 'refreshUI'];
+  // a rich, representative state that hits the new wiring (strategy mode, variants, achievements)
+  const s = withState({
+    bestLevel: 25, prestigeCount: 3, enlightenment: 40, strategyMode: 'gold',
+    grid: gridFrom([5, 5, { level: 8, golden: true }, { level: 8, star: true }, 12, null]),
+    skills: { goldMastery: 2, inheritance: 1 }, codex: { 1: true, 5: true, 10: true },
+    dailyChallengeId: 'comboKeep',
+  });
+  s.stats = { totalMerges: 500, totalSpawned: 300, totalGoldEarned: 1e6, luckyMerges: 20, playTimeSec: 3600, achCompletions: { 10: true } };
+  s.achievements = { a_first_merge: 1, a_fusion_1: 1 };
+  for (const name of renders) {
+    if (typeof F[name] !== 'function') { ok(true, `${name} not exposed — skip`); continue; }
+    let threw = null;
+    try { F[name](); } catch (e) { threw = e; }
+    ok(threw === null, `${name}() runs without throwing` + (threw ? ` — ${threw.message}` : ''));
+  }
+});
+
 group('object-valued stats survive save/load (achCompletions / milestone maps)', () => {
   if (typeof F.save !== 'function' || typeof F.load !== 'function') { ok(true, 'save/load not exposed — skip'); return; }
   const s = withState({});

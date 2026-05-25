@@ -87,6 +87,7 @@ function loadGame() {
     checkLineBonus, countStars, getGridSize, getGridCols,
     grantTranscendMilestone, getCenterIndex, getPieceGoldShare, getPassiveGoldRate, pieceGoldWeight,
     dailyMergeRewardFor, getFormationGrade, comboCashout,
+    renderPrestige, renderAchievements, renderCodex, renderStats, renderGrid, refreshUI,
     compactGridArray, sortGridByLevel, getLevelFlavor,
     registerCodex, announceTranscendIfNeeded,
     getNextGoal, getGoldMulBreakdown, sellValue, getPrestigeAdvice, getEnlightenmentGain,
