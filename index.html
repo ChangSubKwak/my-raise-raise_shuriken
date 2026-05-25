@@ -1436,13 +1436,7 @@
   }
   #toast.show { opacity: 1; }
 
-  /* Max-level reached banner */
-  #max-banner {
-    position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
-    font-size: 48px; font-weight: 900; color: #ffd966;
-    text-shadow: 0 0 20px #ff8800, 0 0 4px #000;
-    opacity: 0; pointer-events: none;
-  }
+  /* (v3.37) #max-banner removed — orphaned CSS, no matching element. */
 </style>
 </head>
 <body>
@@ -1829,7 +1823,6 @@ const SAVE_KEY = 'shuriken_merge_v2';
 
 // ---------- Utility ----------
 function rand(a, b) { return a + Math.random() * (b - a); }
-function randI(a, b) { return Math.floor(rand(a, b + 1)); }
 function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
 function fmt(n) {
   if (!isFinite(n)) return '0';            // guard NaN / Infinity → never render "NaN"
