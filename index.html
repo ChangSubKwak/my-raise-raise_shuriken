@@ -3385,11 +3385,21 @@ function spawnShuriken() {
   renderGrid();
   checkLineBonus(); // Q-Leap 92: a spawn can complete a row/column
   checkAchievements();
-  // Q-Leap 59: auto-sell newly-spawned if eligible (defer to end of tick to avoid recursion)
+  // Q-Leap 59: auto-sell newly-spawned if eligible (defer to end of tick to avoid recursion).
+  // Capture the piece id + re-validate in the callback: between now and the deferred fire,
+  // auto-merge (same tick) can mutate this slot, so we must sell ONLY if it's still the same
+  // eligible piece — otherwise a merged higher-level/variant piece could be wrongly sold.
   if (state.autoSellEnabled && state.grid[idx] && state.grid[idx].level <= (state.autoSellThreshold || 1)) {
     const piece = state.grid[idx];
     if (!piece.locked && !piece.golden && !piece.star && !piece.dark) {
-      setTimeout(() => sellShuriken(idx), 0);
+      const pieceId = piece.id;
+      setTimeout(() => {
+        const p = state.grid[idx];
+        if (p && p.id === pieceId && !p.locked && !p.golden && !p.star && !p.dark
+            && p.level <= (state.autoSellThreshold || 1)) {
+          sellShuriken(idx);
+        }
+      }, 0);
     }
   }
   return true;
