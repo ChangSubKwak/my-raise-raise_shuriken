@@ -1679,6 +1679,17 @@ group('strategy achievement tracks strategyUsed', () => {
   eq(a.check({ stats: { strategyUsed: 0 } }), false, 'not before any selection');
 });
 
+group('object-valued stats survive save/load (achCompletions / milestone maps)', () => {
+  if (typeof F.save !== 'function' || typeof F.load !== 'function') { ok(true, 'save/load not exposed — skip'); return; }
+  const s = withState({});
+  s.stats = { totalMerges: 5, achCompletions: { 10: true, 25: true }, transcendMilestones: { 5: true } };
+  F.save(); F.load();
+  const st = G.getState().stats;
+  eq(st.totalMerges, 5, 'numeric stat survives round-trip');
+  ok(st.achCompletions && st.achCompletions[10] === true && st.achCompletions[25] === true, 'achCompletions object survives intact');
+  ok(st.transcendMilestones && st.transcendMilestones[5] === true, 'milestone map survives (validateAndRepair only zeroes numeric NaN/neg)');
+});
+
 group('countAdjacentSameLevel: orthogonal same-level neighbors only (shared helper)', () => {
   if (typeof F.countAdjacentSameLevel !== 'function') { ok(true, 'not exposed — skip'); return; }
   // size 9 → 4 cols. Horizontal triple Lv5 at 0,1,2.
