@@ -756,6 +756,7 @@ group('prestige preserve/reset rules (Q-Leap 123 refactor + QA)', () => {
     upgrades: { maxShuriken: 6, spawnRate: 9, spawnBatch: 3, firerate: 7, baseDmg: 8, goldMul: 5, spawnLevel: 4, luckChance: 2 },
     autoMergeUnlocked: true, skills: { inheritance: 0 },
     codex: { 1: true, 20: true, 40: true },
+    storage: [{ id: 1, level: 30 }, { id: 2, level: 28 }], // must NOT survive prestige
     grid: gridFrom([10, 12, 8, null, null, null]),
   });
   s.stats = { totalMerges: 500 };
@@ -781,6 +782,7 @@ group('prestige preserve/reset rules (Q-Leap 123 refactor + QA)', () => {
   eq(st.upgrades.goldMul, 0, 'goldMul upgrade reset');
   eq(st.grid.filter(Boolean).length, 0, 'grid cleared (no inheritance skill)');
   eq(st.postPrestigeSpawns, 10, 'post-prestige spawn boost armed');
+  eq((st.storage || []).length, 0, 'storage cleared on prestige (no free keep bypassing 계승 skill)');
 
   // inheritance skill keeps top-N pieces
   s = withState({

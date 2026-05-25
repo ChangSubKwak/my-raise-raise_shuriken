@@ -5868,6 +5868,9 @@ function doPrestige() {
   }
   state.grid = new Array(getGridSize()).fill(null);
   kept.forEach((c, i) => { state.grid[i] = { id: state.nextShurikenId++, level: c.level, fireTimer: 0 }; });
+  // Storage is an off-grid extension of the board → must reset with the grid, otherwise it
+  // bypasses the prestige wipe and undermines the paid 계승(inheritance) skill.
+  state.storage = [];
   state.blessedIdx = -1;
   state.blessedTimer = 0;
   state._claimedLines = {}; // Q-Leap 92
