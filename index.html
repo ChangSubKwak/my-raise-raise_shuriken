@@ -4121,7 +4121,9 @@ function updateHUD() {
   const wkBanner = document.getElementById('weekday-banner');
   if (wkBanner) {
     const wb = weekdayBonus();
-    if (wb.label) wkBanner.innerHTML = `${wb.icon} ${wb.label}`;
+    const sm = getStrategyMode();
+    const stratTag = sm.id !== 'none' ? ` <span style="color:#c89bff">· ${sm.label}</span>` : ''; // active strategy mode, visible during play
+    if (wb.label) wkBanner.innerHTML = `${wb.icon} ${wb.label}${stratTag}`;
   }
   // Q-Leap 95: set-effect badges
   const setBadges = document.getElementById('set-badges');
