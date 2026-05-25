@@ -5023,7 +5023,10 @@ const _achvQueue = [];
 let _achvShowing = false;
 function checkAchievements() {
   if (!state.achievements) state.achievements = {};
-  const before = Object.keys(state.achievements).length;
+  // Count only CURRENT achievements (same as the panel's readout) so the completion-milestone
+  // count can't diverge from the displayed N/total via a stale key from a removed achievement.
+  const countUnlocked = () => ACHIEVEMENTS.reduce((n, a) => n + (state.achievements[a.id] ? 1 : 0), 0);
+  const before = countUnlocked();
   for (const a of ACHIEVEMENTS) {
     if (state.achievements[a.id]) continue;
     // Defensive: a single malformed check() must not break the whole loop (Q-Leap 124).
@@ -5035,7 +5038,7 @@ function checkAchievements() {
       _achvQueue.push(a);
     }
   }
-  const after = Object.keys(state.achievements).length;
+  const after = countUnlocked();
   if (after > before) grantAchievementCompletion(before, after);
   drainAchvQueue();
 }
