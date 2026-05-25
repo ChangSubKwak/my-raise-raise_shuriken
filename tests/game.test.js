@@ -922,6 +922,22 @@ group('ritual on the blessed cell counts as a blessed merge (parity with tryMerg
   } finally { Math.random = realRandom; }
 });
 
+group('ritual daily-quest type advances on a ritual merge', () => {
+  if (typeof F.doRitualMerge !== 'function') { ok(true, 'doRitualMerge not exposed — skip'); return; }
+  const realRandom = Math.random;
+  Math.random = () => 0.99;
+  try {
+    const s = withState({
+      grid: place(9, { 0: 4, 1: 4, 2: 4 }), bestLevel: 10,
+      dailyQuests: [{ type: 'ritual', target: 3, progress: 0, claimed: false, reward: { gem: 5 } }],
+      lastFirstMergeDate: F.todayString(),
+    });
+    s.stats = {};
+    ok(F.doRitualMerge(), 'ritual performed');
+    eq(s.dailyQuests[0].progress, 1, 'ritual quest advanced by 1 (one ritual = 1 progress)');
+  } finally { Math.random = realRandom; }
+});
+
 group('ritual merge advances daily challenge progress (N-1 merges, parity with tryMerge)', () => {
   if (typeof F.doRitualMerge !== 'function') { ok(true, 'doRitualMerge not exposed — skip'); return; }
   const realRandom = Math.random;

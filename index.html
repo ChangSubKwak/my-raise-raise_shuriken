@@ -2306,6 +2306,7 @@ const QUEST_TEMPLATES = [
   { type: 'lucky',   target: 3,     icon: '🌠', desc: t => `행운 합성 ${t}회 (+2 이상)`, reward: { gem: 4 } },
   { type: 'blessed', target: 2,     icon: '🙏', desc: t => `축복 칸 합성 ${t}회`,    reward: { gem: 4 } },
   { type: 'sell',    target: 10,    icon: '💸', desc: t => `표창 ${t}개 판매`,       reward: { gem: 3 } },
+  { type: 'ritual',  target: 3,     icon: '🔱', desc: t => `의식 합성 ${t}회`,       reward: { gem: 5 } },
 ];
 
 // Mulberry32 — deterministic per-date seed
@@ -2820,6 +2821,7 @@ function doRitualMerge() {
     addQuestProgress('blessed', 1);
   }
   addQuestProgress('merges', g.indices.length - 1);
+  addQuestProgress('ritual', 1); // ritual-specific daily quest (one ritual action = 1 progress)
   addQuestProgress('gold', ritualGold);
   if (childGolden) addQuestProgress('golden', 1); // Q-Leap 41: ritual golden child counts too
   renderGrid();
