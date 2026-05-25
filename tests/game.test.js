@@ -1484,6 +1484,28 @@ group('load fills missing skills from defaults (single source of truth)', () => 
   ok(sk.starLuck !== undefined && sk.blessTime !== undefined, 'all skills defined, none undefined');
 });
 
+group('spawn batch / start level / star count formulas', () => {
+  // getSpawnBatch = min(SPAWN_BATCH_CAP=6, 1 + spawnBatch upgrade)
+  if (typeof F.getSpawnBatch === 'function') {
+    withState({ upgrades: defaultUpgrades() });
+    eq(F.getSpawnBatch(), 1, 'base spawn batch is 1');
+    withState({ upgrades: Object.assign(defaultUpgrades(), { spawnBatch: 3 }) });
+    eq(F.getSpawnBatch(), 4, 'spawnBatch 3 → batch 4');
+    withState({ upgrades: Object.assign(defaultUpgrades(), { spawnBatch: 20 }) });
+    eq(F.getSpawnBatch(), 6, 'batch caps at 6 (SPAWN_BATCH_CAP)');
+  }
+  // getSpawnStartLevel = 1 + spawnLevel + masterSmith skill
+  withState({ upgrades: defaultUpgrades(), skills: {} });
+  eq(F.getSpawnStartLevel(), 1, 'base spawn start level is 1');
+  withState({ upgrades: Object.assign(defaultUpgrades(), { spawnLevel: 2 }), skills: { masterSmith: 2 } });
+  eq(F.getSpawnStartLevel(), 5, 'spawnLevel 2 + masterSmith 2 → start Lv 5');
+  // countStars = number of star pieces on the grid
+  withState({ grid: gridFrom([{ level: 5, star: true }, { level: 3 }, { level: 5, star: true }, null, null, null]) });
+  eq(F.countStars(), 2, 'counts star pieces on the grid');
+  withState({ grid: gridFrom([3, 4, 5, null, null, null]) });
+  eq(F.countStars(), 0, 'no stars → 0');
+});
+
 group('todayString matches dateKey format', () => {
   // todayString is now an alias of dateKey() — both feed daily-reset comparisons.
   const t = F.todayString();
