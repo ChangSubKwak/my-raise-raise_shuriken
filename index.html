@@ -2152,6 +2152,30 @@ function defaultState() {
 // Default 💎 granted when an achievement first unlocks (per-entry `gem` overrides this).
 // Achievements were previously cosmetic-only badges; this gives the 90+ of them a purpose.
 const ACHIEVEMENT_REWARD_GEM = 3;
+// Q-Leap: collection-arc rewards for reaching N total unlocked achievements (gems only — no
+// skill-tree economy impact). The "all" tier is added dynamically from ACHIEVEMENTS.length.
+const ACHIEVEMENT_COMPLETION_TIERS = [
+  { n: 10, gem: 10 }, { n: 25, gem: 25 }, { n: 50, gem: 50 }, { n: 75, gem: 100 },
+];
+// Grant any completion tier crossed in (before, after]. Count can JUMP (multiple achievements
+// can unlock in one checkAchievements pass), so this uses the range-crossing pattern — not an
+// exact `[after]` check — matching the milestone jump-skip invariant in CLAUDE.md.
+function grantAchievementCompletion(before, after) {
+  state.stats.achCompletions = state.stats.achCompletions || {};
+  const tiers = ACHIEVEMENT_COMPLETION_TIERS.concat([{ n: ACHIEVEMENTS.length, gem: 200, all: true }]);
+  let delay = 700;
+  for (const t of tiers) {
+    if (before < t.n && after >= t.n && !state.stats.achCompletions[t.n]) {
+      state.stats.achCompletions[t.n] = true;
+      state.gem = (state.gem || 0) + t.gem;
+      const label = t.all ? '🏆 모든 업적 달성!' : `🎖 업적 ${t.n}개 수집`;
+      const d = delay; delay += 250;
+      setTimeout(() => toast(`${label} · 💎+${t.gem}`), d);
+      addEvent('milestone', `${label} · 💎+${t.gem}`);
+      flashJumpScreen(4);
+    }
+  }
+}
 // Achievement definitions — pure data, check() reads state.stats.
 const ACHIEVEMENTS = [
   { id: 'a_first_merge',  name: '첫 합체',         icon: '🌱', desc: '첫 합체 달성',         check: (s) => (s.stats.totalMerges  || 0) >= 1 },
@@ -4981,6 +5005,7 @@ const _achvQueue = [];
 let _achvShowing = false;
 function checkAchievements() {
   if (!state.achievements) state.achievements = {};
+  const before = Object.keys(state.achievements).length;
   for (const a of ACHIEVEMENTS) {
     if (state.achievements[a.id]) continue;
     // Defensive: a single malformed check() must not break the whole loop (Q-Leap 124).
@@ -4992,6 +5017,8 @@ function checkAchievements() {
       _achvQueue.push(a);
     }
   }
+  const after = Object.keys(state.achievements).length;
+  if (after > before) grantAchievementCompletion(before, after);
   drainAchvQueue();
 }
 function drainAchvQueue() {

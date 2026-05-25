@@ -792,13 +792,35 @@ group('achievements grant 💎 on unlock (previously cosmetic-only)', () => {
   for (const a of ACH) if (a.id !== target) pre[a.id] = 1;
   const s = withState({ gem: 0 });
   s.achievements = pre;
-  s.stats = { totalMerges: 1 }; // satisfies a_first_merge's check
+  // pre-claim all completion tiers so the collection-milestone bonus doesn't fire here — isolates the per-achievement reward.
+  const doneTiers = {}; for (const n of [10, 25, 50, 75, ACH.length]) doneTiers[n] = 1;
+  s.stats = { totalMerges: 1, achCompletions: doneTiers }; // satisfies a_first_merge's check
   F.checkAchievements();
   eq(s.gem, expected, `unlocking ${target} grants 💎+${expected}`);
   ok(!!s.achievements[target], 'achievement recorded as unlocked');
   // idempotent: an already-unlocked achievement grants nothing more (clean migration, no retroactive windfall)
   F.checkAchievements();
   eq(s.gem, expected, 'no re-grant for an already-unlocked achievement');
+});
+
+group('achievement completion milestone fires on crossing 10 (jump-crossing)', () => {
+  if (typeof F.checkAchievements !== 'function') { ok(true, 'checkAchievements not exposed — skip'); return; }
+  const ACH = C.ACHIEVEMENTS;
+  // pre-unlock 9 achievements (none being a_first_merge), then unlock a 10th → crosses the 10-tier.
+  const ids = ACH.map(a => a.id).filter(id => id !== 'a_first_merge');
+  const pre = {};
+  for (let i = 0; i < 9; i++) pre[ids[i]] = 1;
+  const s = withState({ gem: 0 });
+  s.achievements = pre;
+  s.stats = { totalMerges: 1 }; // unlocks a_first_merge (the 10th)
+  F.checkAchievements();
+  ok(!!s.achievements['a_first_merge'], 'a_first_merge unlocked (10th)');
+  ok(s.stats.achCompletions && s.stats.achCompletions[10], '10-achievement completion milestone granted');
+  ok(s.gem >= 3 + 10, 'gem includes achievement reward (+3) and completion bonus (+10)');
+  // idempotent: re-running grants no further completion bonus
+  const g = s.gem;
+  F.checkAchievements();
+  eq(s.gem, g, 'no re-grant of completion milestone');
 });
 
 group('all achievement checks are safe (Q-Leap 124)', () => {
