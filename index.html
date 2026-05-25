@@ -3701,20 +3701,26 @@ function checkLineBonus() {
   state._claimedLines = state._claimedLines || {};
   const activeSigs = new Set();
   const tryLine = (cellsIdx, kind, key) => {
-    let lv = -1, full = true;
+    // Grid sizes are not always rectangular (size = 6 + maxShuriken), so the last
+    // row/column can be partial. Skip phantom cells (idx >= size) instead of failing
+    // the whole line — otherwise a complete, visible 3+ same-level partial row/column
+    // could never earn its bonus. All REAL (in-grid) cells must be filled & same level.
+    let lv = -1;
+    const real = [];
     for (const idx of cellsIdx) {
-      if (idx >= size) { full = false; break; }
+      if (idx >= size) continue;          // phantom slot in a partial last row/column
       const cell = state.grid[idx];
-      if (!cell) { full = false; break; }
+      if (!cell) return;                  // a real cell is empty → line incomplete
       if (lv === -1) lv = cell.level;
-      else if (cell.level !== lv) { full = false; break; }
+      else if (cell.level !== lv) return; // mixed levels → not a uniform line
+      real.push(idx);
     }
-    if (full && lv > 0 && cellsIdx.length >= 3) {
+    if (lv > 0 && real.length >= 3) {
       const sig = `${key}:${lv}`;
       activeSigs.add(sig);
       if (!state._claimedLines[sig]) {
         state._claimedLines[sig] = true;
-        awardLineBonus(kind, lv, cellsIdx.length);
+        awardLineBonus(kind, lv, real.length);
       }
     }
   };

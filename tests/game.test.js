@@ -1402,6 +1402,24 @@ group('line bonus re-arms after config clears', () => {
   ok(G.getState().gem > gem1, 'a new line config (Lv6) awards again after Lv5');
 });
 
+group('line bonus awards on a partial last row (non-rectangular grid)', () => {
+  // size = 6 + maxShuriken = 7 → cols 4, rows 2. Bottom row real cells = 4,5,6 (idx 7 is phantom).
+  // Before the fix, the phantom cell failed the whole line so this row could never award.
+  const s = withState({ upgrades: Object.assign(defaultUpgrades(), { maxShuriken: 1 }), gem: 0, gold: 0 });
+  eq(F.getGridSize(), 7, 'grid size is 7 (non-rectangular: 4 cols × 2 rows)');
+  eq(F.getGridCols(), 4, 'cols is 4');
+  s.grid = place(7, { 4: 5, 5: 5, 6: 5 }); // full bottom row of 3 same-level
+  s._claimedLines = {};
+  F.checkLineBonus();
+  ok(G.getState().gem > 0, 'partial bottom row of 3 same-level cells now awards a line bonus');
+  // only 2 cells filled → no award (needs ≥3 real cells)
+  const s2 = withState({ upgrades: Object.assign(defaultUpgrades(), { maxShuriken: 1 }), gem: 0, gold: 0 });
+  s2.grid = place(7, { 4: 5, 5: 5 });
+  s2._claimedLines = {};
+  F.checkLineBonus();
+  eq(G.getState().gem, 0, 'a 2-cell partial row does not award (min 3)');
+});
+
 group('todayString matches dateKey format', () => {
   // todayString is now an alias of dateKey() — both feed daily-reset comparisons.
   const t = F.todayString();
