@@ -1683,7 +1683,9 @@ group('render functions run without throwing (UI-wiring smoke test)', () => {
   // First coverage of the render path — catches reference errors in render code that
   // pure-helper tests miss (e.g. the strategy button, next-milestone readouts I added).
   // DOM is stubbed, so this exercises the JS logic, not visual output.
-  const renders = ['renderPrestige', 'renderAchievements', 'renderCodex', 'renderStats', 'renderGrid', 'refreshUI'];
+  const renders = ['renderPrestige', 'renderAchievements', 'renderCodex', 'renderStats', 'renderGrid', 'refreshUI',
+    'renderShop', 'renderStorage', 'renderLog', 'renderQuests', 'renderSkillTree', 'renderUpgrades',
+    'renderHallOfFame', 'renderTrophy', 'updateHUD', 'refreshQuestBadge', 'refreshAutoSellUI', 'renderHelp'];
   // a rich, representative state that hits the new wiring (strategy mode, variants, achievements)
   const s = withState({
     bestLevel: 25, prestigeCount: 3, enlightenment: 40, strategyMode: 'gold',
