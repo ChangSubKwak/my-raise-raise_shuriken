@@ -819,6 +819,22 @@ group('all achievement checks are safe (Q-Leap 124)', () => {
   eq(threwRich, 0, 'no achievement check throws on rich state');
 });
 
+group('blessedDuration: weekday blessMul applies uniformly (single source of truth)', () => {
+  if (typeof F.blessedDuration !== 'function') { ok(true, 'blessedDuration not exposed — skip'); return; }
+  // helper must equal (30 + blessTime*5) * weekday blessMul, for any skill level.
+  for (const lv of [0, 3, 6]) {
+    withState({ skills: { blessTime: lv } });
+    const mul = F.weekdayBonus().blessMul || 1;
+    const expected = (30 + lv * 5) * mul;
+    approx(F.blessedDuration(), expected, `blessedDuration matches formula at blessTime=${lv} (mul=${mul})`);
+  }
+  // base (no skill) is at least 30s, and scales up with the skill.
+  withState({ skills: { blessTime: 0 } });
+  const base = F.blessedDuration();
+  withState({ skills: { blessTime: 6 } });
+  ok(F.blessedDuration() > base, 'higher blessTime yields longer duration');
+});
+
 group('autosell/meditation achievements: flag path AND counter path both fire', () => {
   const ACH = C.ACHIEVEMENTS;
   const autoSell = ACH.find(a => a.id === 'a_autosell');

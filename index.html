@@ -2022,6 +2022,12 @@ const SKILLS = [
     cost: (lv) => 4 + lv * 2 },
 ];
 function getSkillLv(id) { return (state.skills && state.skills[id]) || 0; }
+// Single source of truth for blessed-cell duration: base 30s + blessTime skill,
+// scaled by the weekday bonus (목 +50%). Must apply on EVERY timer reset
+// (auto-reroll, rebless shop item, post-merge reset) so the weekday bonus is uniform.
+function blessedDuration() {
+  return (30 + getSkillLv('blessTime') * 5) * (weekdayBonus().blessMul || 1);
+}
 function getEnlightenmentGain() {
   // 깨달음 earned on prestige scales with bestLevel reached this run
   return Math.max(1, Math.floor((state.runBestLevel || 1) / 3));
@@ -2396,7 +2402,7 @@ const SHOP_ITEMS = [
     desc: '축복 칸을 즉시 새 위치로 (타이머 리셋)',
     effect: () => {
       rerollBlessedCell();
-      state.blessedTimer = 30 + getSkillLv('blessTime') * 5;
+      state.blessedTimer = blessedDuration();
       sfx('spawn');
       return true;
     },
@@ -2952,7 +2958,7 @@ function consumeBlessing(fromIdx, toIdx) {
   if (state.blessedIdx < 0) return false;
   if (state.blessedIdx !== fromIdx && state.blessedIdx !== toIdx) return false;
   state.blessedIdx = -1;
-  state.blessedTimer = 30 + getSkillLv('blessTime') * 5;
+  state.blessedTimer = blessedDuration();
   return true;
 }
 function countStars() {
@@ -3924,7 +3930,7 @@ function update(dt) {
   state.blessedTimer = (state.blessedTimer || 0) - dt;
   if (state.blessedTimer <= 0) {
     rerollBlessedCell();
-    state.blessedTimer = (30 + getSkillLv('blessTime') * 5) * (weekdayBonus().blessMul || 1); // Q-Leap 87
+    state.blessedTimer = blessedDuration(); // Q-Leap 87 (weekday blessMul via blessedDuration)
   }
   // Q-Leap 42: time-boost timer (shop item)
   if ((state.timeBoostTimer || 0) > 0) {
