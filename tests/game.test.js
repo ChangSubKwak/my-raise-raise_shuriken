@@ -1679,6 +1679,20 @@ group('strategy achievement tracks strategyUsed', () => {
   eq(a.check({ stats: { strategyUsed: 0 } }), false, 'not before any selection');
 });
 
+group('countAdjacentSameLevel: orthogonal same-level neighbors only (shared helper)', () => {
+  if (typeof F.countAdjacentSameLevel !== 'function') { ok(true, 'not exposed — skip'); return; }
+  // size 9 → 4 cols. Horizontal triple Lv5 at 0,1,2.
+  withState({ upgrades: Object.assign(defaultUpgrades(), { maxShuriken: 3 }), grid: place(9, { 0: 5, 1: 5, 2: 5 }) });
+  eq(F.getGridCols(), 4, 'size 9 → 4 cols');
+  eq(F.countAdjacentSameLevel(1), 2, 'middle of horizontal triple → 2 same-level neighbors');
+  eq(F.countAdjacentSameLevel(0), 1, 'left end → 1');
+  // different-level neighbor is not counted
+  withState({ upgrades: Object.assign(defaultUpgrades(), { maxShuriken: 3 }), grid: place(9, { 0: 5, 1: 3, 2: 5 }) });
+  eq(F.countAdjacentSameLevel(0), 0, 'different-level neighbor → 0');
+  // empty cell → 0
+  eq(F.countAdjacentSameLevel(8), 0, 'empty cell → 0');
+});
+
 group('strategy mode persists through save/load and prestige (it is a setting)', () => {
   if (typeof F.save !== 'function' || typeof F.load !== 'function') { ok(true, 'save/load not exposed — skip'); return; }
   const s = withState({ strategyMode: 'gold' });

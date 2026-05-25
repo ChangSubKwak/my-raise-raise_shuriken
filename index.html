@@ -4339,14 +4339,8 @@ function renderGrid() {
     if (c) {
       if (c.locked) cell.classList.add('locked-piece');
       if (c.golden) cell.classList.add('golden-piece');
-      // Q-Leap 44: adjacency synergy visual — count same-Lv 4-neighbors
-      let _adj = 0;
-      const _row = Math.floor(i / cols);
-      const _col = i % cols;
-      if (_col > 0         && state.grid[i - 1]    && state.grid[i - 1].level    === c.level) _adj++;
-      if (_col < cols - 1  && state.grid[i + 1]    && state.grid[i + 1].level    === c.level) _adj++;
-      if (_row > 0         && state.grid[i - cols] && state.grid[i - cols].level === c.level) _adj++;
-      if (i + cols < size  && state.grid[i + cols] && state.grid[i + cols].level === c.level) _adj++;
+      // Q-Leap 44: adjacency synergy visual — count same-Lv 4-neighbors (shared helper)
+      const _adj = countAdjacentSameLevel(i);
       if (_adj > 0) {
         const dot = document.createElement('div');
         dot.className = 'synergy-dot s' + _adj;
@@ -5524,17 +5518,26 @@ function renderAchievements() {
 // Per-cell passive gold weight (pre-multiplier): base 0.5·2^(lv-1) × adjacency synergy ×
 // center bonus. Shared by getPassiveGoldRate (income) and getPieceGoldShare (info modal),
 // so they can never diverge.
-function pieceGoldWeight(i) {
+// Count orthogonal neighbors of cell i that share its level (adjacency synergy).
+// Single source of truth — used by pieceGoldWeight (income), showShurikenInfo (readout),
+// and renderGrid (synergy dots), which previously each had their own copy.
+function countAdjacentSameLevel(i) {
   const c = state.grid[i];
   if (!c) return 0;
   const cols = getGridCols();
   const size = state.grid.length;
   const row = Math.floor(i / cols), col = i % cols;
   let adj = 0;
-  if (col > 0           && state.grid[i - 1]     && state.grid[i - 1].level     === c.level) adj++;
-  if (col < cols - 1    && state.grid[i + 1]     && state.grid[i + 1].level     === c.level) adj++;
-  if (row > 0           && state.grid[i - cols]  && state.grid[i - cols].level  === c.level) adj++;
-  if (i + cols < size   && state.grid[i + cols]  && state.grid[i + cols].level  === c.level) adj++;
+  if (col > 0          && state.grid[i - 1]    && state.grid[i - 1].level    === c.level) adj++;
+  if (col < cols - 1   && state.grid[i + 1]    && state.grid[i + 1].level    === c.level) adj++;
+  if (row > 0          && state.grid[i - cols] && state.grid[i - cols].level === c.level) adj++;
+  if (i + cols < size  && state.grid[i + cols] && state.grid[i + cols].level === c.level) adj++;
+  return adj;
+}
+function pieceGoldWeight(i) {
+  const c = state.grid[i];
+  if (!c) return 0;
+  const adj = countAdjacentSameLevel(i);
   const synergyMul = 1 + adj * (isChallenge('synergy2x') ? 0.4 : 0.2); // Q-Leap 44/54
   let w = 0.5 * Math.pow(2, c.level - 1) * synergyMul;
   if (i === getCenterIndex()) w *= CENTER_BONUS; // Q-Leap 107
@@ -6349,16 +6352,7 @@ function showShurikenInfo(idx) {
   _infoModalIdx = idx;
   const c = state.grid[idx];
   if (!c) return;
-  const cols = getGridCols();
-  const size = state.grid.length;
-  const row = Math.floor(idx / cols);
-  const col = idx % cols;
-  // count adjacency synergy
-  let adj = 0;
-  if (col > 0          && state.grid[idx - 1]     && state.grid[idx - 1].level    === c.level) adj++;
-  if (col < cols - 1   && state.grid[idx + 1]     && state.grid[idx + 1].level    === c.level) adj++;
-  if (row > 0          && state.grid[idx - cols]  && state.grid[idx - cols].level === c.level) adj++;
-  if (idx + cols < size && state.grid[idx + cols] && state.grid[idx + cols].level === c.level) adj++;
+  const adj = countAdjacentSameLevel(idx);
   const synergyBoost = isChallenge('synergy2x') ? 0.4 : 0.2;
   const synergyMul = 1 + adj * synergyBoost;
   const centerMul = (idx === getCenterIndex()) ? CENTER_BONUS : 1; // Q-Leap 107: reflect center bonus in the readout
