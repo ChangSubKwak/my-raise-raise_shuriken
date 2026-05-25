@@ -896,6 +896,25 @@ group('creditMerges — milestone/charm crossing (drift + robustness bugfix)', (
   eq(G.getState().gem, 0, 'already-claimed milestone not re-granted');
 });
 
+group('baseDmg merge-gold bonus wired into real tryMerge (e2e)', () => {
+  const realRandom = Math.random; Math.random = () => 0.999999; // no lucky jump
+  // baseDmg 0 → baseline merge gold
+  let s = withState({ gold: 0, prestigeCount: 0, bestLevel: 5, dailyChallengeId: '',
+    upgrades: defaultUpgrades(), grid: gridFrom([5, 5, null, null, null, null]) });
+  s.stats = {};
+  F.tryMerge(0, 1);
+  const goldPlain = G.getState().gold;
+  // baseDmg 10 → +80% merge gold
+  s = withState({ gold: 0, prestigeCount: 0, bestLevel: 5, dailyChallengeId: '',
+    upgrades: Object.assign(defaultUpgrades(), { baseDmg: 10 }), grid: gridFrom([5, 5, null, null, null, null]) });
+  s.stats = {};
+  F.tryMerge(0, 1);
+  const goldBoosted = G.getState().gold;
+  Math.random = realRandom;
+  ok(goldPlain > 0, 'baseline merge produced gold');
+  approx(goldBoosted, Math.floor(goldPlain * 1.8), 'baseDmg 10 boosts merge gold ~×1.8 (e2e via tryMerge)', goldPlain * 0.05);
+});
+
 group('repurposed combat upgrades → gold (firerate/baseDmg)', () => {
   // firerate now boosts passive gold +8%/Lv
   eq(F.getPassiveGoldBonus ? F.getPassiveGoldBonus() : 1, 1, 'no firerate → 1x');
