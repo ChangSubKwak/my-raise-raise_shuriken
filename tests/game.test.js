@@ -819,6 +819,28 @@ group('all achievement checks are safe (Q-Leap 124)', () => {
   eq(threwRich, 0, 'no achievement check throws on rich state');
 });
 
+group('ritual merge grants new-best even-level 💎 (parity with tryMerge)', () => {
+  if (typeof F.doRitualMerge !== 'function') { ok(true, 'doRitualMerge not exposed — skip'); return; }
+  const realRandom = Math.random;
+  Math.random = () => 0.99; // suppress variant procs
+  const today = F.todayString();
+  try {
+    // 3 adjacent Lv4 → newLv = 4+1+(3-2) = 6 (even), new best from 4.
+    // lastFirstMergeDate=today suppresses the +3 daily-first-merge bonus so we isolate the even-level gem.
+    let s = withState({ grid: place(9, { 0: 4, 1: 4, 2: 4 }), bestLevel: 4, gem: 0, dailyQuests: [], lastFirstMergeDate: today });
+    s.stats = {};
+    ok(F.doRitualMerge(), 'ritual performed (Lv4×3 → Lv6)');
+    eq(s.bestLevel, 6, 'new best level is 6');
+    eq(s.gem, 1, 'new best even Lv6 via ritual grants 💎+1');
+    // odd landing level grants no even-bonus gem
+    s = withState({ grid: place(9, { 0: 3, 1: 3, 2: 3 }), bestLevel: 3, gem: 0, dailyQuests: [], lastFirstMergeDate: today });
+    s.stats = {};
+    ok(F.doRitualMerge(), 'ritual performed (Lv3×3 → Lv5)');
+    eq(s.bestLevel, 5, 'new best level is 5 (odd)');
+    eq(s.gem, 0, 'odd landing Lv5 grants no even-bonus gem');
+  } finally { Math.random = realRandom; }
+});
+
 group('addFrenzyCharge: shared meter-charge, ritual matches (N-1) merges', () => {
   if (typeof F.addFrenzyCharge !== 'function') { ok(true, 'addFrenzyCharge not exposed — skip'); return; }
   const MAX = C.FRENZY_MAX;

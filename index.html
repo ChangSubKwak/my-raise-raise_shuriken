@@ -2713,6 +2713,7 @@ function doRitualMerge() {
   if (newLv > state.bestLevel) {
     const prevBest = state.bestLevel;
     state.bestLevel = newLv;
+    if (newLv % 2 === 0) { state.gem += 1; toast(`💎 +1 (Lv ${newLv} 달성)`); } // parity with tryMerge (was missing — drift fix)
     setTimeout(() => showRecordOverlay(newLv), 720);
     triggerMilestone(newLv);
     announceTranscendIfNeeded(newLv, prevBest); // Q-Leap 116: ritual path now grants transcend milestones too
