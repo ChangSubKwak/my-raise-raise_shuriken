@@ -2149,6 +2149,9 @@ function defaultState() {
   };
 }
 
+// Default 💎 granted when an achievement first unlocks (per-entry `gem` overrides this).
+// Achievements were previously cosmetic-only badges; this gives the 90+ of them a purpose.
+const ACHIEVEMENT_REWARD_GEM = 3;
 // Achievement definitions — pure data, check() reads state.stats.
 const ACHIEVEMENTS = [
   { id: 'a_first_merge',  name: '첫 합체',         icon: '🌱', desc: '첫 합체 달성',         check: (s) => (s.stats.totalMerges  || 0) >= 1 },
@@ -4985,6 +4988,7 @@ function checkAchievements() {
     try { unlocked = !!a.check(state); } catch (e) { unlocked = false; }
     if (unlocked) {
       state.achievements[a.id] = Date.now();
+      state.gem = (state.gem || 0) + (a.gem || ACHIEVEMENT_REWARD_GEM); // achievements now grant 💎 on unlock
       _achvQueue.push(a);
     }
   }
@@ -4996,7 +5000,7 @@ function drainAchvQueue() {
   _achvShowing = true;
   document.getElementById('achv-toast-icon').textContent = a.icon;
   document.getElementById('achv-toast-name').textContent = a.name;
-  document.getElementById('achv-toast-desc').textContent = a.desc;
+  document.getElementById('achv-toast-desc').textContent = `${a.desc} · 💎+${a.gem || ACHIEVEMENT_REWARD_GEM}`;
   const el = document.getElementById('achv-toast');
   el.classList.add('show');
   sfx('mergeGold');

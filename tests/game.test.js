@@ -781,6 +781,26 @@ group('prestige preserve/reset rules (Q-Leap 123 refactor + QA)', () => {
   eq(kept[1], 9, 'keeps 2nd highest');
 });
 
+group('achievements grant 💎 on unlock (previously cosmetic-only)', () => {
+  if (typeof F.checkAchievements !== 'function') { ok(true, 'checkAchievements not exposed — skip'); return; }
+  const ACH = C.ACHIEVEMENTS;
+  const target = 'a_first_merge';
+  const def = ACH.find(a => a.id === target);
+  const expected = (def && def.gem) || 3;
+  // pre-unlock everything except the target so exactly one new achievement fires
+  const pre = {};
+  for (const a of ACH) if (a.id !== target) pre[a.id] = 1;
+  const s = withState({ gem: 0 });
+  s.achievements = pre;
+  s.stats = { totalMerges: 1 }; // satisfies a_first_merge's check
+  F.checkAchievements();
+  eq(s.gem, expected, `unlocking ${target} grants 💎+${expected}`);
+  ok(!!s.achievements[target], 'achievement recorded as unlocked');
+  // idempotent: an already-unlocked achievement grants nothing more (clean migration, no retroactive windfall)
+  F.checkAchievements();
+  eq(s.gem, expected, 'no re-grant for an already-unlocked achievement');
+});
+
 group('all achievement checks are safe (Q-Leap 124)', () => {
   const ACH = C.ACHIEVEMENTS;
   ok(Array.isArray(ACH) && ACH.length > 50, `achievement list present (${ACH.length})`);
@@ -996,17 +1016,20 @@ group('ritual merge grants new-best even-level 💎 (parity with tryMerge)', () 
   const realRandom = Math.random;
   Math.random = () => 0.99; // suppress variant procs
   const today = F.todayString();
+  // pre-unlock every achievement so checkAchievements grants no 💎 during the ritual — isolates the even-level gem.
+  const allAch = {};
+  for (const a of C.ACHIEVEMENTS) allAch[a.id] = 1;
   try {
     // 3 adjacent Lv4 → newLv = 4+1+(3-2) = 6 (even), new best from 4.
     // lastFirstMergeDate=today suppresses the +3 daily-first-merge bonus so we isolate the even-level gem.
     let s = withState({ grid: place(9, { 0: 4, 1: 4, 2: 4 }), bestLevel: 4, gem: 0, dailyQuests: [], lastFirstMergeDate: today });
-    s.stats = {};
+    s.stats = {}; s.achievements = Object.assign({}, allAch);
     ok(F.doRitualMerge(), 'ritual performed (Lv4×3 → Lv6)');
     eq(s.bestLevel, 6, 'new best level is 6');
     eq(s.gem, 1, 'new best even Lv6 via ritual grants 💎+1');
     // odd landing level grants no even-bonus gem
     s = withState({ grid: place(9, { 0: 3, 1: 3, 2: 3 }), bestLevel: 3, gem: 0, dailyQuests: [], lastFirstMergeDate: today });
-    s.stats = {};
+    s.stats = {}; s.achievements = Object.assign({}, allAch);
     ok(F.doRitualMerge(), 'ritual performed (Lv3×3 → Lv5)');
     eq(s.bestLevel, 5, 'new best level is 5 (odd)');
     eq(s.gem, 0, 'odd landing Lv5 grants no even-bonus gem');
