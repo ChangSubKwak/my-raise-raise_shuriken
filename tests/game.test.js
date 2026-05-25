@@ -458,7 +458,7 @@ group('gold multiplier breakdown (Q-Leap 118 refactor)', () => {
   approx(product, F.getGoldMul(), 'breakdown product == getGoldMul', 1e-9);
   // each factor labeled and numeric
   const bd = F.getGoldMulBreakdown();
-  eq(bd.length, 10, '10 gold-multiplier sources defined');
+  eq(bd.length, 11, '11 gold-multiplier sources defined (incl. strategy mode)');
   ok(bd.every(f => typeof f.mul === 'number' && f.label), 'every factor has label + numeric mul');
   // prestige factor reflects count
   const pf = bd.find(f => f.key === 'prestige');
@@ -1669,6 +1669,36 @@ group('integration: fusion unlocks its achievement + grants reward', () => {
   ok(F.tryVariantFusion('golden'), 'fusion performed (calls checkAchievements internally)');
   ok(!!s.achievements['a_fusion_1'], 'fusion unlocked a_fusion_1 end-to-end');
   ok(s.gem >= 3, 'achievement reward granted (≥3 💎)');
+});
+
+group('strategy mode: trade-off run modifiers wired into gold/spawn/variant', () => {
+  if (typeof F.getStrategyGoldMul !== 'function') { ok(true, 'strategy helpers not exposed — skip'); return; }
+  // none = neutral
+  withState({ strategyMode: 'none' });
+  eq(F.getStrategyGoldMul(), 1, 'none → gold ×1');
+  eq(F.getStrategySpawnMul(), 1, 'none → spawn ×1');
+  eq(F.getStrategyVariantMul(), 1, 'none → variant ×1');
+  // gold mode: +30% gold, slower spawn (trade-off)
+  withState({ strategyMode: 'gold' });
+  approx(F.getStrategyGoldMul(), 1.30, 'gold mode → gold ×1.30');
+  ok(F.getStrategySpawnMul() > 1, 'gold mode → spawn slower (interval up)');
+  // fast mode: faster spawn, less gold (trade-off)
+  withState({ strategyMode: 'fast' });
+  ok(F.getStrategySpawnMul() < 1, 'fast mode → spawn faster (interval down)');
+  ok(F.getStrategyGoldMul() < 1, 'fast mode → less gold');
+  // variant mode: ×2 variant, less gold
+  withState({ strategyMode: 'variant' });
+  eq(F.getStrategyVariantMul(), 2, 'variant mode → variant ×2');
+  ok(F.getStrategyGoldMul() < 1, 'variant mode → less gold');
+  // wired into the real formulas: gold mode raises getGoldMul, slows getSpawnInterval
+  const base = withState({ strategyMode: 'none', prestigeCount: 0, dailyChallengeId: '', upgrades: defaultUpgrades(), grid: gridFrom([5, null, null, null, null, null]) });
+  const goldNone = F.getGoldMul(); const spawnNone = F.getSpawnInterval();
+  withState({ strategyMode: 'gold', prestigeCount: 0, dailyChallengeId: '', upgrades: defaultUpgrades(), grid: gridFrom([5, null, null, null, null, null]) });
+  approx(F.getGoldMul(), goldNone * 1.30, 'gold mode multiplies getGoldMul by 1.30', 1e-6);
+  ok(F.getSpawnInterval() > spawnNone, 'gold mode lengthens spawn interval');
+  // invalid/unknown mode falls back to none
+  withState({ strategyMode: 'bogus' });
+  eq(F.getStrategyGoldMul(), 1, 'unknown mode → neutral');
 });
 
 group('variant fusion: 3 same-variant → 1 next-tier, keeps highest level', () => {

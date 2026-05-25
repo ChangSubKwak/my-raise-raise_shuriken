@@ -2086,6 +2086,8 @@ function defaultState() {
     storage: [],
     // Q-Leap 75: 명상 모드 — toggles all auto-features simultaneously
     meditationMode: false,
+    strategyMode: 'none', // Strategy Mode (전략): trade-off run modifier, prestige-tier
+
     // Q-Leap 77: 폭주 게이지 — fills 1 per merge up to 100, then user activates 30s ×2 spawn boost
     frenzyCharge: 0,
     frenzyTimer: 0,
@@ -2929,6 +2931,7 @@ function load() {
     state.prestigeSpeedEnabled = !!s.prestigeSpeedEnabled;
     state.storage = Array.isArray(s.storage) ? s.storage.slice(0, 3) : [];
     state.meditationMode = !!s.meditationMode;
+    state.strategyMode = (STRATEGY_MODES.some(m => m.id === s.strategyMode)) ? s.strategyMode : 'none';
     // Q-Leap 77: Frenzy state persists
     state.frenzyCharge = Math.max(0, Math.min(FRENZY_MAX, +s.frenzyCharge || 0));
     state.frenzyTimer = Math.max(0, +s.frenzyTimer || 0);
@@ -3065,7 +3068,7 @@ function getSpawnInterval() {
   const frenzyMul = (state.frenzyTimer || 0) > 0 ? 0.5 : 1; // Q-Leap 77: 폭주 ×2 spawn
   const weekdayMul = weekdayBonus().spawnMul || 1; // Q-Leap 87
   const eliteMul = hasSet('elite') ? 0.9 : 1; // Q-Leap 105: 정예 진형 +10% 가속
-  return Math.max(0.4, base * Math.pow(0.95, state.upgrades.spawnRate) * burnMul * skillMul * shopBoost * trialBoost * starBoost * chalBoost * prestigeSpeed * frenzyMul * weekdayMul * eliteMul);
+  return Math.max(0.4, base * Math.pow(0.95, state.upgrades.spawnRate) * burnMul * skillMul * shopBoost * trialBoost * starBoost * chalBoost * prestigeSpeed * frenzyMul * weekdayMul * eliteMul * getStrategySpawnMul());
 }
 
 // Q-Leap 77: Frenzy constants
@@ -3113,6 +3116,22 @@ function getSpawnStartLevel() {
 }
 // Q-Leap 118: 골드 배수 분해 — 누적된 10개 출처를 한 곳에서 정의 (단일 진실 공급원).
 // getGoldMul은 이 곱. 활성(>1) 요소는 명예의 전당에 표시되어 경제가 투명해진다.
+// Strategy Mode (전략) — a prestige-tier choice of mutually-exclusive TRADE-OFF run modifiers.
+// Each gain has an offsetting loss, so there is no dominant pick — it's a genuine playstyle
+// decision. 'none' = current behavior (opt-in). Selected via a cycling button in the prestige panel.
+// spawnMul follows getSpawnInterval convention (lower = faster); goldMul/variantMul are multipliers.
+const STRATEGY_MODES = [
+  { id: 'none',    label: '⚖ 균형',  desc: '보너스 없음' },
+  { id: 'gold',    label: '💰 부유',  desc: '골드 +30% · 생성 18% 느림', goldMul: 1.30, spawnMul: 1.18 },
+  { id: 'fast',    label: '⚡ 신속',  desc: '생성 18% 빠름 · 골드 −15%', goldMul: 0.85, spawnMul: 0.82 },
+  { id: 'variant', label: '✦ 변종',  desc: '변종 발생 ×2 · 골드 −12%',  goldMul: 0.88, variantMul: 2 },
+];
+function getStrategyMode() {
+  return STRATEGY_MODES.find(m => m.id === (state.strategyMode || 'none')) || STRATEGY_MODES[0];
+}
+function getStrategyGoldMul()    { return getStrategyMode().goldMul    || 1; }
+function getStrategySpawnMul()   { return getStrategyMode().spawnMul   || 1; }
+function getStrategyVariantMul() { return getStrategyMode().variantMul || 1; }
 function getGoldMulBreakdown() {
   const sets = getActiveSets();
   return [
@@ -3126,6 +3145,7 @@ function getGoldMulBreakdown() {
     { key: 'perfect',   label: '👑 완전 진형', mul: sets.perfect ? 1.5 : 1 },                // Q-Leap 109
     { key: 'transcend', label: '🌌 초월',      mul: getTranscendMul() },                      // Q-Leap 98
     { key: 'goldRush',  label: '💰 골드러시',  mul: (state.goldRushTimer || 0) > 0 ? 2 : 1 }, // Q-Leap 104
+    { key: 'strategy',  label: '⚖ 전략',      mul: getStrategyGoldMul() },
   ];
 }
 function getGoldMul() {
@@ -3271,6 +3291,7 @@ function getVariantSpontaneousMul() {
   let m = 1;
   if (weekdayBonus().variantMul) m *= weekdayBonus().variantMul;
   if (hasSet('goldFormation')) m *= 1.5;
+  m *= getStrategyVariantMul();
   return m;
 }
 
@@ -5635,7 +5656,19 @@ function renderPrestige() {
     const enlightGain = getEnlightenmentGain();
     const advice = getPrestigeAdvice(); // Q-Leap 122
     const adviceLine = `<br><span style="color:${advice.recommend ? '#88ff99' : '#ffaa66'};font-size:11px;">${advice.recommend ? '✅ 윤회 추천' : '⏳ 보류 권장'} — ${advice.reason}</span>`;
-    info.innerHTML = `윤회 시 깨달음(悟) <b style="color:#cc88ff">+${enlightGain}</b> 획득<br>총 윤회 ${state.prestigeCount}회 · 영구 골드 +${state.prestigeCount * 50}%${adviceLine}`;
+    const sm = getStrategyMode();
+    info.innerHTML = `윤회 시 깨달음(悟) <b style="color:#cc88ff">+${enlightGain}</b> 획득<br>총 윤회 ${state.prestigeCount}회 · 영구 골드 +${state.prestigeCount * 50}%${adviceLine}`
+      + `<div style="margin-top:7px;font-size:11px;">전략 모드 <button id="strat-cycle" style="margin-left:4px;padding:3px 9px;border-radius:7px;border:1px solid #6a5a9a;background:linear-gradient(180deg,#4a3f6e,#2e2748);color:#e8d8ff;font-family:inherit;font-weight:800;font-size:11px;cursor:pointer;">${sm.label}</button><br><span style="color:#aa99cc;">${sm.desc}</span></div>`;
+    const stratBtn = document.getElementById('strat-cycle');
+    if (stratBtn) stratBtn.onclick = () => {
+      getAudio();
+      const i = STRATEGY_MODES.findIndex(m => m.id === (state.strategyMode || 'none'));
+      const nextMode = STRATEGY_MODES[(i + 1) % STRATEGY_MODES.length];
+      state.strategyMode = nextMode.id;
+      toast(`전략: ${nextMode.label} — ${nextMode.desc}`);
+      sfx('move');
+      renderPrestige(); refreshUI(); save();
+    };
     btn.disabled = false;
     btn.textContent = '윤회';
     btn.onclick = () => {

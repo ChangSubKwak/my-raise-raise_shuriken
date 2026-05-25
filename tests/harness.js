@@ -99,6 +99,7 @@ function loadGame() {
     startTrial, checkTrialProgress, endTrial, creditMerges, grantDailyFirstMerge, checkAchievements,
     getNextAchievementMilestone, getAchievementGem, getNextCodexMilestone,
     tryVariantFusion, countVariant,
+    getStrategyMode, getStrategyGoldMul, getStrategySpawnMul, getStrategyVariantMul,
   },
   consts: { FRENZY_MAX, FRENZY_DURATION, TRANSCEND_BASE, DAILY_CHALLENGE_TARGET, SET_DEFS, ACHIEVEMENTS, LEVEL_NAMES, TRANSCEND_NAMES_61_80 },
 };
