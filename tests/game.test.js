@@ -819,6 +819,26 @@ group('all achievement checks are safe (Q-Leap 124)', () => {
   eq(threwRich, 0, 'no achievement check throws on rich state');
 });
 
+group('prestige resets run-transient activity state (fresh run starts clean)', () => {
+  if (typeof F.doPrestige !== 'function') { ok(true, 'doPrestige not exposed — skip'); return; }
+  const s = withState({
+    bestLevel: 10, prestigeCount: 0, enlightenment: 0,
+    comboCount: 7, comboTimer: 2.5, frenzyCharge: 99, frenzyTimer: 5,
+    goldRushTimer: 12, burningTimer: 8,
+    grid: place(9, { 0: 3 }), upgrades: defaultUpgrades(), skills: {},
+  });
+  s.stats = {};
+  ok(F.doPrestige(), 'prestige performed (bestLevel 10 ≥ 8)');
+  eq(s.comboCount, 0, 'comboCount reset');
+  eq(s.comboTimer, 0, 'comboTimer reset');
+  eq(s.frenzyCharge, 0, 'frenzyCharge reset (no carried meter)');
+  eq(s.frenzyTimer, 0, 'frenzyTimer reset');
+  eq(s.goldRushTimer, 0, 'goldRushTimer reset');
+  eq(s.burningTimer, 0, 'burningTimer reset');
+  eq(s.prestigeCount, 1, 'prestigeCount incremented + preserved');
+  eq(s.bestLevel, 10, 'bestLevel preserved through prestige');
+});
+
 group('rollMergeProcs: per-merge gem-drop/gold-rush scale with units (ritual parity)', () => {
   if (typeof F.rollMergeProcs !== 'function') { ok(true, 'rollMergeProcs not exposed — skip'); return; }
   const realRandom = Math.random;

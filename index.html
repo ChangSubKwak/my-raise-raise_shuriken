@@ -5606,6 +5606,16 @@ function doPrestige() {
   state.blessedIdx = -1;
   state.blessedTimer = 0;
   state._claimedLines = {}; // Q-Leap 92
+  // Run-transient activity state must also reset so a fresh 윤회 run starts clean —
+  // parity with the grid/storage/blessed resets above (these previously carried over,
+  // e.g. a charged frenzy meter let the first post-prestige merges instantly proc frenzy).
+  state.comboCount = 0;
+  state.comboTimer = 0;
+  state.frenzyCharge = 0;
+  state.frenzyTimer = 0;
+  state.goldRushTimer = 0;
+  state.burningTimer = 0;
+  document.body.classList.remove('frenzy-active');
   startStage();
   startTrial();        // Q-Leap 43
   checkAchievements();
