@@ -607,7 +607,8 @@ group('stress: random ops preserve invariants (property test)', () => {
     const violations = [];
     try {
       const s = withState({
-        upgrades: Object.assign(defaultUpgrades(), { maxShuriken: 6 }), // grid size 12
+        // include repurposed gold upgrades + goldMul so the gold-bonus paths are exercised
+        upgrades: Object.assign(defaultUpgrades(), { maxShuriken: 6, firerate: 4, baseDmg: 4, goldMul: 3 }), // grid size 12
         gold: 0, gem: 0, bestLevel: 1, prestigeCount: 0, spawnProgress: 0,
         grid: new Array(12).fill(null),
       });
