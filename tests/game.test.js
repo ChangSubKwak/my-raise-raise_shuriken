@@ -1484,6 +1484,43 @@ group('load fills missing skills from defaults (single source of truth)', () => 
   ok(sk.starLuck !== undefined && sk.blessTime !== undefined, 'all skills defined, none undefined');
 });
 
+group('integration: merge → bestLevel → prestige → reset/preserve + gold invariant', () => {
+  if (typeof F.tryMerge !== 'function' || typeof F.doPrestige !== 'function') { ok(true, 'merge/prestige not exposed — skip'); return; }
+  const realRandom = Math.random;
+  Math.random = () => 0.99; // suppress jump/variant/divine procs → deterministic
+  try {
+    const s = withState({
+      grid: place(9, { 0: 7, 1: 7 }), // two Lv7 → Lv8 (unlocks prestige)
+      gem: 0, gold: 0, bestLevel: 7, prestigeCount: 0, enlightenment: 0,
+      dailyQuests: [], lastFirstMergeDate: F.todayString(),
+      upgrades: defaultUpgrades(), skills: {},
+    });
+    s.stats = {};
+    eq(F.tryMerge(0, 1), 'merge', 'two Lv7 → merge');
+    eq(s.grid[1].level, 8, 'result is Lv8');
+    eq(s.bestLevel, 8, 'bestLevel rose to 8');
+    ok((s.gem || 0) >= 1, 'reaching new best even Lv8 granted a gem');
+    eq(s.stats.totalMerges, 1, 'merge counted');
+    // prestige is now unlocked (bestLevel >= 8)
+    const pc0 = s.prestigeCount;
+    ok(F.doPrestige(), 'prestige succeeds at bestLevel 8');
+    eq(s.prestigeCount, pc0 + 1, 'prestigeCount incremented');
+    eq(s.bestLevel, 8, 'bestLevel preserved through prestige');
+    eq(s.gold, 0, 'gold reset on prestige');
+    ok(s.enlightenment > 0, 'enlightenment gained on prestige');
+    eq(s.grid.length, F.getGridSize(), 'grid length matches gridSize after prestige');
+    eq(s.frenzyCharge || 0, 0, 'frenzy meter reset on prestige');
+    // cross-system gold invariant: passive income == Σ per-cell weight × goldMul × passiveBonus
+    withState({ grid: place(9, { 0: 5, 1: 6, 4: 8 }), prestigeCount: 1, dailyChallengeId: '',
+                upgrades: Object.assign(defaultUpgrades(), { firerate: 2 }) });
+    let sum = 0;
+    const g = G.getState().grid;
+    for (let i = 0; i < g.length; i++) sum += F.pieceGoldWeight(i);
+    approx(F.getPassiveGoldRate(), sum * F.getGoldMul() * F.getPassiveGoldBonus(),
+           'income = Σ weight × goldMul × passiveBonus (no divergence)', 1e-6);
+  } finally { Math.random = realRandom; }
+});
+
 group('sortGridByLevel compacts + sorts descending, preserving pieces/variants', () => {
   if (typeof F.sortGridByLevel !== 'function') { ok(true, 'sortGridByLevel not exposed — skip'); return; }
   const s = withState({ grid: place(6, { 0: 3, 2: 7, 3: 5, 5: 5 }) });
