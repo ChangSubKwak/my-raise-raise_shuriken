@@ -3274,12 +3274,19 @@ const TRANSCEND_MILESTONES = { 5: 30, 10: 80, 15: 150, 20: 300 };
 function grantTranscendMilestone() {
   const t = getTranscendence();
   state.stats.transcendMilestones = state.stats.transcendMilestones || {};
-  if (TRANSCEND_MILESTONES[t] && !state.stats.transcendMilestones[t]) {
-    state.stats.transcendMilestones[t] = true;
-    const gem = TRANSCEND_MILESTONES[t];
+  // Grant EVERY un-granted milestone at or below current transcendence — a single
+  // jump merge (lucky/ritual/divine) can cross multiple thresholds at once, so an
+  // exact `TRANSCEND_MILESTONES[t]` check would silently skip the ones jumped over.
+  let staggered = 0;
+  for (const key of Object.keys(TRANSCEND_MILESTONES)) {
+    const thr = +key;
+    if (t < thr || state.stats.transcendMilestones[thr]) continue;
+    state.stats.transcendMilestones[thr] = true;
+    const gem = TRANSCEND_MILESTONES[thr];
     state.gem += gem;
-    setTimeout(() => toast(`🌌 초월 ${t} 마일스톤 · 💎+${gem}`), 1100);
-    addEvent('milestone', `초월 ${t} 마일스톤 · 💎+${gem}`);
+    const delay = 1100 + staggered * 250; staggered++;
+    setTimeout(() => toast(`🌌 초월 ${thr} 마일스톤 · 💎+${gem}`), delay);
+    addEvent('milestone', `초월 ${thr} 마일스톤 · 💎+${gem}`);
     flashJumpScreen(5);
   }
 }

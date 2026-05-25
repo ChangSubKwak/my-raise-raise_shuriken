@@ -147,7 +147,7 @@ group('transcend milestones (Q-Leap 102)', () => {
   const s2 = withState({ bestLevel: 80, gem: 0 }); // transcend 20
   s2.stats = {};
   F.grantTranscendMilestone();
-  eq(G.getState().gem, 300, 'transcend 20 grants 300 gem');
+  eq(G.getState().gem, 560, 'transcend 20 from scratch grants all crossed milestones (30+80+150+300)');
   const s3 = withState({ bestLevel: 63, gem: 0 }); // transcend 3, no milestone
   s3.stats = {};
   F.grantTranscendMilestone();
@@ -817,6 +817,30 @@ group('all achievement checks are safe (Q-Leap 124)', () => {
     catch (e) { threwRich++; }
   }
   eq(threwRich, 0, 'no achievement check throws on rich state');
+});
+
+group('transcend milestones: a jump grants all crossed thresholds (not just exact t)', () => {
+  if (typeof F.grantTranscendMilestone !== 'function') { ok(true, 'grantTranscendMilestone not exposed — skip'); return; }
+  // jump to t=7 (bestLevel 67) — old exact-match check skipped the t=5 (+30) milestone
+  let s = withState({ bestLevel: 67, gem: 0 });
+  s.stats = {};
+  F.grantTranscendMilestone();
+  eq(s.stats.transcendMilestones[5], true, 't=5 milestone granted even when current t=7 (jumped past)');
+  eq(s.gem, 30, 't=5 milestone gem (+30) granted on jump past it');
+  // jump straight to t=20 — grant all four: 30+80+150+300 = 560
+  s = withState({ bestLevel: 80, gem: 0 });
+  s.stats = {};
+  F.grantTranscendMilestone();
+  eq(s.gem, 560, 'all four milestones (5/10/15/20) granted on jump to t=20');
+  // idempotent — repeat grants nothing
+  const before = s.gem;
+  F.grantTranscendMilestone();
+  eq(s.gem, before, 'no double-grant on repeat call');
+  // below first threshold (t=3) grants nothing
+  s = withState({ bestLevel: 63, gem: 0 });
+  s.stats = {};
+  F.grantTranscendMilestone();
+  eq(s.gem, 0, 't=3 grants no milestone (below t=5)');
 });
 
 group('ritual merge auto-locks high-Lv result when auto-lock enabled (parity with tryMerge)', () => {
