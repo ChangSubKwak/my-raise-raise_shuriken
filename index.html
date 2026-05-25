@@ -2475,12 +2475,12 @@ const SHOP_ITEMS = [
       const orig = state.grid[maxIdx];
       const newLv = orig.level - 1;
       // first child stays at maxIdx
-      state.grid[maxIdx] = { id: state.nextShurikenId++, level: newLv, fireTimer: rand(0, getFireInterval()),
+      state.grid[maxIdx] = { id: state.nextShurikenId++, level: newLv, fireTimer: 0,
                               golden: orig.golden, star: orig.star, dark: orig.dark };
       // second child goes to a random empty slot
       const empties = emptySlots();
       const targetIdx = empties[Math.floor(Math.random() * empties.length)];
-      state.grid[targetIdx] = { id: state.nextShurikenId++, level: newLv, fireTimer: rand(0, getFireInterval()),
+      state.grid[targetIdx] = { id: state.nextShurikenId++, level: newLv, fireTimer: 0,
                                  golden: false, star: false, dark: false };
       state.stats.splitsUsed = (state.stats.splitsUsed || 0) + 1;
       toast(`🔱 Lv ${orig.level} → Lv ${newLv} 2개로 분할`);
@@ -2946,10 +2946,7 @@ function getCenterIndex() {
   const idx = Math.floor(rows / 2) * cols + Math.floor(cols / 2);
   return Math.min(idx, size - 1);
 }
-function getFireInterval() {
-  const base = 2.0;
-  return Math.max(0.25, base * Math.pow(0.95, state.upgrades.firerate));
-}
+// (v3.35) getFireInterval removed — combat gone; fireTimer is a vestigial field kept at 0.
 function isBurning() { return (state.burningTimer || 0) > 0; }
 // Q-Leap 38: blessed cell — picks a random non-locked cell. Empty cells are preferred to
 // surface the bonus visually; falls back to any cell if grid is empty.
@@ -3032,9 +3029,7 @@ function activateBurning() {
   refreshUI();
   save();
 }
-function getBaseDmg() {
-  return 5 + state.upgrades.baseDmg * 2;
-}
+// (v3.35) getBaseDmg removed — only the deleted shurikenDmg used it.
 function getSpawnStartLevel() {
   return 1 + state.upgrades.spawnLevel + getSkillLv('masterSmith');
 }
@@ -3302,28 +3297,12 @@ function announceTranscendIfNeeded(newLv, prevBest) {
   addEvent('milestone', `초월 ${getTranscendence()} 도달`);
   grantTranscendMilestone(); // Q-Leap 102
 }
-function shurikenDmg(level) {
-  return getBaseDmg() * Math.pow(2, level - 1) * (1 + state.prestigeCount * 0.5) * getTranscendMul();
-}
-function getTotalDPS() {
-  const interval = getFireInterval();
-  let sum = 0;
-  for (const c of state.grid) if (c) sum += shurikenDmg(c.level);
-  return sum / interval;
-}
+// (v3.35) shurikenDmg/getTotalDPS/getPieceDpsShare removed — combat gone; the info modal
+// now shows gold contribution (getPieceGoldShare) instead of a meaningless DPS share.
 // Q-Leap 112: 콤보 캐시아웃 — 정점 콤보(peak) 비례 골드. 정점² 스케일 + 골드배율.
 function comboCashout(peak) {
   if (peak < 10) return 0;
   return Math.floor(peak * peak * 5 * getGoldMul());
-}
-// Q-Leap 108: a piece's share of total grid damage output (0..1). Empty/no-damage → 0.
-function getPieceDpsShare(idx) {
-  const c = state.grid[idx];
-  if (!c) return 0;
-  let total = 0;
-  for (const p of state.grid) if (p) total += shurikenDmg(p.level);
-  if (total <= 0) return 0;
-  return shurikenDmg(c.level) / total;
 }
 // Q-Leap 122: 윤회 조언 — 지금 윤회가 가치 있는지 판단. 실제 보상은 getEnlightenmentGain
 // (floor(runBestLevel/3))이므로 그것을 기준으로 한다. (구 getPrestigeGain은 미사용이라 제거.)
@@ -3377,7 +3356,7 @@ function spawnShuriken() {
     startLv += 2;
     state.postPrestigeSpawns -= 1;
   }
-  state.grid[idx] = { id, level: startLv, fireTimer: rand(0, getFireInterval()) };
+  state.grid[idx] = { id, level: startLv, fireTimer: 0 };
   freshSpawnIds.add(id);
   state.stats.totalSpawned = (state.stats.totalSpawned || 0) + 1;
   addQuestProgress('spawn', 1);
@@ -3507,7 +3486,7 @@ function tryMerge(fromIdx, toIdx) {
     if (darksIn === 2) childDark = true;
     else if (darksIn === 1) childDark = Math.random() < 0.5;
     else childDark = Math.random() < (0.0015 * variantMul);
-    state.grid[toIdx] = { id: state.nextShurikenId++, level: newLv, fireTimer: rand(0, getFireInterval()), golden: childGolden, star: childStar, dark: childDark };
+    state.grid[toIdx] = { id: state.nextShurikenId++, level: newLv, fireTimer: 0, golden: childGolden, star: childStar, dark: childDark };
     state.grid[fromIdx] = null;
     if (childGolden) {
       state.stats.goldenSpawned = (state.stats.goldenSpawned || 0) + 1;
@@ -5431,26 +5410,38 @@ function renderAchievements() {
 // AND the center-cell bonus (Q-Leap 107). update()'s live income, the HUD readout, and the
 // offline reward all call this — previously update() and this fn diverged (each missing one
 // bonus), so the center bonus never affected live income and synergy never showed in the readout.
-function getPassiveGoldRate() {
+// Per-cell passive gold weight (pre-multiplier): base 0.5·2^(lv-1) × adjacency synergy ×
+// center bonus. Shared by getPassiveGoldRate (income) and getPieceGoldShare (info modal),
+// so they can never diverge.
+function pieceGoldWeight(i) {
+  const c = state.grid[i];
+  if (!c) return 0;
   const cols = getGridCols();
   const size = state.grid.length;
-  const centerIdx = getCenterIndex();
+  const row = Math.floor(i / cols), col = i % cols;
+  let adj = 0;
+  if (col > 0           && state.grid[i - 1]     && state.grid[i - 1].level     === c.level) adj++;
+  if (col < cols - 1    && state.grid[i + 1]     && state.grid[i + 1].level     === c.level) adj++;
+  if (row > 0           && state.grid[i - cols]  && state.grid[i - cols].level  === c.level) adj++;
+  if (i + cols < size   && state.grid[i + cols]  && state.grid[i + cols].level  === c.level) adj++;
+  const synergyMul = 1 + adj * (isChallenge('synergy2x') ? 0.4 : 0.2); // Q-Leap 44/54
+  let w = 0.5 * Math.pow(2, c.level - 1) * synergyMul;
+  if (i === getCenterIndex()) w *= CENTER_BONUS; // Q-Leap 107
+  return w;
+}
+function getPassiveGoldRate() {
   let r = 0;
-  for (let i = 0; i < size; i++) {
-    const c = state.grid[i];
-    if (!c) continue;
-    let adj = 0;
-    const row = Math.floor(i / cols), col = i % cols;
-    if (col > 0           && state.grid[i - 1]     && state.grid[i - 1].level     === c.level) adj++;
-    if (col < cols - 1    && state.grid[i + 1]     && state.grid[i + 1].level     === c.level) adj++;
-    if (row > 0           && state.grid[i - cols]  && state.grid[i - cols].level  === c.level) adj++;
-    if (i + cols < size   && state.grid[i + cols]  && state.grid[i + cols].level  === c.level) adj++;
-    const synergyMul = 1 + adj * (isChallenge('synergy2x') ? 0.4 : 0.2); // Q-Leap 44/54
-    let w = 0.5 * Math.pow(2, c.level - 1) * synergyMul;
-    if (i === centerIdx) w *= CENTER_BONUS; // Q-Leap 107
-    r += w;
-  }
+  for (let i = 0; i < state.grid.length; i++) r += pieceGoldWeight(i);
   return r * getGoldMul() * getPassiveGoldBonus(); // firerate→패시브 골드 보너스
+}
+// A piece's share (0..1) of total passive gold generation — replaces the misleading
+// "combat DPS share" stat (combat removed). Shown in the info modal.
+function getPieceGoldShare(idx) {
+  const w = pieceGoldWeight(idx);
+  if (w <= 0) return 0;
+  let total = 0;
+  for (let i = 0; i < state.grid.length; i++) total += pieceGoldWeight(i);
+  return total > 0 ? w / total : 0;
 }
 function isUpgradeMaxed(id) {
   if (id === 'maxShuriken') return state.upgrades.maxShuriken >= MAX_SHURIKEN_CAP - 6;
@@ -6203,7 +6194,7 @@ function showShurikenInfo(idx) {
   const canStore = !c.locked && (state.storage || []).length < 3;
   document.getElementById('info-body').innerHTML = `
     <div class="info-row"><span class="if-k">현재 골드율</span><span class="if-v">${baseGoldRate.toFixed(1)} / 초${idx === getCenterIndex() ? ' <span style="color:#ffd966">◈중앙+25%</span>' : ''}</span></div>
-    <div class="info-row"><span class="if-k">전투 DPS 기여</span><span class="if-v">${(getPieceDpsShare(idx) * 100).toFixed(1)}%</span></div>
+    <div class="info-row"><span class="if-k">골드 기여</span><span class="if-v">${(getPieceGoldShare(idx) * 100).toFixed(1)}%</span></div>
     <div class="info-row"><span class="if-k">인접 시너지</span><span class="if-v">${adj}개 (+${Math.round((synergyMul-1)*100)}%)</span></div>
     <div class="info-row"><span class="if-k">판매가</span><span class="if-v">${c.locked ? '잠김' : '💰 ' + fmt(sellVal)}</span></div>
     ${traits ? `<div class="info-row"><span class="if-k">속성</span><span class="info-traits">${traits}</span></div>` : ''}

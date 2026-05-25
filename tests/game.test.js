@@ -56,19 +56,8 @@ group('transcendence', () => {
   eq(F.getTranscendence(), 20, 'transcendence 20 at Lv80');
 });
 
-group('damage formula', () => {
-  // shurikenDmg(level) = getBaseDmg() * 2^(level-1) * (1 + prestige*0.5) * transcendMul
-  withState({ bestLevel: 1, prestigeCount: 0, upgrades: defaultUpgrades() });
-  const base = F.getBaseDmg();
-  approx(F.shurikenDmg(1), base, 'lv1 dmg == base');
-  approx(F.shurikenDmg(2), base * 2, 'lv2 dmg doubles');
-  approx(F.shurikenDmg(5), base * 16, 'lv5 dmg 2^4');
-  withState({ bestLevel: 1, prestigeCount: 2, upgrades: defaultUpgrades() });
-  approx(F.shurikenDmg(1), base * (1 + 2 * 0.5), 'prestige doubles dmg (x2)');
-  // transcendence multiplies damage
-  withState({ bestLevel: 70, prestigeCount: 0, upgrades: defaultUpgrades() });
-  approx(F.shurikenDmg(1), base * 1.2, 'transcendence +20% dmg at Lv70');
-});
+// (v3.35) damage-formula tests removed — shurikenDmg/getBaseDmg deleted with combat.
+// Gold contribution (getPieceGoldShare) is tested below instead.
 
 group('gold multiplier composition', () => {
   withState({ prestigeCount: 0, bestLevel: 1, upgrades: defaultUpgrades() });
@@ -204,15 +193,15 @@ group('center cell (Q-Leap 107)', () => {
   approx(centered, offCenter * 1.25, 'center cell gives +25% gold weight', 1e-6);
 });
 
-group('piece DPS share (Q-Leap 108)', () => {
-  withState({ prestigeCount: 0, bestLevel: 1, upgrades: defaultUpgrades(),
+group('piece gold share (v3.35 — replaces DPS share)', () => {
+  withState({ prestigeCount: 0, bestLevel: 1, upgrades: defaultUpgrades(), dailyChallengeId: '',
     grid: gridFrom([1, 1, null, null, null, null]) });
-  approx(F.getPieceDpsShare(0), 0.5, 'two equal pieces → 50% each');
-  // Lv2 deals 2x Lv1 → share 2/3 vs 1/3
-  withState({ prestigeCount: 0, bestLevel: 1, upgrades: defaultUpgrades(),
+  approx(F.getPieceGoldShare(0), 0.5, 'two equal pieces → 50% gold each');
+  // Lv2 weight 2× Lv1 (different levels → no synergy) → share 2/3 vs 1/3
+  withState({ prestigeCount: 0, bestLevel: 1, upgrades: defaultUpgrades(), dailyChallengeId: '',
     grid: gridFrom([2, 1, null, null, null, null]) });
-  approx(F.getPieceDpsShare(0), 2 / 3, 'Lv2 contributes 2/3 of DPS', 1e-9);
-  eq(F.getPieceDpsShare(2), 0, 'empty cell contributes 0');
+  approx(F.getPieceGoldShare(0), 2 / 3, 'Lv2 contributes 2/3 of gold', 1e-9);
+  eq(F.getPieceGoldShare(2), 0, 'empty cell contributes 0');
 });
 
 group('perfect formation (Q-Leap 109)', () => {
@@ -515,14 +504,7 @@ group('prestige advice (Q-Leap 122)', () => {
   eq(F.getPrestigeAdvice().recommend, false, 'small relative gain → hold');
 });
 
-group('damage scales with fire interval (QA)', () => {
-  withState({ prestigeCount: 0, bestLevel: 1, upgrades: defaultUpgrades(), grid: gridFrom([1, 2, 3, null, null, null]) });
-  const dps = F.getTotalDPS();
-  const interval = F.getFireInterval();
-  let sum = 0;
-  for (const lv of [1, 2, 3]) sum += F.shurikenDmg(lv);
-  approx(dps, sum / interval, 'total DPS = sum(shurikenDmg)/fireInterval', 1e-6);
-});
+// (v3.35) DPS/fire-interval test removed — getTotalDPS/getFireInterval deleted with combat.
 
 group('growth snapshot (Q-Leap 120)', () => {
   // new day appends
