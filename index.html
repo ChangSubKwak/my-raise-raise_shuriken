@@ -6556,6 +6556,7 @@ function renderHallOfFame() {
     { ico: '🏔', label: '최고 표창', val: `Lv ${state.bestLevel || 1}`, sub: levelName(state.bestLevel || 1), featured: true },
     ...(trans > 0 ? [{ ico: '🌌', label: '초월 경지', val: `초월 ${trans}`, sub: `데미지/골드 +${trans * 2}%`, featured: true }] : []),
     { ico: '🎌', label: '진형 등급', val: getFormationGrade().grade, sub: `평균 Lv ${getFormationGrade().avg.toFixed(1)}` },
+    { ico: '💵', label: '현재 골드율', val: `${fmt(getPassiveGoldRate())}/초`, sub: `골드 배수 ×${goldMul.toFixed(2)}` },
     { ico: '💎', label: '윤회 횟수', val: `${state.prestigeCount || 0}회` },
     { ico: '🌟', label: '깨달음(悟)', val: `${state.enlightenment || 0}` },
     { ico: '📖', label: '도감 수집', val: `${codexN} / 60` },
