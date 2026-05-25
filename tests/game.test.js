@@ -819,6 +819,23 @@ group('all achievement checks are safe (Q-Leap 124)', () => {
   eq(threwRich, 0, 'no achievement check throws on rich state');
 });
 
+group('ritual merge advances daily challenge progress (N-1 merges, parity with tryMerge)', () => {
+  if (typeof F.doRitualMerge !== 'function') { ok(true, 'doRitualMerge not exposed — skip'); return; }
+  const realRandom = Math.random;
+  Math.random = () => 0.99;
+  try {
+    // ritual 3×Lv5 → Lv7. Daily challenge active & not done; should advance by N-1 = 2.
+    const s = withState({
+      grid: place(9, { 0: 5, 1: 5, 2: 5 }), bestLevel: 10,
+      dailyChallengeId: 'comboKeep', dailyChallengeDone: false, dailyChallengeProgress: 0,
+      dailyQuests: [], lastFirstMergeDate: F.todayString(),
+    });
+    s.stats = {};
+    ok(F.doRitualMerge(), 'ritual 5×3 performed');
+    eq(s.dailyChallengeProgress, 2, 'ritual of 3 advanced daily challenge by 2 (was 0 — drift fix)');
+  } finally { Math.random = realRandom; }
+});
+
 group('level milestones grant on jump past threshold (Lv 20 not skipped by Lv19→21)', () => {
   if (typeof F.doRitualMerge !== 'function') { ok(true, 'doRitualMerge not exposed — skip'); return; }
   const realRandom = Math.random;

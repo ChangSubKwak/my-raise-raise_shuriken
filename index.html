@@ -2756,7 +2756,7 @@ function doRitualMerge() {
   addFrenzyCharge(g.indices.length - 1); // ritual charges frenzy like (N-1) merges (was missing — drift fix)
   rollMergeProcs(g.indices.length - 1, newLv); // ritual rolls gem-drop/gold-rush like (N-1) merges (was missing — drift fix)
   // Q-Leap 116: ritual merges also progress daily merge tiers + line bonus
-  for (let k = 0; k < g.indices.length - 1; k++) addDailyMergeCount();
+  for (let k = 0; k < g.indices.length - 1; k++) { addDailyMergeCount(); addChallengeProgress(); } // daily challenge counts ritual as N-1 merges (was missing — drift fix)
   checkLineBonus();
   grantDailyFirstMerge(); // Q-Leap 67: ritual can be the day's first merge
   toast(`✨ 의식 발동! ${g.indices.length}개 → Lv ${newLv} · 💰 +${fmt(ritualGold)}`);
