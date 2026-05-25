@@ -819,6 +819,24 @@ group('all achievement checks are safe (Q-Leap 124)', () => {
   eq(threwRich, 0, 'no achievement check throws on rich state');
 });
 
+group('level milestones grant on jump past threshold (Lv 20 not skipped by Lv19→21)', () => {
+  if (typeof F.doRitualMerge !== 'function') { ok(true, 'doRitualMerge not exposed — skip'); return; }
+  const realRandom = Math.random;
+  Math.random = () => 0.99;
+  try {
+    // ritual 3×Lv19 → Lv21; prevBest 19 → crosses the Lv20 milestone (old exact-newLv check skipped it).
+    // milestonesReached is incremented only by triggerMilestone, so it is a clean signal.
+    const s = withState({
+      grid: place(9, { 0: 19, 1: 19, 2: 19 }), bestLevel: 19, gem: 0,
+      dailyQuests: [], lastFirstMergeDate: F.todayString(),
+    });
+    s.stats = {};
+    ok(F.doRitualMerge(), 'ritual 19×3 → Lv21');
+    eq(s.bestLevel, 21, 'new best Lv21 (jumped past 20)');
+    ok((s.stats.milestonesReached || 0) >= 1, 'Lv20 milestone fired despite landing on Lv21');
+  } finally { Math.random = realRandom; }
+});
+
 group('combo milestone fires on blessed +2 jump (crossing threshold, not just exact)', () => {
   if (typeof F.tryMerge !== 'function') { ok(true, 'tryMerge not exposed — skip'); return; }
   const realRandom = Math.random;

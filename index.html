@@ -2741,7 +2741,7 @@ function doRitualMerge() {
     state.bestLevel = newLv;
     if (newLv % 2 === 0) { state.gem += 1; toast(`💎 +1 (Lv ${newLv} 달성)`); } // parity with tryMerge (was missing — drift fix)
     setTimeout(() => showRecordOverlay(newLv), 720);
-    triggerMilestone(newLv);
+    for (let L = prevBest + 1; L <= newLv; L++) triggerMilestone(L); // every milestone level crossed (jump-safe; ritual can leap multiple Lv)
     announceTranscendIfNeeded(newLv, prevBest); // Q-Leap 116: ritual path now grants transcend milestones too
   }
   if (newLv > state.runBestLevel) state.runBestLevel = newLv;
@@ -3647,8 +3647,8 @@ function tryMerge(fromIdx, toIdx) {
       // big celebration overlay — fires once per record
       // (delay so the merge animation gets to play first)
       setTimeout(() => showRecordOverlay(newLv), 720);
-      // Q-Leap 49: milestone explosions for major thresholds
-      triggerMilestone(newLv);
+      // Q-Leap 49: milestone explosions for major thresholds (every level crossed — jump-safe)
+      for (let L = prevBest + 1; L <= newLv; L++) triggerMilestone(L);
       announceTranscendIfNeeded(newLv, prevBest); // Q-Leap 98/102/116
     }
     if (newLv > state.runBestLevel) state.runBestLevel = newLv;
