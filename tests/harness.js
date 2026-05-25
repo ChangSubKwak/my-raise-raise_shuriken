@@ -90,6 +90,7 @@ function loadGame() {
     renderPrestige, renderAchievements, renderCodex, renderStats, renderGrid, refreshUI,
     renderShop, renderStorage, renderLog, renderQuests, renderSkillTree, renderUpgrades,
     renderHallOfFame, renderTrophy, updateHUD, refreshQuestBadge, refreshAutoSellUI, renderHelp,
+    drawShurikenSprite,
     compactGridArray, sortGridByLevel, getLevelFlavor,
     registerCodex, announceTranscendIfNeeded,
     getNextGoal, getGoldMulBreakdown, sellValue, getPrestigeAdvice, getEnlightenmentGain,

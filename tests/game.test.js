@@ -1679,6 +1679,19 @@ group('strategy achievement tracks strategyUsed', () => {
   eq(a.check({ stats: { strategyUsed: 0 } }), false, 'not before any selection');
 });
 
+group('drawShurikenSprite runs across all tiers + transcend levels without throwing', () => {
+  if (typeof F.drawShurikenSprite !== 'function') { ok(true, 'not exposed — skip'); return; }
+  // canvas/ctx stub that absorbs every call & property — verifies the per-tier sprite logic
+  // (wood/iron/silver/gold/mystic + transcend) has no reference error at any level.
+  function ctxStub() { return new Proxy(function () {}, { get() { return ctxStub(); }, set() { return true; }, apply() { return ctxStub(); } }); }
+  const canvas = { width: 80, height: 80, getContext: () => ctxStub() };
+  let threw = null, lvThrew = 0;
+  for (let lv = 1; lv <= 100; lv++) {
+    try { F.drawShurikenSprite(canvas, lv); } catch (e) { if (!threw) { threw = e; lvThrew = lv; } }
+  }
+  ok(threw === null, 'sprite renders for Lv 1..100 (all tiers + transcend)' + (threw ? ` — Lv ${lvThrew}: ${threw.message}` : ''));
+});
+
 group('render functions run without throwing (UI-wiring smoke test)', () => {
   // First coverage of the render path — catches reference errors in render code that
   // pure-helper tests miss (e.g. the strategy button, next-milestone readouts I added).
