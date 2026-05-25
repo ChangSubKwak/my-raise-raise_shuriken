@@ -30,6 +30,7 @@ Silent JS errors are the dominant failure mode in a single-file game. Run this b
 ```bash
 npm run check     # parse (above) + pure-logic test suite
 npm test          # tests only
+npm run scan      # advisory dead-code scan: def-only functions + orphaned CSS #ids
 ```
 
 Zero-install: `tests/harness.js` reads `index.html`, extracts the `<script>`, stubs the
