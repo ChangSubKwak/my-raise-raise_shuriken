@@ -1471,6 +1471,19 @@ group('line bonus awards on a partial last row (non-rectangular grid)', () => {
   eq(G.getState().gem, 0, 'a 2-cell partial row does not award (min 3)');
 });
 
+group('load fills missing skills from defaults (single source of truth)', () => {
+  if (typeof F.load !== 'function' || typeof F.save !== 'function') { ok(true, 'save/load not exposed — skip'); return; }
+  const s = withState({});
+  s.skills = { fate: 3 }; // simulate an older save that predates some skill nodes
+  F.save();
+  F.load();
+  const sk = G.getState().skills;
+  eq(sk.fate, 3, 'present skill value preserved through load');
+  eq(sk.goldMastery, 0, 'missing skill defaulted to 0');
+  eq(sk.starLuck, 0, 'newest skill defaulted to 0');
+  ok(sk.starLuck !== undefined && sk.blessTime !== undefined, 'all skills defined, none undefined');
+});
+
 group('todayString matches dateKey format', () => {
   // todayString is now an alias of dateKey() — both feed daily-reset comparisons.
   const t = F.todayString();

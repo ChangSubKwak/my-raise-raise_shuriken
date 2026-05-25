@@ -2840,7 +2840,7 @@ function load() {
     state.stats.sessionStart = Date.now();
     state.achievements = Object.assign({}, s.achievements || {});
     state.enlightenment = s.enlightenment || 0;
-    state.skills = Object.assign({ goldMastery:0, swiftHands:0, fate:0, masterSmith:0, inheritance:0, blessTime:0, codexBoost:0, goldenLuck:0, starLuck:0 }, s.skills || {});
+    state.skills = Object.assign(defaultState().skills, s.skills || {}); // single source of truth — picks up new skills automatically
     state.lastAttendDate = s.lastAttendDate || '';
     state.attendStreak = s.attendStreak || 0;
     state.codex = s.codex || {};
