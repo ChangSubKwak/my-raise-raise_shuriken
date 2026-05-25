@@ -1644,6 +1644,40 @@ group('integration: merge → bestLevel → prestige → reset/preserve + gold i
   } finally { Math.random = realRandom; }
 });
 
+group('variant fusion: 3 same-variant → 1 next-tier, keeps highest level', () => {
+  if (typeof F.tryVariantFusion !== 'function') { ok(true, 'tryVariantFusion not exposed — skip'); return; }
+  // 3 golden pieces (Lv 4,6,5) → 1 star at Lv 6 (highest), other two cleared.
+  const s = withState({ grid: place(9, { 0: 4, 2: 6, 5: 5 }) });
+  s.grid[0].golden = true; s.grid[2].golden = true; s.grid[5].golden = true;
+  s.stats = {};
+  eq(F.countVariant('golden'), 3, '3 golden pieces present');
+  ok(F.tryVariantFusion('golden'), 'fusion performed');
+  const stars = s.grid.filter(c => c && c.star);
+  eq(stars.length, 1, 'exactly one star produced');
+  eq(stars[0].level, 6, 'result keeps the highest consumed level (6)');
+  ok(!stars[0].golden, 'result is star, not golden');
+  eq(s.grid.filter(c => c && c.golden).length, 0, 'all 3 goldens consumed');
+  eq(s.grid.filter(c => c).length, 1, 'net 3 pieces → 1 piece');
+  eq(s.stats.fusionsUsed, 1, 'fusionsUsed stat incremented');
+  // not enough variants → no-op
+  const s2 = withState({ grid: place(9, { 0: 4, 1: 5 }) });
+  s2.grid[0].golden = true; s2.grid[1].golden = true;
+  s2.stats = {};
+  eq(F.tryVariantFusion('golden'), false, 'fewer than 3 → fusion rejected');
+  eq(s2.grid.filter(c => c).length, 2, 'pieces untouched on rejection');
+  // dark is top tier → cannot fuse
+  const s3 = withState({ grid: place(9, { 0: 4, 1: 5, 2: 6 }) });
+  s3.grid[0].dark = true; s3.grid[1].dark = true; s3.grid[2].dark = true;
+  s3.stats = {};
+  eq(F.tryVariantFusion('dark'), false, 'dark is top tier — no fusion');
+  // locked variants are not counted/consumed
+  const s4 = withState({ grid: place(9, { 0: 4, 1: 5, 2: 6 }) });
+  s4.grid[0].golden = true; s4.grid[1].golden = true; s4.grid[2].golden = true; s4.grid[2].locked = true;
+  s4.stats = {};
+  eq(F.countVariant('golden'), 2, 'locked golden excluded from count');
+  eq(F.tryVariantFusion('golden'), false, 'cannot fuse when only 2 unlocked goldens');
+});
+
 group('sortGridByLevel compacts + sorts descending, preserving pieces/variants', () => {
   if (typeof F.sortGridByLevel !== 'function') { ok(true, 'sortGridByLevel not exposed — skip'); return; }
   const s = withState({ grid: place(6, { 0: 3, 2: 7, 3: 5, 5: 5 }) });

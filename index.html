@@ -6263,6 +6263,44 @@ document.getElementById('log-close').addEventListener('click', () => {
 document.getElementById('log-modal').addEventListener('click', (e) => {
   if (e.target.id === 'log-modal') document.getElementById('log-modal').classList.remove('show');
 });
+// Variant fusion (crafting): sacrifice 3 same-variant pieces → 1 of the next-rarer tier.
+// Gives the otherwise-passive variants a strategic decision + a non-luck path to rare variants.
+const VARIANT_FUSION_NEXT = { golden: 'star', star: 'dark' }; // dark is top tier (no fusion)
+function countVariant(kind) {
+  let n = 0;
+  for (const c of state.grid) if (c && c[kind] && !c.locked) n++;
+  return n;
+}
+function tryVariantFusion(kind) {
+  const next = VARIANT_FUSION_NEXT[kind];
+  if (!next) { toast('이 변종은 융합할 수 없습니다'); return false; }
+  const idxs = [];
+  for (let i = 0; i < state.grid.length; i++) {
+    const c = state.grid[i];
+    if (c && c[kind] && !c.locked) idxs.push(i);
+  }
+  if (idxs.length < 3) { toast(`융합하려면 같은 변종 3개 필요 (현재 ${idxs.length})`); return false; }
+  // consume the 3 highest-level carriers; result keeps the highest level, lands on the lowest index.
+  idxs.sort((a, b) => state.grid[b].level - state.grid[a].level);
+  const consume = idxs.slice(0, 3);
+  const resultLv = state.grid[consume[0]].level;
+  const targetIdx = Math.min(consume[0], consume[1], consume[2]);
+  for (const i of consume) state.grid[i] = null;
+  const piece = { id: state.nextShurikenId++, level: resultLv, fireTimer: 0 };
+  piece[next] = true;
+  state.grid[targetIdx] = piece;
+  state.stats.fusionsUsed = (state.stats.fusionsUsed || 0) + 1;
+  if (next === 'star') state.stats.starSpawned = (state.stats.starSpawned || 0) + 1;
+  if (next === 'dark') state.stats.darkSpawned = (state.stats.darkSpawned || 0) + 1;
+  const nm = next === 'star' ? '★ 별' : '🌑 검은';
+  const srcNm = kind === 'golden' ? '✦ 황금' : '★ 별';
+  toast(`✨ 변종 융합! ${srcNm} ×3 → ${nm} (Lv ${resultLv})`);
+  addEvent('lucky', `변종 융합 → ${nm} 표창 (Lv ${resultLv})`);
+  flashCell(targetIdx);
+  sfx('mergeMystic');
+  renderGrid(); refreshUI(); checkAchievements(); save();
+  return true;
+}
 // Q-Leap 55: info mode + modal
 let _infoModalIdx = -1;
 function showShurikenInfo(idx) {
@@ -6293,6 +6331,13 @@ function showShurikenInfo(idx) {
   if (c.dark)   traits += '<span class="info-trait dark">🌑 검은</span>';
   if (c.locked) traits += '<span class="info-trait locked">🔒 잠금</span>';
   const canStore = !c.locked && (state.storage || []).length < 3;
+  // Variant fusion: offer if this (non-locked) piece carries a fusable variant with 3+ available.
+  let fuseKind = null;
+  if (!c.locked) {
+    if (c.golden && countVariant('golden') >= 3) fuseKind = 'golden';
+    else if (c.star && countVariant('star') >= 3) fuseKind = 'star';
+  }
+  const fuseLabel = fuseKind === 'golden' ? '✨ 황금 3개 → ★ 별 1개' : '✨ 별 3개 → 🌑 검은 1개';
   document.getElementById('info-body').innerHTML = `
     <div class="info-row"><span class="if-k">현재 골드율</span><span class="if-v">${baseGoldRate.toFixed(1)} / 초${idx === getCenterIndex() ? ' <span style="color:#ffd966">◈중앙+25%</span>' : ''}</span></div>
     <div class="info-row"><span class="if-k">골드 기여</span><span class="if-v">${(getPieceGoldShare(idx) * 100).toFixed(1)}%</span></div>
@@ -6302,8 +6347,14 @@ function showShurikenInfo(idx) {
     ${c.golden ? '<div class="info-row" style="color:#ffd966;font-size:11px;">✦ 합성 시 +1 점프 · 판매 5x</div>' : ''}
     ${c.star ? '<div class="info-row" style="color:#ddaaff;font-size:11px;">★ 그리드에 있으면 spawn ×1.43</div>' : ''}
     ${c.dark ? '<div class="info-row" style="color:#cc99ff;font-size:11px;">🌑 합성 시 인접 같은 Lv 흡수 (+1 추가)</div>' : ''}
+    ${fuseKind ? `<button id="info-fuse-btn" style="width:100%;padding:9px;margin-top:6px;border-radius:8px;background:linear-gradient(180deg,#c89bff,#8a5cd0);border:none;color:#fff;font-family:inherit;font-weight:800;font-size:12px;cursor:pointer;">${fuseLabel}</button>` : ''}
     ${canStore ? `<button id="info-store-btn" style="width:100%;padding:9px;margin-top:6px;border-radius:8px;background:linear-gradient(180deg,#88ccaa,#44886a);border:none;color:#fff;font-family:inherit;font-weight:800;font-size:12px;cursor:pointer;">📦 보관소로 이동 (${(state.storage || []).length}/3)</button>` : ''}
   `;
+  const fuseBtn = document.getElementById('info-fuse-btn');
+  if (fuseBtn) fuseBtn.addEventListener('click', () => {
+    getAudio();
+    if (tryVariantFusion(fuseKind)) document.getElementById('info-modal').classList.remove('show');
+  });
   const storeBtn = document.getElementById('info-store-btn');
   if (storeBtn) storeBtn.addEventListener('click', () => {
     getAudio();
