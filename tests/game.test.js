@@ -1484,6 +1484,33 @@ group('load fills missing skills from defaults (single source of truth)', () => 
   ok(sk.starLuck !== undefined && sk.blessTime !== undefined, 'all skills defined, none undefined');
 });
 
+group('integration: ritual pipeline credits N-1 merges across all systems (parity guard)', () => {
+  if (typeof F.doRitualMerge !== 'function') { ok(true, 'doRitualMerge not exposed — skip'); return; }
+  const realRandom = Math.random;
+  Math.random = () => 0.99;
+  try {
+    // 3×Lv4 → Lv6 (N=3 → N-1=2 merge-equivalents). bestLevel 10 so not a new best (isolates accounting).
+    // blessed cell (idx 1) is inside the group [0,1,2].
+    const s = withState({
+      grid: place(9, { 0: 4, 1: 4, 2: 4 }), bestLevel: 10, gold: 0,
+      blessedIdx: 1,
+      dailyChallengeId: 'comboKeep', dailyChallengeDone: false, dailyChallengeProgress: 0,
+      frenzyCharge: 0, autoFrenzyEnabled: false,
+      dailyQuests: [], lastFirstMergeDate: F.todayString(),
+      upgrades: defaultUpgrades(), skills: {},
+    });
+    s.stats = {};
+    ok(F.doRitualMerge(), 'ritual 4×3 → Lv6');
+    eq(s.stats.totalMerges, 2, 'creditMerges: N-1 = 2 (v3.41 frenzy / v3.x merge-count parity)');
+    eq(s.dailyChallengeProgress, 2, 'daily challenge advanced by N-1 = 2 (v3.51)');
+    eq(s.frenzyCharge, 2, 'frenzy charged by N-1 = 2, no packed set (v3.41)');
+    eq(s.stats.blessedMerges, 1, 'blessed-cell ritual credited blessedMerges (v3.52)');
+    eq(s.blessedIdx, -1, 'blessing consumed by the ritual (v3.52)');
+    eq(s.stats.ritualsPerformed, 1, 'ritual counted');
+    ok(s.gold > 0, 'ritual gold awarded');
+  } finally { Math.random = realRandom; }
+});
+
 group('integration: merge → bestLevel → prestige → reset/preserve + gold invariant', () => {
   if (typeof F.tryMerge !== 'function' || typeof F.doPrestige !== 'function') { ok(true, 'merge/prestige not exposed — skip'); return; }
   const realRandom = Math.random;
