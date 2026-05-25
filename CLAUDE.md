@@ -55,7 +55,7 @@ The **grid is DOM** because drag/select-target is much cleaner with element even
 **Grid sprite rendering**: each cell contains a small `<canvas>` painted by `drawShurikenSprite(canvas, level)`. The sprites rotate via `setInterval(repaintGridSprites, 100)` — every 100ms all grid sprites repaint, reading `Date.now()` for rotation phase. Empty cells have no sprite (skip).
 
 **State & persistence**:
-- `state.grid` is a flat array of length `getGridSize()` (9 → 12 → 16 → 20 → 25 based on `state.upgrades.gridSize`).
+- `state.grid` is a flat array of length `getGridSize()` = `min(30, 6 + state.upgrades.maxShuriken)` — i.e. base 6, +1 per `maxShuriken` upgrade level, hard-capped at 30. (There is no separate `gridSize` upgrade.) Because size grows by 1, **most grids are non-rectangular**: `getGridCols()` is 3/4/5/6 and the last row/column is often partial. Any grid-geometry code must skip phantom cells (`idx >= size`), not assume a full rectangle — see `checkLineBonus`.
 - Cell entry: `{ id, level, fireTimer }` or `null`.
 - `state.spawnCount` resets each stage start (`startStage()`) — that's the cost-escalation scope.
 - localStorage key: `shuriken_merge_v2` (distinct from v1's `shuriken_save_v1`).
@@ -66,6 +66,10 @@ The **grid is DOM** because drag/select-target is much cleaner with element even
 - different level → swap
 
 The UI is **tap-tap, not drag-drop**: tap source to select (highlights), tap target to act. Simpler on mobile and easier to reason about. `selectedIdx` tracks the first tap.
+
+**Ritual-parity invariant**: `doRitualMerge` (의식 합성, 3+ same-level group → one higher piece) is a second merge path that must mirror `tryMerge`'s bookkeeping, counting a ritual of N pieces as **N-1 merge-equivalents**. Both paths must credit: merge count (`creditMerges`), daily-merge tiers (`addDailyMergeCount`), daily challenge (`addChallengeProgress`), frenzy meter (`addFrenzyCharge`), per-merge procs (`rollMergeProcs`), level/transcend milestones, even-level 💎, auto-lock (`autoLockPass`), blessed-cell consumption, and codex/transcend/line bonuses. Anything counted as "a merge" in `tryMerge` must also fire in `doRitualMerge` (scaled by N-1). Intentionally **tryMerge-only**: combo chain, lucky/divine procs (those are 2-piece-merge mechanics). When adding any new merge reward, wire BOTH paths or you create silent drift.
+
+**Milestone jump-skip invariant**: `bestLevel`/`comboCount`/transcendence can jump multiple steps in one merge (lucky/ritual/divine/blessed). Any threshold-keyed reward (`MILESTONES`, `TRANSCEND_MILESTONES`, `COMBO_MILESTONES`) must grant **every threshold crossed in `(prev, new]`**, not just an exact `[new]` lookup — follow the range-crossing pattern in `creditMerges`. Counters that only ever +1 (attendance streak, `addDailyMergeCount`) are exempt.
 
 **Gold income (passive, no combat)**: `getPassiveGoldRate()` is the single source of truth — `Σ 0.5·2^(level-1) · synergyMul · centerBonus · getGoldMul() · getPassiveGoldBonus()` over occupied cells. `update()` accrues this; the HUD readout and offline reward call the same fn (they must never diverge). Merge/ritual gold uses `2^newLv · getGoldMul() · combo · jump · getMergeGoldBonus()`.
 
@@ -82,7 +86,7 @@ The UI is **tap-tap, not drag-drop**: tap source to select (highlights), tap tar
 
 **Spawn full state**: when `emptySlots().length === 0`, `state.spawnProgress` is clamped to 1.0 (the bar shows "그리드 가득참 — 합쳐서 공간 확보"). This is the tension point — players must merge to free space, which is the entire loop.
 
-**Prestige (윤회)**: unlocked at `bestLevel >= 8`. Resets gold/stage/upgrades but preserves: `prestigeCount`, `bestLevel`, `gridSize` upgrade, and the global multiplier `(1 + 0.5 * prestigeCount)` on damage AND gold. Intentional that gridSize doesn't reset — players keep the larger field.
+**Prestige (윤회)**: unlocked at `bestLevel >= 8`. Resets gold/stage/most upgrades but preserves: `prestigeCount`, `bestLevel`, the `maxShuriken`/`spawnBatch`/`luckChance` upgrades, and the global multiplier `(1 + 0.5 * prestigeCount)` on gold. Intentional that `maxShuriken` doesn't reset — players keep the larger field. Also resets run-transient activity state (combo/frenzy/goldRush/burning timers + frenzy meter) so a fresh run starts clean.
 
 **Animations & feedback**:
 - `flashCell(idx)` scales + glow on successful merge.
@@ -94,7 +98,7 @@ The UI is **tap-tap, not drag-drop**: tap source to select (highlights), tap tar
 
 - Don't bring back v1's 30 systems. The whole point of v2 is the focused merge loop.
 - Don't switch the merge UI to drag-drop without a clear benefit — tap-tap is reliable cross-platform.
-- Don't make grid size dynamic outside `gridSize` upgrade — many places assume `state.grid.length === getGridSize()`.
+- Don't make grid size dynamic outside the `maxShuriken` upgrade — many places assume `state.grid.length === getGridSize()`.
 - Don't add backwards-compatibility shims for v1 saves; the keys are distinct and v1 lives at `index_v1.html`.
 
 ## User-global rules (from ~/.claude/CLAUDE.md)
