@@ -1679,6 +1679,20 @@ group('strategy achievement tracks strategyUsed', () => {
   eq(a.check({ stats: { strategyUsed: 0 } }), false, 'not before any selection');
 });
 
+group('strategy mode persists through save/load and prestige (it is a setting)', () => {
+  if (typeof F.save !== 'function' || typeof F.load !== 'function') { ok(true, 'save/load not exposed — skip'); return; }
+  const s = withState({ strategyMode: 'gold' });
+  s.stats = {};
+  F.save(); F.load();
+  eq(G.getState().strategyMode, 'gold', 'strategyMode survives a save/load round-trip');
+  if (typeof F.doPrestige === 'function') {
+    const s2 = withState({ strategyMode: 'fast', bestLevel: 10, grid: place(9, {}), upgrades: defaultUpgrades(), skills: {} });
+    s2.stats = {};
+    F.doPrestige();
+    eq(G.getState().strategyMode, 'fast', 'strategyMode preserved through prestige (player setting, not run-transient)');
+  }
+});
+
 group('strategy mode: trade-off run modifiers wired into gold/spawn/variant', () => {
   if (typeof F.getStrategyGoldMul !== 'function') { ok(true, 'strategy helpers not exposed — skip'); return; }
   // none = neutral
