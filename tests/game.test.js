@@ -1704,6 +1704,13 @@ group('strategy mode: trade-off run modifiers wired into gold/spawn/variant', ()
   withState({ strategyMode: 'gold', prestigeCount: 0, dailyChallengeId: '', upgrades: defaultUpgrades(), grid: gridFrom([5, null, null, null, null, null]) });
   approx(F.getGoldMul(), goldNone * 1.30, 'gold mode multiplies getGoldMul by 1.30', 1e-6);
   ok(F.getSpawnInterval() > spawnNone, 'gold mode lengthens spawn interval');
+  // strategy 'variant' factor is actually COMPOSED into getVariantSpontaneousMul (not just the helper)
+  if (typeof F.getVariantSpontaneousMul === 'function') {
+    withState({ strategyMode: 'none', grid: new Array(9).fill(null) });
+    const vNone = F.getVariantSpontaneousMul();
+    withState({ strategyMode: 'variant', grid: new Array(9).fill(null) });
+    approx(F.getVariantSpontaneousMul(), vNone * 2, 'variant mode doubles the composed variant-spontaneous mul', 1e-9);
+  }
   // invalid/unknown mode falls back to none
   withState({ strategyMode: 'bogus' });
   eq(F.getStrategyGoldMul(), 1, 'unknown mode → neutral');
