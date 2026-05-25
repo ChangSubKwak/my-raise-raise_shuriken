@@ -6203,7 +6203,9 @@ function showShurikenInfo(idx) {
   const synergyBoost = isChallenge('synergy2x') ? 0.4 : 0.2;
   const synergyMul = 1 + adj * synergyBoost;
   const centerMul = (idx === getCenterIndex()) ? CENTER_BONUS : 1; // Q-Leap 107: reflect center bonus in the readout
-  const baseGoldRate = 0.5 * Math.pow(2, c.level - 1) * synergyMul * centerMul * getGoldMul();
+  // Must match getPassiveGoldRate's per-cell contribution: weight × getGoldMul × getPassiveGoldBonus.
+  // (getPassiveGoldBonus was missing here, so the readout understated the rate once 연마/firerate was bought.)
+  const baseGoldRate = 0.5 * Math.pow(2, c.level - 1) * synergyMul * centerMul * getGoldMul() * getPassiveGoldBonus();
   const sellVal = sellValue(c); // Q-Leap 119: shared formula (0 if locked)
   document.getElementById('info-title').textContent = `${levelName(c.level)} (Lv ${c.level})`;
   let traits = '';

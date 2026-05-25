@@ -1124,6 +1124,14 @@ group('repurposed combat upgrades → gold (firerate/baseDmg)', () => {
   const ratePlain = F.getPassiveGoldRate();
   withState({ prestigeCount: 0, upgrades: Object.assign(defaultUpgrades(), { firerate: 5 }), dailyChallengeId: '', grid: gridFrom([5, null, null, null, null, null]) });
   approx(F.getPassiveGoldRate(), ratePlain * 1.4, 'firerate raises passive gold rate by its bonus', 1e-6);
+  // info-modal per-piece readout must use the SAME factors as income: weight × goldMul × passiveBonus.
+  // (getPassiveGoldBonus was previously omitted from the readout, understating the rate once firerate was bought.)
+  if (typeof F.pieceGoldWeight === 'function') {
+    const s = withState({ prestigeCount: 0, dailyChallengeId: '', upgrades: Object.assign(defaultUpgrades(), { firerate: 5 }), grid: gridFrom([5, null, null, null, null, null]) });
+    const perCell = F.pieceGoldWeight(0) * F.getGoldMul() * F.getPassiveGoldBonus();
+    approx(F.getPassiveGoldRate(), perCell, 'single-cell income = weight × goldMul × passiveBonus (readout formula)', 1e-6);
+    ok(perCell > F.pieceGoldWeight(0) * F.getGoldMul(), 'including passiveBonus exceeds the old bonus-less readout');
+  }
   // baseDmg now boosts merge/ritual gold +8%/Lv
   withState({ upgrades: defaultUpgrades() });
   eq(F.getMergeGoldBonus(), 1, 'no baseDmg → 1x');

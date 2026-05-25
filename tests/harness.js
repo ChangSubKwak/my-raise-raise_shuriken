@@ -85,7 +85,7 @@ function loadGame() {
     levelName, levelTier, weekdayBonus, questSeed, todayString,
     getSpawnInterval, getSpawnStartLevel, findNextAutoMergePair,
     checkLineBonus, countStars, getGridSize, getGridCols,
-    grantTranscendMilestone, getCenterIndex, getPieceGoldShare, getPassiveGoldRate,
+    grantTranscendMilestone, getCenterIndex, getPieceGoldShare, getPassiveGoldRate, pieceGoldWeight,
     dailyMergeRewardFor, getFormationGrade, comboCashout,
     compactGridArray, sortGridByLevel, getLevelFlavor,
     registerCodex, announceTranscendIfNeeded,
