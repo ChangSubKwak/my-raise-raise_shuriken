@@ -1062,6 +1062,21 @@
     0%,100% { transform: scale(1) rotate(0deg); }
     50%     { transform: scale(1.1); }
   }
+  /* 오늘의 시세 — highlight market-level pieces while in sell mode (actionable at sell time) */
+  .cell.market-cell {
+    box-shadow: 0 0 12px #7fd6a0cc, inset 0 0 10px #2f6b4a88;
+    animation: marketPulse 1.6s ease-in-out infinite;
+  }
+  @keyframes marketPulse {
+    0%,100% { box-shadow: 0 0 10px #7fd6a099, inset 0 0 8px #2f6b4a66; }
+    50%     { box-shadow: 0 0 20px #7fd6a0ee, inset 0 0 16px #2f6b4aaa; }
+  }
+  .cell .market-mark {
+    position: absolute; bottom: 3px; left: 3px;
+    font-size: 11px;
+    text-shadow: 0 0 6px #7fd6a0, 0 1px 2px rgba(0,0,0,0.9);
+    z-index: 3; pointer-events: none;
+  }
   /* Q-Leap 44: adjacency synergy — dot DOM element top-right (avoids ::before conflict with locked/blessed) */
   .cell .synergy-dot {
     position: absolute; top: 14px; right: 3px;
@@ -4382,6 +4397,8 @@ function renderGrid() {
   }
   // Q-Leap 107: center cell index (golden-weighted gold)
   const centerIdx = getCenterIndex();
+  // 오늘의 시세 — only relevant while deciding what to sell; computed once per render.
+  const marketLv = sellMode ? getMarketLevel() : -1;
   // reuse cells if possible
   gridEl.innerHTML = '';
   for (let i = 0; i < size; i++) {
@@ -4411,6 +4428,14 @@ function renderGrid() {
     if (c) {
       if (c.locked) cell.classList.add('locked-piece');
       if (c.golden) cell.classList.add('golden-piece');
+      // 오늘의 시세 매도 대상 (sell mode only, sellable pieces) — see banner for ×N
+      if (marketLv > 0 && c.level === marketLv && !c.locked) {
+        cell.classList.add('market-cell');
+        const mk = document.createElement('div');
+        mk.className = 'market-mark';
+        mk.textContent = '📈';
+        cell.appendChild(mk);
+      }
       // Q-Leap 44: adjacency synergy visual — count same-Lv 4-neighbors (shared helper)
       const _adj = countAdjacentSameLevel(i);
       if (_adj > 0) {
