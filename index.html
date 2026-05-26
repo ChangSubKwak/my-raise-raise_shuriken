@@ -6337,7 +6337,7 @@ function countVariant(kind) {
   for (const c of state.grid) if (c && c[kind] && !c.locked) n++;
   return n;
 }
-function tryVariantFusion(kind) {
+function tryVariantFusion(kind, anchorIdx) {
   const next = VARIANT_FUSION_NEXT[kind];
   if (!next) { toast('이 변종은 융합할 수 없습니다'); return false; }
   const idxs = [];
@@ -6346,11 +6346,17 @@ function tryVariantFusion(kind) {
     if (c && c[kind] && !c.locked) idxs.push(i);
   }
   if (idxs.length < 3) { toast(`융합하려면 같은 변종 3개 필요 (현재 ${idxs.length})`); return false; }
-  // consume the 3 highest-level carriers; result keeps the highest level, lands on the lowest index.
-  idxs.sort((a, b) => state.grid[b].level - state.grid[a].level);
-  const consume = idxs.slice(0, 3);
-  const resultLv = state.grid[consume[0]].level;
-  const targetIdx = Math.min(consume[0], consume[1], consume[2]);
+  // If a valid anchor (the tapped piece) is given, it always participates and the result lands
+  // on it; the other 2 are the highest-level carriers. Otherwise fall back to the 3 highest.
+  let consume;
+  if (typeof anchorIdx === 'number' && idxs.includes(anchorIdx)) {
+    const others = idxs.filter(i => i !== anchorIdx).sort((a, b) => state.grid[b].level - state.grid[a].level);
+    consume = [anchorIdx, others[0], others[1]];
+  } else {
+    consume = idxs.slice().sort((a, b) => state.grid[b].level - state.grid[a].level).slice(0, 3);
+  }
+  const resultLv = Math.max(state.grid[consume[0]].level, state.grid[consume[1]].level, state.grid[consume[2]].level);
+  const targetIdx = consume.includes(anchorIdx) ? anchorIdx : Math.min(consume[0], consume[1], consume[2]);
   for (const i of consume) state.grid[i] = null;
   const piece = { id: state.nextShurikenId++, level: resultLv, fireTimer: 0 };
   piece[next] = true;
@@ -6410,7 +6416,7 @@ function showShurikenInfo(idx) {
   const fuseBtn = document.getElementById('info-fuse-btn');
   if (fuseBtn) fuseBtn.addEventListener('click', () => {
     getAudio();
-    if (tryVariantFusion(fuseKind)) document.getElementById('info-modal').classList.remove('show');
+    if (tryVariantFusion(fuseKind, _infoModalIdx)) document.getElementById('info-modal').classList.remove('show');
   });
   const storeBtn = document.getElementById('info-store-btn');
   if (storeBtn) storeBtn.addEventListener('click', () => {

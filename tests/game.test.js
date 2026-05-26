@@ -1840,6 +1840,14 @@ group('variant fusion: 3 same-variant → 1 next-tier, keeps highest level', () 
   s2.stats = {};
   eq(F.tryVariantFusion('golden'), false, 'fewer than 3 → fusion rejected');
   eq(s2.grid.filter(c => c).length, 2, 'pieces untouched on rejection');
+  // anchored fusion: the tapped piece always participates and the result lands on it
+  const sA = withState({ grid: place(9, { 0: 4, 1: 5, 2: 6, 7: 8 }) });
+  sA.grid[0].golden = true; sA.grid[1].golden = true; sA.grid[2].golden = true; sA.grid[7].golden = true;
+  sA.stats = {};
+  ok(F.tryVariantFusion('golden', 7), 'anchored fusion at idx 7 performed (4 goldens)');
+  ok(sA.grid[7] && sA.grid[7].star, 'result lands on the anchor cell (idx 7)');
+  eq(sA.grid[7].level, 8, 'result keeps the highest consumed level (anchor Lv8 + 2 highest others)');
+  eq(sA.grid.filter(c => c && c.golden).length, 1, 'exactly one golden remains (4 → consumed 3, 1 left)');
   // dark is top tier → cannot fuse
   const s3 = withState({ grid: place(9, { 0: 4, 1: 5, 2: 6 }) });
   s3.grid[0].dark = true; s3.grid[1].dark = true; s3.grid[2].dark = true;
