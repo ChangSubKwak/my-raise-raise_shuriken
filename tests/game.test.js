@@ -1894,6 +1894,23 @@ group('sortGridByLevel compacts + sorts descending, preserving pieces/variants',
   eq(g.length, 6, 'grid length unchanged');
 });
 
+group('integration: post-prestige spawn boost applies +2 then decrements', () => {
+  if (typeof F.spawnShuriken !== 'function' || typeof F.doPrestige !== 'function') { ok(true, 'not exposed — skip'); return; }
+  const realRandom = Math.random;
+  Math.random = () => 0.99;
+  try {
+    const s = withState({ bestLevel: 10, grid: place(9, {}), upgrades: defaultUpgrades(), skills: {} });
+    s.stats = {};
+    F.doPrestige(); // Q-Leap 91: sets postPrestigeSpawns = 10
+    eq(s.postPrestigeSpawns, 10, 'prestige grants 10 boosted spawns');
+    const baseLv = F.getSpawnStartLevel(); // spawnLevel reset by prestige → 1
+    F.spawnShuriken();
+    const spawned = s.grid.find(c => c);
+    eq(spawned.level, baseLv + 2, 'first post-prestige spawn is +2 boosted (getNextSpawnLevel)');
+    eq(s.postPrestigeSpawns, 9, 'boost counter decremented by the spawn');
+  } finally { Math.random = realRandom; }
+});
+
 group('spawn batch / start level / star count formulas', () => {
   // getSpawnBatch = min(SPAWN_BATCH_CAP=6, 1 + spawnBatch upgrade)
   if (typeof F.getSpawnBatch === 'function') {
