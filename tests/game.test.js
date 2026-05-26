@@ -508,6 +508,29 @@ group('daily market (오늘의 시세) — date-seeded sell premium', () => {
   ok(postPrestigeLv >= 2 && postPrestigeLv <= 8, 'post-prestige market tracks runBestLevel band [2,8], not bestLevel-50 highs');
 });
 
+group('sellShuriken e2e — market premium gold + marketSells stat (v3.66.1 path)', () => {
+  if (typeof F.sellShuriken !== 'function') { ok(true, 'sellShuriken not exposed — skip'); return; }
+  const s = withState({ prestigeCount: 0, bestLevel: 20, runBestLevel: 20, gold: 0, upgrades: defaultUpgrades(), dailyChallengeId: '' });
+  s.stats = {};
+  s.dailyQuests = [];
+  const mktLv = F.getMarketLevel();
+  const mktMul = F.getMarketMul();
+  const gm = F.getGoldMul();
+  s.grid = place(6, { 0: mktLv });
+  F.sellShuriken(0);
+  const st = G.getState();
+  eq(st.gold, Math.floor(Math.pow(2, mktLv) * gm * 0.5 * mktMul), 'market-level sell credits premium gold via real sellShuriken');
+  eq(st.stats.marketSells, 1, 'marketSells incremented on a market-level sale');
+  eq(st.stats.totalSold, 1, 'totalSold incremented');
+  eq(st.grid[0], null, 'sold piece cleared from grid');
+  // an off-band sale does NOT bump marketSells
+  const s2 = withState({ prestigeCount: 0, bestLevel: 20, runBestLevel: 20, gold: 0, upgrades: defaultUpgrades(), dailyChallengeId: '' });
+  s2.stats = {}; s2.dailyQuests = [];
+  s2.grid = place(6, { 0: 5 }); // band is [11,20] → level 5 is off-market
+  F.sellShuriken(0);
+  eq(G.getState().stats.marketSells || 0, 0, 'off-market sale leaves marketSells at 0');
+});
+
 group('enlightenment gain formula (QA)', () => {
   // actual prestige reward = max(1, floor(runBestLevel/3))
   withState({ runBestLevel: 1 });
