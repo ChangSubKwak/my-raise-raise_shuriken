@@ -5747,6 +5747,7 @@ function doPrestige() {
     state.gem = (state.gem || 0) + pmReward;
     setTimeout(() => toast(`☯ 윤회 ${state.prestigeCount}회 마일스톤 · 💎+${pmReward}`), 600);
     addEvent('prestige', `윤회 ${state.prestigeCount}회 마일스톤 · 💎+${pmReward}`);
+    flashJumpScreen(5); // celebration, consistent with level/achievement milestones
   }
   state.gold = 0;
   state.stage = 1;
