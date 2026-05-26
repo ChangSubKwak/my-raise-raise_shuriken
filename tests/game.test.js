@@ -1912,7 +1912,11 @@ group('getSpawnInterval modifiers', () => {
   withState({ upgrades: defaultUpgrades(), frenzyTimer: 10, prestigeCount: 0, grid: gridFrom([null,null,null,null,null,null]) });
   const frenzyInt = F.getSpawnInterval();
   approx(frenzyInt, baseInt * 0.5, 'frenzy halves spawn interval', 1e-6);
-  ok(baseInt >= 0.4, 'spawn interval respects floor');
+  ok(baseInt >= 0.6, 'spawn interval respects floor (0.6)');
+  // heavy stacking (maxed spawnRate + burning + frenzy + 3 stars) clamps to the 0.6 floor
+  withState({ upgrades: Object.assign(defaultUpgrades(), { spawnRate: 50 }), burningTimer: 10, frenzyTimer: 10,
+    grid: gridFrom([{ level: 5, star: true }, { level: 5, star: true }, { level: 5, star: true }, null, null, null]) });
+  eq(F.getSpawnInterval(), 0.6, 'heavy stacking clamps to the 0.6 floor');
 });
 
 group('grid size scaling', () => {
