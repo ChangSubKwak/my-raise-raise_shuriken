@@ -6525,7 +6525,14 @@ function showShurikenInfo(idx) {
 document.getElementById('info-btn').addEventListener('click', () => {
   getAudio();
   infoMode = !infoMode;
-  if (infoMode) { sellMode = false; document.getElementById('sell-btn').classList.remove('on'); }
+  if (infoMode) {
+    // mutual exclusion + clear sell-mode visuals (sell wins on tap, so a lingering sellMode
+    // would make info-mode taps silently sell; also clears the 오늘의 시세 grid highlights).
+    sellMode = false;
+    document.getElementById('sell-btn').classList.remove('on');
+    document.body.classList.remove('sell-mode');
+    renderGrid();
+  }
   document.getElementById('info-btn').classList.toggle('on', infoMode);
   toast(infoMode ? 'ℹ 정보 모드 — 표창 탭하여 상세 보기' : '정보 모드 OFF');
 });
@@ -6860,6 +6867,7 @@ document.getElementById('hint-btn').addEventListener('click', () => {
 document.getElementById('sell-btn').addEventListener('click', () => {
   getAudio();
   sellMode = !sellMode;
+  if (sellMode) { infoMode = false; document.getElementById('info-btn').classList.remove('on'); } // mutual exclusion (sell wins on tap)
   document.getElementById('sell-btn').classList.toggle('on', sellMode);
   selectedIdx = -1;
   document.body.classList.toggle('sell-mode', sellMode);
