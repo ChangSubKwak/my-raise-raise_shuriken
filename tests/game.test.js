@@ -858,6 +858,25 @@ group('achievement completion milestone fires on crossing 10 (jump-crossing)', (
   eq(s.gem, g, 'no re-grant of completion milestone');
 });
 
+group('dark absorb prefers a plain neighbor (preserves variants)', () => {
+  if (typeof F.tryMerge !== 'function') { ok(true, 'tryMerge not exposed — skip'); return; }
+  const realRandom = Math.random;
+  Math.random = () => 0.99; // jump=1, no variant procs
+  try {
+    // merge Lv5(dark) + Lv5 → Lv6 at idx4; neighbors idx5=Lv6 golden, idx0=Lv6 plain.
+    // dark absorb should eat the PLAIN (idx0) and keep the golden (idx5).
+    const s = withState({ grid: place(9, { 3: 5, 4: 5, 5: 6, 0: 6 }), bestLevel: 10, upgrades: Object.assign(defaultUpgrades(), { maxShuriken: 3 }), skills: {} });
+    s.grid[3].dark = true;   // dark parent → triggers absorb
+    s.grid[5].golden = true; // a variant neighbor that should be spared
+    s.stats = {};
+    eq(F.getGridCols(), 4, 'idx4 is row1/col0; neighbors are 5,0,8');
+    F.tryMerge(3, 4);
+    eq(s.grid[4].level, 7, 'result absorbed a Lv6 neighbor → Lv7');
+    ok(s.grid[5] && s.grid[5].golden, 'golden neighbor preserved');
+    eq(s.grid[0], null, 'plain neighbor was the absorb victim');
+  } finally { Math.random = realRandom; }
+});
+
 group('all achievement checks are safe (Q-Leap 124)', () => {
   const ACH = C.ACHIEVEMENTS;
   ok(Array.isArray(ACH) && ACH.length > 50, `achievement list present (${ACH.length})`);

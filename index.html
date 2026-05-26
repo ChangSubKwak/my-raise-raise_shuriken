@@ -3648,19 +3648,19 @@ function tryMerge(fromIdx, toIdx) {
       if (col < cols - 1)   neighbors.push(toIdx + 1);
       if (row > 0)          neighbors.push(toIdx - cols);
       if (toIdx + cols < size) neighbors.push(toIdx + cols);
-      // pick first same-Lv non-locked neighbor
-      for (const n of neighbors) {
-        const nc = state.grid[n];
-        if (nc && !nc.locked && nc.level === newLv) {
-          state.grid[n] = null;
-          state.grid[toIdx].level += 1; // absorb → +1 Lv
-          newLv = state.grid[toIdx].level; // Q-Leap 116: downstream bestLevel/codex/gold use the absorbed level
-          state.stats.darkAbsorbs = (state.stats.darkAbsorbs || 0) + 1;
-          addEvent('dark', `검은 흡수 → Lv ${newLv}`);
-          setTimeout(() => toast(`🌑 검은 흡수! Lv ${newLv}`), 280);
-          flashCell(toIdx);
-          break;
-        }
+      // Prefer a PLAIN same-Lv neighbor so a rare variant isn't accidentally consumed
+      // (the absorb is automatic — no player choice — so don't eat their golden/star/dark).
+      const eligible = neighbors.filter(n => { const nc = state.grid[n]; return nc && !nc.locked && nc.level === newLv; });
+      const target = eligible.find(n => { const nc = state.grid[n]; return !nc.golden && !nc.star && !nc.dark; });
+      const victim = (target !== undefined) ? target : eligible[0];
+      if (victim !== undefined) {
+        state.grid[victim] = null;
+        state.grid[toIdx].level += 1; // absorb → +1 Lv
+        newLv = state.grid[toIdx].level; // Q-Leap 116: downstream bestLevel/codex/gold use the absorbed level
+        state.stats.darkAbsorbs = (state.stats.darkAbsorbs || 0) + 1;
+        addEvent('dark', `검은 흡수 → Lv ${newLv}`);
+        setTimeout(() => toast(`🌑 검은 흡수! Lv ${newLv}`), 280);
+        flashCell(toIdx);
       }
     }
     // Combo: chain merges within 2.5s → escalating bonus (Q-Leap 54: comboKeep doubles to 5s)
