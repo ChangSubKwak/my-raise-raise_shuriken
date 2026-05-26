@@ -1504,7 +1504,7 @@
     </div>
     <div id="spawn-bar">
       <div id="spawn-progress-wrap">
-        <div id="spawn-progress-label">생성중 · <span id="spawn-time-label">—</span></div>
+        <div id="spawn-progress-label">생성중 · <span>—</span></div>
         <div id="spawn-progress-bar">
           <div id="spawn-progress-fill"></div>
           <div id="spawn-progress-pct">0%</div>
@@ -4301,8 +4301,8 @@ function updateHUD() {
     : fillPct.toFixed(1) + '%';
   const interval = getSpawnInterval();
   const remaining = isFull ? 0 : Math.max(0, (1 - state.spawnProgress) * interval);
-  document.getElementById('spawn-time-label').textContent = isFull
-    ? '⚠ 그리드 가득참' : remaining.toFixed(1) + 's';
+  // (spawn-time-label is rendered inside the spawn-progress-label innerHTML below, which is
+  // rebuilt every frame — a separate textContent write here was always immediately overwritten.)
   document.getElementById('spawn-progress-bar').classList.toggle('full', isFull);
   document.getElementById('spawn-progress-label').innerHTML = isFull
     ? '<span style="color:#ffaa44">⏸ 가득참 — 합쳐서 공간을 확보하세요 (게이지 일시정지)</span>'
