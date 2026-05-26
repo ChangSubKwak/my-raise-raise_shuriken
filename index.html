@@ -3016,6 +3016,10 @@ function validateAndRepairState() {
   fixNum('prestigeCount', 0, 0);
   if (typeof state.spawnProgress !== 'number' || !isFinite(state.spawnProgress)) { state.spawnProgress = 0; repairs++; }
   state.spawnProgress = Math.max(0, Math.min(1, state.spawnProgress));
+  // lastSave drives the offline reward. A non-finite value (tampered/legacy save) slips past
+  // processOfflineReward's `elapsedMs < 30000` guard (NaN < 30000 is false) and would poison
+  // frenzyCharge with NaN at boot. Force a sane timestamp.
+  if (typeof state.lastSave !== 'number' || !isFinite(state.lastSave) || state.lastSave <= 0) { state.lastSave = Date.now(); repairs++; }
   // bestLevel must be ≥ the highest level currently on the grid or in storage.
   for (const c of state.grid) if (c && c.level > state.bestLevel) { state.bestLevel = c.level; repairs++; }
   for (const c of state.storage) if (c && c.level > state.bestLevel) { state.bestLevel = c.level; repairs++; }
@@ -7091,7 +7095,9 @@ function processAttendance() {
 function processOfflineReward() {
   if (!state.lastSave) return;
   const elapsedMs = Date.now() - state.lastSave;
-  if (elapsedMs < 30000) return; // ignore short reloads
+  // `>= 30000` (not `< 30000`) so a NaN/negative elapsed — from a corrupt or future lastSave —
+  // also returns here instead of flowing into the frenzy/gold math and poisoning it with NaN.
+  if (!(elapsedMs >= 30000)) return; // ignore short reloads + non-finite elapsed
   const CAP_SEC = 4 * 3600;      // 4 hours
   const EFFICIENCY = 0.5;
   const elapsedSec = Math.min(CAP_SEC, Math.floor(elapsedMs / 1000));

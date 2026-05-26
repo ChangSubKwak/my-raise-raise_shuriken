@@ -584,6 +584,15 @@ group('save integrity repair (Q-Leap 121)', () => {
     storage: [{ level: 2, id: 1 }, { level: 2, id: 2 }, { level: 2, id: 3 }, { level: 2, id: 4 }, { level: 2, id: 5 }] });
   F.validateAndRepairState();
   eq(G.getState().storage.length, 3, 'storage capped at 3');
+  // corrupt lastSave reset to a finite timestamp (else NaN elapsed poisons offline reward)
+  s = withState({ upgrades: defaultUpgrades(), grid: gridFrom([null, null, null, null, null, null]) });
+  s.lastSave = NaN;
+  F.validateAndRepairState();
+  ok(isFinite(G.getState().lastSave) && G.getState().lastSave > 0, 'NaN lastSave reset to finite timestamp');
+  s = withState({ upgrades: defaultUpgrades(), grid: gridFrom([null, null, null, null, null, null]) });
+  s.lastSave = -5;
+  F.validateAndRepairState();
+  ok(G.getState().lastSave > 0, 'negative lastSave reset to finite timestamp');
   // clean state needs no repair
   s = withState({ upgrades: defaultUpgrades(), gold: 100, gem: 5, bestLevel: 10, spawnProgress: 0.5, grid: gridFrom([5, 5, null, null, null, null]) });
   s.stats = { totalMerges: 10, playTimeSec: 100 };
