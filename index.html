@@ -6544,13 +6544,20 @@ function renderHallOfFame() {
        <span class="hof-label">${r.label}${r.sub ? ` <span style="color:#8a7;font-size:10px;">${r.sub}</span>` : ''}</span>
        <span class="hof-val">${r.val}</span>
      </div>`).join('');
-  // Q-Leap 118: gold multiplier breakdown — show active (>1) factors + total
-  const activeFactors = getGoldMulBreakdown().filter(f => f.mul > 1.0001);
+  // Q-Leap 118: gold multiplier breakdown — show every non-neutral factor (bonuses AND penalties)
+  // so a strategy-mode gold penalty (×0.85 etc.) is visible, not silently hidden.
+  const activeFactors = getGoldMulBreakdown().filter(f => Math.abs(f.mul - 1) > 0.0001);
   if (activeFactors.length > 0) {
     html += `<div style="margin-top:12px;padding-top:8px;border-top:1px solid #ffcc6633;">
       <div style="color:#ffcc66;font-size:11px;margin-bottom:6px;">💰 골드 배수 ×${goldMul.toFixed(2)}</div>
       <div style="display:flex;flex-wrap:wrap;gap:4px;">${
-        activeFactors.map(f => `<span style="font-size:10px;padding:2px 7px;border-radius:8px;background:rgba(255,204,102,0.1);border:1px solid #ffcc6633;color:#ddc;">${f.label} ×${f.mul.toFixed(2)}</span>`).join('')
+        activeFactors.map(f => {
+          const penalty = f.mul < 1; // strategy trade-off can reduce gold
+          const col = penalty ? '#ff9988' : '#ddc';
+          const bg = penalty ? 'rgba(255,100,80,0.1)' : 'rgba(255,204,102,0.1)';
+          const bd = penalty ? '#ff998833' : '#ffcc6633';
+          return `<span style="font-size:10px;padding:2px 7px;border-radius:8px;background:${bg};border:1px solid ${bd};color:${col};">${f.label} ×${f.mul.toFixed(2)}</span>`;
+        }).join('')
       }</div></div>`;
   }
   // scope-specific gold bonuses (not in the universal mul): repurposed upgrades
