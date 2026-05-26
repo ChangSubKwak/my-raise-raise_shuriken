@@ -3495,7 +3495,25 @@ function sellValue(c) {
   if (c.star)   mul *= 5;
   if (c.dark)   mul *= 5;
   if (isChallenge('sellRich')) mul *= 3; // Q-Leap 54
+  if (c.level === getMarketLevel()) mul *= getMarketMul(); // 오늘의 시세 premium
   return Math.floor(Math.pow(2, c.level) * getGoldMul() * 0.5 * mul);
+}
+// 오늘의 표창 시세 (Daily Market) — date-seeded, ONE level/day sells at a ×2–4 premium.
+// Anchored to the player's frontier (bestLevel) so it stays relevant at any depth; the band
+// re-rolls only every ~5 best-levels, so it's stable within a day for a non-advancing player.
+// Selling consumes the piece (losing its merge frontier + future passive gold), so this is a
+// hold-vs-sell TIMING decision, not a free multiplier — it promotes the underused manual-sell
+// mechanic into a daily strategic lever and fuses with the existing date-seed daily theme.
+function getMarketLevel(dateStr) {
+  const top = Math.max(8, state.bestLevel || 1);
+  const lo = Math.max(2, top - 9);
+  const span = top - lo + 1;
+  const rand = questSeed((dateStr || todayString()) + ':mktLv' + Math.floor(top / 5));
+  return lo + Math.floor(rand() * span);
+}
+function getMarketMul(dateStr) {
+  const rand = questSeed((dateStr || todayString()) + ':mktMul');
+  return 2 + Math.floor(rand() * 3); // ×2, ×3, or ×4
 }
 function getUpgradeCost(u) {
   const lvl = state.upgrades[u.id];
@@ -4170,7 +4188,9 @@ function updateHUD() {
     const wb = weekdayBonus();
     const sm = getStrategyMode();
     const stratTag = sm.id !== 'none' ? ` <span style="color:#c89bff">· ${sm.label}</span>` : ''; // active strategy mode, visible during play
-    if (wb.label) wkBanner.innerHTML = `${wb.icon} ${wb.label}${stratTag}`;
+    const mktTag = ` <span style="color:#7fd6a0">· 📈 시세 Lv ${getMarketLevel()} ×${getMarketMul()}</span>`; // 오늘의 시세
+    if (wb.label) wkBanner.innerHTML = `${wb.icon} ${wb.label}${stratTag}${mktTag}`;
+    else          wkBanner.innerHTML = `📈 오늘의 시세 Lv ${getMarketLevel()} ×${getMarketMul()}${stratTag}`;
   }
   // Q-Leap 95: set-effect badges
   const setBadges = document.getElementById('set-badges');
@@ -6751,6 +6771,7 @@ const HELP_SECTIONS = {
     { title: '◈ 중앙 칸', body: '그리드 정중앙 칸(◈ 표시)의 표창은 <span class="hk">골드 기여 +25%</span>. 최고 earner를 중앙에 두는 배치 전략.' },
     { title: '🎌 진형 등급', body: '그리드 평균 Lv ÷ 최고 Lv 비율로 S/A/B/C 등급. 헤더에 실시간 표시. 약한 표창을 정리할수록 등급↑.' },
     { title: '🎁 콤보 캐시아웃', body: '콤보 ×10 이상으로 끝나면 <span class="hk">정점²×5×골드배수</span> 골드 정산 지급.' },
+    { title: '📈 오늘의 시세', body: '매일 자정 한 Lv이 <span class="hk">판매 ×2~4 프리미엄</span> (요일 배너에 표시, 날짜 시드). 해당 Lv 표창을 그날 팔면 보너스 골드 — 단 표창은 소비되어 합성/패시브를 잃으므로 <span class="hk">팔까 키울까</span> 타이밍 결정. 변종 배수와 곱연산.' },
   ],
   missions: [
     { title: '📋 일일 미션', body: '매일 자정 9종 중 3개 무작위. 보석 3~6 보상. <span class="hk">매일 다른 조합</span> (date-seeded). 3개 전부 완료 시 추가 보너스.' },
@@ -6848,6 +6869,10 @@ function sellShuriken(idx) {
   if (c.golden) state.stats.goldenSold = (state.stats.goldenSold || 0) + 1;
   if (c.star)   state.stats.starSold   = (state.stats.starSold   || 0) + 1;
   if (c.dark)   state.stats.darkSold   = (state.stats.darkSold   || 0) + 1;
+  if (c.level === getMarketLevel()) { // 오늘의 시세 매도 — premium captured
+    state.stats.marketSells = (state.stats.marketSells || 0) + 1;
+    toast(`📈 시세 매도! Lv ${c.level} ×${getMarketMul()}`);
+  }
   state.gold += value;
   state.stats.totalGoldEarned = (state.stats.totalGoldEarned || 0) + value;
   state.stats.totalSold = (state.stats.totalSold || 0) + 1;

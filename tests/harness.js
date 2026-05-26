@@ -94,6 +94,7 @@ function loadGame() {
     compactGridArray, sortGridByLevel, getLevelFlavor,
     registerCodex, announceTranscendIfNeeded,
     getNextGoal, getGoldMulBreakdown, sellValue, getPrestigeAdvice, getEnlightenmentGain,
+    getMarketLevel, getMarketMul,
     getVariantSpontaneousMul, getPassiveGoldBonus, getMergeGoldBonus, blessedDuration, getSkillLv,
     addFrenzyCharge, hasSet, rollMergeProcs,
     pushGrowthSnapshot, sparkline, validateAndRepairState,

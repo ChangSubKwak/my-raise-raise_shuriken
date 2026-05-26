@@ -466,7 +466,9 @@ group('gold multiplier breakdown (Q-Leap 118 refactor)', () => {
 });
 
 group('sell value formula (Q-Leap 119 refactor + QA)', () => {
-  withState({ prestigeCount: 0, bestLevel: 1, upgrades: defaultUpgrades(), dailyChallengeId: '' });
+  // bestLevel 20 → daily-market band is [11,20], so the level-5 pieces tested here never
+  // catch the market premium → these baseline assertions stay deterministic across dates.
+  withState({ prestigeCount: 0, bestLevel: 20, upgrades: defaultUpgrades(), dailyChallengeId: '' });
   const gm = F.getGoldMul();
   // match sellValue's single floor (floor-then-multiply is brittle when gm is fractional,
   // e.g. on a weekday with a gold-mult bonus).
@@ -476,6 +478,29 @@ group('sell value formula (Q-Leap 119 refactor + QA)', () => {
   eq(F.sellValue({ level: 5, golden: true, star: true, dark: true }), expect(5, 125), 'all variants → 125x');
   eq(F.sellValue({ level: 5, locked: true }), 0, 'locked piece is unsellable');
   eq(F.sellValue(null), 0, 'null → 0');
+});
+
+group('daily market (오늘의 시세) — date-seeded sell premium', () => {
+  withState({ prestigeCount: 0, bestLevel: 20, upgrades: defaultUpgrades(), dailyChallengeId: '' });
+  // deterministic per fixed date
+  eq(F.getMarketLevel('2026-01-15'), F.getMarketLevel('2026-01-15'), 'market level deterministic for a date');
+  eq(F.getMarketMul('2026-01-15'), F.getMarketMul('2026-01-15'), 'market mul deterministic for a date');
+  const lv = F.getMarketLevel('2026-01-15');
+  ok(lv >= 11 && lv <= 20, 'market level within frontier band [bestLevel-9, bestLevel]');
+  const m = F.getMarketMul('2026-01-15');
+  ok(m >= 2 && m <= 4, 'market mul in [2,4]');
+  // varies across dates (sanity, not strict)
+  const levels = ['2026-02-01', '2026-03-01', '2026-04-01', '2026-05-01', '2026-06-01'].map((d) => F.getMarketLevel(d));
+  ok(new Set(levels).size >= 2, 'market level varies across dates');
+  // sellValue applies the premium for today's market level, none for an off-band level
+  const gm = F.getGoldMul();
+  const today = F.todayString();
+  const mktLv = F.getMarketLevel(today);
+  const mktMul = F.getMarketMul(today);
+  eq(F.sellValue({ level: mktLv }), Math.floor(Math.pow(2, mktLv) * gm * 0.5 * mktMul), 'market-level piece sells at premium');
+  eq(F.sellValue({ level: 5 }), Math.floor(Math.pow(2, 5) * gm * 0.5), 'off-band level (5, band 11-20): no premium');
+  // premium stacks multiplicatively with variant muls
+  eq(F.sellValue({ level: mktLv, golden: true }), Math.floor(Math.pow(2, mktLv) * gm * 0.5 * 5 * mktMul), 'market premium stacks with golden ×5');
 });
 
 group('enlightenment gain formula (QA)', () => {
