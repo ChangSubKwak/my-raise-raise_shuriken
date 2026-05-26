@@ -979,6 +979,28 @@ group('ritual daily-quest type advances on a ritual merge', () => {
   } finally { Math.random = realRandom; }
 });
 
+group('ritual spontaneous variant generation (parity with tryMerge, 0 variant parents)', () => {
+  if (typeof F.doRitualMerge !== 'function') { ok(true, 'doRitualMerge not exposed — skip'); return; }
+  const realRandom = Math.random;
+  try {
+    // 0 variant parents + a very low roll → spontaneous variant fires. Before the fix the
+    // ritual rolled 0% spontaneous (only inheritance), so this child would always be plain.
+    Math.random = () => 0.00001;
+    let s = withState({ upgrades: Object.assign(defaultUpgrades(), { maxShuriken: 3 }),
+      grid: place(9, { 0: 5, 1: 5, 2: 5 }), bestLevel: 10 });
+    F.doRitualMerge();
+    let r = G.getState().grid[0];
+    ok(r && r.golden, 'low-roll ritual spontaneously creates a variant child (parity with tryMerge)');
+    // a very high roll → no spontaneous variant (no false positives)
+    Math.random = () => 0.999999;
+    s = withState({ upgrades: Object.assign(defaultUpgrades(), { maxShuriken: 3 }),
+      grid: place(9, { 0: 5, 1: 5, 2: 5 }), bestLevel: 10 });
+    F.doRitualMerge();
+    r = G.getState().grid[0];
+    ok(r && !r.golden && !r.star && !r.dark, 'high-roll ritual produces a plain child');
+  } finally { Math.random = realRandom; }
+});
+
 group('ritual crossing a daily-merge tier grants it (loop avoids jump-skip)', () => {
   if (typeof F.doRitualMerge !== 'function') { ok(true, 'doRitualMerge not exposed — skip'); return; }
   const realRandom = Math.random;

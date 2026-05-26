@@ -2774,15 +2774,31 @@ function doRitualMerge() {
   }
   const toIdx = g.indices[0];
   for (const idx of g.indices) state.grid[idx] = null;
+  // Spontaneous variant generation parity with tryMerge: a ritual is N-1 merge-equivalents,
+  // so a group with 0 variant parents still gets a spontaneous chance equal to (N-1)
+  // independent merge rolls (1-(1-p)^(N-1)) at the SAME rates tryMerge uses (variantMul +
+  // goldenLuck skill/challenge + frenzy). Previously ritual rolled 0% when no parent carried
+  // the variant — silently penalizing variant farming via ritual/auto-ritual.
+  const variantMul = getVariantSpontaneousMul();
+  const mergeEquiv = g.indices.length - 1;
+  const spontaneousOnce = (p) => Math.random() < (1 - Math.pow(1 - Math.max(0, p), mergeEquiv));
   let childGolden = false;
   if (goldensIn >= 2) childGolden = true;
   else if (goldensIn === 1) childGolden = Math.random() < 0.7;
+  else {
+    let p = (0.005 + getSkillLv('goldenLuck') * 0.002) * variantMul;
+    if (isChallenge('goldenLuck')) p *= 3;
+    if ((state.frenzyTimer || 0) > 0) p *= 1.5;
+    childGolden = spontaneousOnce(p);
+  }
   let childStar = false;
   if (starsIn >= 2) childStar = true;
   else if (starsIn === 1) childStar = Math.random() < 0.7;
+  else childStar = spontaneousOnce((0.0025 + getSkillLv('starLuck') * 0.001) * variantMul);
   let childDark = false;
   if (darksIn >= 2) childDark = true;
   else if (darksIn === 1) childDark = Math.random() < 0.7;
+  else childDark = spontaneousOnce(0.0015 * variantMul);
   state.grid[toIdx] = { id: state.nextShurikenId++, level: newLv, fireTimer: 0, golden: childGolden, star: childStar, dark: childDark };
   if (childGolden) state.stats.goldenSpawned = (state.stats.goldenSpawned || 0) + 1;
   if (childStar)   state.stats.starSpawned   = (state.stats.starSpawned || 0) + 1;
