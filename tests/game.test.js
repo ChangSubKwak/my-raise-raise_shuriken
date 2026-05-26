@@ -1848,6 +1848,14 @@ group('variant fusion: 3 same-variant → 1 next-tier, keeps highest level', () 
   ok(sA.grid[7] && sA.grid[7].star, 'result lands on the anchor cell (idx 7)');
   eq(sA.grid[7].level, 8, 'result keeps the highest consumed level (anchor Lv8 + 2 highest others)');
   eq(sA.grid.filter(c => c && c.golden).length, 1, 'exactly one golden remains (4 → consumed 3, 1 left)');
+  // fusion preserves a variant rarer than the produced tier: 3 goldens, one also dark → result star + dark
+  const sD = withState({ grid: place(9, { 0: 5, 1: 6, 2: 7 }) });
+  sD.grid[0].golden = true; sD.grid[1].golden = true; sD.grid[2].golden = true;
+  sD.grid[1].dark = true; // the Lv6 golden also carries the rarer dark variant
+  sD.stats = {};
+  ok(F.tryVariantFusion('golden'), 'fusion of 3 goldens (one also dark)');
+  const res = sD.grid.find(c => c && c.star);
+  ok(res && res.dark, 'result (star) preserves the rarer dark variant — not destroyed by fusion');
   // dark is top tier → cannot fuse
   const s3 = withState({ grid: place(9, { 0: 4, 1: 5, 2: 6 }) });
   s3.grid[0].dark = true; s3.grid[1].dark = true; s3.grid[2].dark = true;

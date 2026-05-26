@@ -6357,9 +6357,16 @@ function tryVariantFusion(kind, anchorIdx) {
   }
   const resultLv = Math.max(state.grid[consume[0]].level, state.grid[consume[1]].level, state.grid[consume[2]].level);
   const targetIdx = consume.includes(anchorIdx) ? anchorIdx : Math.min(consume[0], consume[1], consume[2]);
+  // Preserve any variant RARER than the produced tier (don't destroy a rarer variant during fusion):
+  // e.g. fusing golden pieces that also carry dark → the resulting star keeps dark. Capture before clearing.
+  const RARITY = { golden: 1, star: 2, dark: 3 };
+  const keepDark = consume.some(i => state.grid[i].dark) && RARITY.dark > RARITY[next];
+  const keepStar = consume.some(i => state.grid[i].star) && RARITY.star > RARITY[next];
   for (const i of consume) state.grid[i] = null;
   const piece = { id: state.nextShurikenId++, level: resultLv, fireTimer: 0 };
   piece[next] = true;
+  if (keepStar) piece.star = true;
+  if (keepDark) piece.dark = true;
   state.grid[targetIdx] = piece;
   state.stats.fusionsUsed = (state.stats.fusionsUsed || 0) + 1;
   if (next === 'star') state.stats.starSpawned = (state.stats.starSpawned || 0) + 1;
