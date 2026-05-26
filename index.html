@@ -2265,6 +2265,7 @@ const ACHIEVEMENTS = [
   { id: 'a_attend_100',   name: '백 일의 정진',    icon: '🌌', desc: '100일 연속 출석',     check: (s) => (s.attendStreak || 0) >= 100 },
   { id: 'a_storage_1',    name: '보관의 시작',     icon: '📦', desc: '보관소 첫 사용',     check: (s) => Array.isArray(s.storage) && s.storage.length >= 1 },
   { id: 'a_meditation',   name: '명상의 길',       icon: '🧘', desc: '명상 모드 첫 활성',  check: (s) => !!s.meditationMode || ((s.stats || {}).meditationsUsed || 0) >= 1 },
+  { id: 'a_market_1',     name: '시세 차익',       icon: '📈', desc: '오늘의 시세 첫 매도', check: (s) => ((s.stats || {}).marketSells || 0) >= 1 },
   { id: 'a_merge_5000',   name: '오천 번의 합',    icon: '🏵', desc: '합체 5,000회',        check: (s) => ((s.stats || {}).totalMerges || 0) >= 5000 },
   { id: 'a_frenzy_1',     name: '폭주 입문',       icon: '⚡', desc: '폭주 첫 발동',         check: (s) => ((s.stats || {}).frenzyActivations || 0) >= 1 },
   { id: 'a_divine_1',     name: '신성한 합',       icon: '✨', desc: '신성 합체 첫 발동 (0.5%)', check: (s) => ((s.stats || {}).divineMerges || 0) >= 1 },
