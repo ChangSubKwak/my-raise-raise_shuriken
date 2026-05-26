@@ -3354,6 +3354,12 @@ const TRANSCEND_MILESTONES = { 5: 30, 10: 80, 15: 150, 20: 300 };
 // (no skill-tree economy distortion). prestigeCount increments by exactly 1, so exact-match
 // is safe; one-shot via stats.prestigeMilestones. No retroactive grant (migration-safe).
 const PRESTIGE_MILESTONES = { 5: 50, 10: 120, 25: 300, 50: 700 };
+// Next un-reached prestige-count milestone (null once all reached). Pure helper for the panel readout.
+function getNextPrestigeMilestone(count) {
+  const tiers = Object.keys(PRESTIGE_MILESTONES).map(Number).sort((a, b) => a - b);
+  for (const t of tiers) if (count < t) return { n: t, gem: PRESTIGE_MILESTONES[t] };
+  return null;
+}
 function grantTranscendMilestone() {
   const t = getTranscendence();
   state.stats.transcendMilestones = state.stats.transcendMilestones || {};
@@ -5667,7 +5673,9 @@ function renderPrestige() {
     const advice = getPrestigeAdvice(); // Q-Leap 122
     const adviceLine = `<br><span style="color:${advice.recommend ? '#88ff99' : '#ffaa66'};font-size:11px;">${advice.recommend ? '✅ 윤회 추천' : '⏳ 보류 권장'} — ${advice.reason}</span>`;
     const sm = getStrategyMode();
-    info.innerHTML = `윤회 시 깨달음(悟) <b style="color:#cc88ff">+${enlightGain}</b> 획득<br>총 윤회 ${state.prestigeCount}회 · 영구 골드 +${state.prestigeCount * 50}%${adviceLine}`
+    const npm = getNextPrestigeMilestone(state.prestigeCount);
+    const pmLine = npm ? `<br><span style="color:#cc88ff;font-size:11px;">다음 ☯ 마일스톤: 윤회 ${npm.n}회 (💎+${npm.gem})</span>` : '';
+    info.innerHTML = `윤회 시 깨달음(悟) <b style="color:#cc88ff">+${enlightGain}</b> 획득<br>총 윤회 ${state.prestigeCount}회 · 영구 골드 +${state.prestigeCount * 50}%${adviceLine}${pmLine}`
       + `<div style="margin-top:7px;font-size:11px;">전략 모드 <button id="strat-cycle" style="margin-left:4px;padding:3px 9px;border-radius:7px;border:1px solid #6a5a9a;background:linear-gradient(180deg,#4a3f6e,#2e2748);color:#e8d8ff;font-family:inherit;font-weight:800;font-size:11px;cursor:pointer;">${sm.label}</button><br><span style="color:#aa99cc;">${sm.desc}</span></div>`;
     const stratBtn = document.getElementById('strat-cycle');
     if (stratBtn) stratBtn.onclick = () => {

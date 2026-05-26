@@ -101,7 +101,7 @@ function loadGame() {
     // integration-level (DOM calls are stubbed to no-ops):
     tryMerge, autoMergeStep, emptySlots, spawnShuriken, doExchange, doRitualMerge, sellShuriken, update,
     startTrial, checkTrialProgress, endTrial, creditMerges, grantDailyFirstMerge, checkAchievements,
-    getNextAchievementMilestone, getAchievementGem, getNextCodexMilestone,
+    getNextAchievementMilestone, getAchievementGem, getNextCodexMilestone, getNextPrestigeMilestone,
     tryVariantFusion, countVariant, countAdjacentSameLevel,
     getStrategyMode, getStrategyGoldMul, getStrategySpawnMul, getStrategyVariantMul,
   },

@@ -1741,6 +1741,15 @@ group('countAdjacentSameLevel: orthogonal same-level neighbors only (shared help
   eq(F.countAdjacentSameLevel(8), 0, 'empty cell → 0');
 });
 
+group('getNextPrestigeMilestone returns the next un-reached prestige tier', () => {
+  if (typeof F.getNextPrestigeMilestone !== 'function') { ok(true, 'not exposed — skip'); return; }
+  eq(F.getNextPrestigeMilestone(0).n, 5, 'at 0 → next 5');
+  eq(F.getNextPrestigeMilestone(5).n, 10, 'at 5 → next 10');
+  eq(F.getNextPrestigeMilestone(24).n, 25, 'at 24 → 25');
+  eq(F.getNextPrestigeMilestone(50), null, 'all reached → null');
+  ok(F.getNextPrestigeMilestone(0).gem > 0, 'tier carries a gem reward');
+});
+
 group('prestige milestones grant 💎 at 5/10/25/50 (one-shot, no retroactive)', () => {
   if (typeof F.doPrestige !== 'function') { ok(true, 'doPrestige not exposed — skip'); return; }
   // pre-unlock all achievements + completion tiers so only the prestige milestone grants gems.
