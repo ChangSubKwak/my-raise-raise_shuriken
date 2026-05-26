@@ -1814,6 +1814,14 @@ group('strategy mode: trade-off run modifiers wired into gold/spawn/variant', ()
     withState({ strategyMode: 'variant', grid: new Array(9).fill(null) });
     approx(F.getVariantSpontaneousMul(), vNone * 2, 'variant mode doubles the composed variant-spontaneous mul', 1e-9);
   }
+  // the strategy factor appears in the gold breakdown with the correct sign (drives the
+  // transparency UI: penalties shown in red, bonuses normally — v3.63.3)
+  withState({ strategyMode: 'fast', prestigeCount: 0, dailyChallengeId: '', upgrades: defaultUpgrades(), grid: gridFrom([5, null, null, null, null, null]) });
+  const sf = F.getGoldMulBreakdown().find(f => f.key === 'strategy');
+  ok(sf && sf.mul < 1, 'fast mode → a <1 strategy factor in the breakdown (visible penalty)');
+  withState({ strategyMode: 'gold', prestigeCount: 0, dailyChallengeId: '', upgrades: defaultUpgrades(), grid: gridFrom([5, null, null, null, null, null]) });
+  const sg = F.getGoldMulBreakdown().find(f => f.key === 'strategy');
+  ok(sg && sg.mul > 1, 'gold mode → a >1 strategy factor in the breakdown');
   // invalid/unknown mode falls back to none
   withState({ strategyMode: 'bogus' });
   eq(F.getStrategyGoldMul(), 1, 'unknown mode → neutral');
