@@ -3350,6 +3350,10 @@ function addDailyMergeCount() {
 }
 // Q-Leap 102: 초월 마일스톤 — 초월 5/10/15/20 최초 도달 시 1회성 보석.
 const TRANSCEND_MILESTONES = { 5: 30, 10: 80, 15: 150, 20: 300 };
+// Prestige (윤회) count milestones — long-term goal for deep-prestige play. Gems only
+// (no skill-tree economy distortion). prestigeCount increments by exactly 1, so exact-match
+// is safe; one-shot via stats.prestigeMilestones. No retroactive grant (migration-safe).
+const PRESTIGE_MILESTONES = { 5: 50, 10: 120, 25: 300, 50: 700 };
 function grantTranscendMilestone() {
   const t = getTranscendence();
   state.stats.transcendMilestones = state.stats.transcendMilestones || {};
@@ -5726,6 +5730,15 @@ function doPrestige() {
   const enlightGain = getEnlightenmentGain();
   state.enlightenment = (state.enlightenment || 0) + enlightGain;
   state.prestigeCount++;
+  // Prestige count milestone (one-shot, gems only)
+  state.stats.prestigeMilestones = state.stats.prestigeMilestones || {};
+  const pmReward = PRESTIGE_MILESTONES[state.prestigeCount];
+  if (pmReward && !state.stats.prestigeMilestones[state.prestigeCount]) {
+    state.stats.prestigeMilestones[state.prestigeCount] = true;
+    state.gem = (state.gem || 0) + pmReward;
+    setTimeout(() => toast(`☯ 윤회 ${state.prestigeCount}회 마일스톤 · 💎+${pmReward}`), 600);
+    addEvent('prestige', `윤회 ${state.prestigeCount}회 마일스톤 · 💎+${pmReward}`);
+  }
   state.gold = 0;
   state.stage = 1;
   state.enemiesInStage = 0;

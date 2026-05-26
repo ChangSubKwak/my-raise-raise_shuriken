@@ -1741,6 +1741,24 @@ group('countAdjacentSameLevel: orthogonal same-level neighbors only (shared help
   eq(F.countAdjacentSameLevel(8), 0, 'empty cell → 0');
 });
 
+group('prestige milestones grant 💎 at 5/10/25/50 (one-shot, no retroactive)', () => {
+  if (typeof F.doPrestige !== 'function') { ok(true, 'doPrestige not exposed — skip'); return; }
+  // pre-unlock all achievements + completion tiers so only the prestige milestone grants gems.
+  const allAch = {}; for (const a of C.ACHIEVEMENTS) allAch[a.id] = 1;
+  const doneTiers = {}; for (const n of [10, 25, 50, 75, C.ACHIEVEMENTS.length]) doneTiers[n] = 1;
+  const s = withState({ prestigeCount: 4, bestLevel: 10, gem: 0, grid: place(9, {}), upgrades: defaultUpgrades(), skills: {} });
+  s.achievements = allAch;
+  s.stats = { achCompletions: doneTiers };
+  F.doPrestige();
+  eq(s.prestigeCount, 5, 'prestige count reached 5');
+  eq(s.gem, 50, 'prestige-5 milestone grants 50 💎');
+  ok(s.stats.prestigeMilestones && s.stats.prestigeMilestones[5], 'milestone recorded (one-shot)');
+  // next prestige (5→6) is not a milestone
+  F.doPrestige();
+  eq(s.prestigeCount, 6, 'prestige count 6');
+  eq(s.gem, 50, 'no milestone gem at count 6');
+});
+
 group('strategy mode persists through save/load and prestige (it is a setting)', () => {
   if (typeof F.save !== 'function' || typeof F.load !== 'function') { ok(true, 'save/load not exposed — skip'); return; }
   const s = withState({ strategyMode: 'gold' });
