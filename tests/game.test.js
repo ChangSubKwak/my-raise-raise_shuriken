@@ -566,6 +566,24 @@ group('save integrity repair (Q-Leap 121)', () => {
   s = withState({ upgrades: defaultUpgrades(), bestLevel: 3, grid: gridFrom([10, 2, null, null, null, null]) });
   F.validateAndRepairState();
   eq(G.getState().bestLevel, 10, 'bestLevel raised to highest grid piece');
+  // storage (v2.75) sanitized like grid cells: invalid entries dropped, valid kept,
+  // bestLevel raised from a stored piece, non-array reset, length capped at 3.
+  s = withState({ upgrades: defaultUpgrades(), bestLevel: 5,
+    grid: gridFrom([null, null, null, null, null, null]),
+    storage: [{ level: 7, id: 1, fireTimer: 0 }, { level: NaN }, 'junk', null] });
+  F.validateAndRepairState();
+  let stg = G.getState().storage;
+  eq(stg.length, 1, 'invalid storage entries dropped, valid kept');
+  eq(stg[0].level, 7, 'valid stored piece preserved');
+  eq(G.getState().bestLevel, 7, 'bestLevel raised from stored piece');
+  s = withState({ upgrades: defaultUpgrades(), grid: gridFrom([null, null, null, null, null, null]), storage: 'corrupt' });
+  F.validateAndRepairState();
+  stg = G.getState().storage;
+  ok(Array.isArray(stg) && stg.length === 0, 'non-array storage → []');
+  s = withState({ upgrades: defaultUpgrades(), grid: gridFrom([null, null, null, null, null, null]),
+    storage: [{ level: 2, id: 1 }, { level: 2, id: 2 }, { level: 2, id: 3 }, { level: 2, id: 4 }, { level: 2, id: 5 }] });
+  F.validateAndRepairState();
+  eq(G.getState().storage.length, 3, 'storage capped at 3');
   // clean state needs no repair
   s = withState({ upgrades: defaultUpgrades(), gold: 100, gem: 5, bestLevel: 10, spawnProgress: 0.5, grid: gridFrom([5, 5, null, null, null, null]) });
   s.stats = { totalMerges: 10, playTimeSec: 100 };

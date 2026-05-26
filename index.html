@@ -2977,6 +2977,18 @@ function validateAndRepairState() {
     if (typeof c.id !== 'number' || !isFinite(c.id)) { c.id = state.nextShurikenId++; repairs++; }
     if (typeof c.fireTimer !== 'number' || !isFinite(c.fireTimer)) { c.fireTimer = 0; repairs++; }
   }
+  // storage (v2.75) is an off-grid array of ≤3 pieces. Sanitize each entry the same way
+  // as grid cells — otherwise a corrupt entry survives load and gets taken back onto the
+  // board via takeFromStorage, poisoning the grid after validation already ran.
+  if (!Array.isArray(state.storage)) { state.storage = []; repairs++; }
+  if (state.storage.length > 3) { state.storage = state.storage.slice(0, 3); repairs++; }
+  state.storage = state.storage.filter((c) => {
+    if (typeof c !== 'object' || c === null || typeof c.level !== 'number' || !isFinite(c.level) || c.level < 1) { repairs++; return false; }
+    c.level = Math.floor(c.level);
+    if (typeof c.id !== 'number' || !isFinite(c.id)) { c.id = state.nextShurikenId++; repairs++; }
+    if (typeof c.fireTimer !== 'number' || !isFinite(c.fireTimer)) c.fireTimer = 0;
+    return true;
+  });
   // numeric scalars must be finite + in-range.
   const fixNum = (key, min, fallback) => {
     if (typeof state[key] !== 'number' || !isFinite(state[key]) || state[key] < min) { state[key] = fallback; repairs++; }
@@ -2988,8 +3000,9 @@ function validateAndRepairState() {
   fixNum('prestigeCount', 0, 0);
   if (typeof state.spawnProgress !== 'number' || !isFinite(state.spawnProgress)) { state.spawnProgress = 0; repairs++; }
   state.spawnProgress = Math.max(0, Math.min(1, state.spawnProgress));
-  // bestLevel must be ≥ the highest level currently on the grid.
+  // bestLevel must be ≥ the highest level currently on the grid or in storage.
   for (const c of state.grid) if (c && c.level > state.bestLevel) { state.bestLevel = c.level; repairs++; }
+  for (const c of state.storage) if (c && c.level > state.bestLevel) { state.bestLevel = c.level; repairs++; }
   // lifetime stat counters must be finite ≥ 0 — a corrupt NaN here would poison
   // displays (playtime, totals) and accumulation forever.
   if (state.stats && typeof state.stats === 'object') {
