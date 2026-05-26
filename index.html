@@ -1770,7 +1770,7 @@
     <div class="codex-title">📖 표창 도감</div>
     <div class="codex-sub" id="codex-sub">처음 도달한 레벨이 영구 기록됩니다 (윤회 무관 보존). 신규 등록 시 깨달음(悟) +1.</div>
     <div class="codex-progress" id="codex-progress">0 / 60 발견</div>
-    <div class="codex-grid" id="codex-grid"></div>
+    <div class="codex-grid" id="codex-grid-modal"></div>
     <button class="codex-close" id="codex-close">닫기</button>
   </div>
 </div>
@@ -5547,47 +5547,9 @@ function renderStats() {
   if (el('stat-overall')) el('stat-overall').textContent = pct + ' %';
   if (el('overall-fill')) el('overall-fill').style.width = pct + '%';
 }
-function renderCodex() {
-  const grid = document.getElementById('codex-grid');
-  const count = document.getElementById('codex-count');
-  if (!grid) return;
-  // Show up to bestLevel + 5 (peek 5 levels ahead)
-  const peek = 5;
-  const maxLv = Math.max(state.bestLevel + peek, 15);
-  if (count) {
-    const codexN = Object.keys(state.codex || {}).length;
-    const next = getNextCodexMilestone(codexN);
-    count.textContent = `해금 ${state.bestLevel} / 도전 ${maxLv}`
-      + (next ? ` · 다음 📚 ${next.n}종 (💎+${next.gem})` : ' · 도감 마스터 🏆');
-  }
-  grid.innerHTML = '';
-  // Identify which level is currently the highest on the grid
-  let currentGridMax = 0;
-  for (const c of state.grid) if (c && c.level > currentGridMax) currentGridMax = c.level;
-  for (let lv = 1; lv <= maxLv; lv++) {
-    const cell = document.createElement('div');
-    const unlocked = lv <= state.bestLevel;
-    cell.className = 'codex-cell ' + (unlocked ? 'unlocked' : 'locked');
-    if (lv === currentGridMax) cell.classList.add('current');
-    if (unlocked) {
-      const c = document.createElement('canvas');
-      c.width = 50; c.height = 50;
-      drawShurikenSprite(c, lv);
-      cell.appendChild(c);
-    } else {
-      cell.textContent = '?';
-      cell.style.fontSize = '18px';
-    }
-    const lvTag = document.createElement('div');
-    lvTag.className = 'codex-lv';
-    lvTag.textContent = lv;
-    cell.appendChild(lvTag);
-    cell.dataset.tip = unlocked
-      ? `Lv ${lv} · ${levelName(lv)}`
-      : `Lv ${lv} · 미해금`;
-    grid.appendChild(cell);
-  }
-}
+// NOTE: a second (older) renderCodex used to live here and SHADOWED the canonical one below
+// (JS keeps the last declaration), so this copy never ran. Removed to kill the maintenance
+// hazard — the live renderCodex is the one near the codex-modal wiring.
 
 function renderAchievements() {
   const grid = document.getElementById('achv-grid');
@@ -5937,8 +5899,11 @@ document.getElementById('grid-menu').addEventListener('click', (e) => {
 });
 // Q-Leap 39: Codex modal
 function renderCodex() {
-  const grid = document.getElementById('codex-grid');
-  if (!grid) return;
+  // Two codex grids exist — the inline panel (#codex-grid) and the modal (#codex-grid-modal).
+  // They previously shared the same id, so getElementById only ever found the inline one and
+  // the modal grid rendered empty. Populate both with identical slot markup.
+  const grids = [document.getElementById('codex-grid'), document.getElementById('codex-grid-modal')].filter(Boolean);
+  if (grids.length === 0) return;
   if (!state.codex) state.codex = {};
   const MAX_LV = 60;
   let found = 0;
@@ -5955,8 +5920,17 @@ function renderCodex() {
       html += `<div class="codex-slot empty" title="미발견"><div class="cs-lv">?</div><div class="cs-name">—</div></div>`;
     }
   }
-  grid.innerHTML = html;
-  document.getElementById('codex-progress').textContent = `${found} / ${MAX_LV} 발견`;
+  for (const g of grids) g.innerHTML = html;
+  // progress + next-codex-milestone readout. getNextCodexMilestone was previously referenced
+  // ONLY by a shadowed duplicate of this function (dead code), so the milestone hint never
+  // rendered even though the milestone REWARD is live (registerCodex). Also update the inline
+  // panel's codex-count, which the live path never touched (it was stuck at its initial "0").
+  const next = getNextCodexMilestone(found);
+  const milestoneTail = next ? ` · 다음 📚 ${next.n}종 (💎+${next.gem})` : ' · 도감 마스터 🏆';
+  const prog = document.getElementById('codex-progress');
+  if (prog) prog.textContent = `${found} / ${MAX_LV} 발견${milestoneTail}`;
+  const cnt = document.getElementById('codex-count');
+  if (cnt) cnt.textContent = `${found} / ${MAX_LV}`;
 }
 document.getElementById('codex-btn').addEventListener('click', () => {
   getAudio();
