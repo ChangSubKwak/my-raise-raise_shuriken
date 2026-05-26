@@ -4253,6 +4253,10 @@ function updateHUD() {
   // Show cap controls only when unlocked AND active
   if (capRow) capRow.style.display = (state.autoMergeUnlocked && state.autoMerge) ? 'flex' : 'none';
   if (capDisp) capDisp.textContent = state.autoMergeCap || 99;
+  // meditationMode persists across reload but its button .on was only set in the click
+  // handler — sync here so a saved-on state survives a page refresh.
+  const medBtn = document.getElementById('meditation-btn');
+  if (medBtn) medBtn.classList.toggle('on', !!state.meditationMode);
   // Burning UI
   const burnBtn = document.getElementById('burn-btn');
   if (burnBtn) {
