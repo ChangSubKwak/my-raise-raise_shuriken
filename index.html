@@ -3515,13 +3515,15 @@ function sellValue(c) {
   return Math.floor(Math.pow(2, c.level) * getGoldMul() * 0.5 * mul);
 }
 // 오늘의 표창 시세 (Daily Market) — date-seeded, ONE level/day sells at a ×2–4 premium.
-// Anchored to the player's frontier (bestLevel) so it stays relevant at any depth; the band
-// re-rolls only every ~5 best-levels, so it's stable within a day for a non-advancing player.
+// Anchored to the CURRENT run's frontier (runBestLevel, which resets on prestige) so it tracks
+// the pieces you actually hold this run — anchoring to all-time bestLevel would strand the
+// market on unreachable high levels right after prestige (grid resets to low pieces). The band
+// re-rolls only every ~5 run-levels, so it's stable within a day for a non-advancing run.
 // Selling consumes the piece (losing its merge frontier + future passive gold), so this is a
 // hold-vs-sell TIMING decision, not a free multiplier — it promotes the underused manual-sell
 // mechanic into a daily strategic lever and fuses with the existing date-seed daily theme.
 function getMarketLevel(dateStr) {
-  const top = Math.max(8, state.bestLevel || 1);
+  const top = Math.max(8, state.runBestLevel || 1);
   const lo = Math.max(2, top - 9);
   const span = top - lo + 1;
   const rand = questSeed((dateStr || todayString()) + ':mktLv' + Math.floor(top / 5));

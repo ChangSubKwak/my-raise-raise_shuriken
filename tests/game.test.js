@@ -466,9 +466,9 @@ group('gold multiplier breakdown (Q-Leap 118 refactor)', () => {
 });
 
 group('sell value formula (Q-Leap 119 refactor + QA)', () => {
-  // bestLevel 20 → daily-market band is [11,20], so the level-5 pieces tested here never
+  // runBestLevel 20 → daily-market band is [11,20], so the level-5 pieces tested here never
   // catch the market premium → these baseline assertions stay deterministic across dates.
-  withState({ prestigeCount: 0, bestLevel: 20, upgrades: defaultUpgrades(), dailyChallengeId: '' });
+  withState({ prestigeCount: 0, bestLevel: 20, runBestLevel: 20, upgrades: defaultUpgrades(), dailyChallengeId: '' });
   const gm = F.getGoldMul();
   // match sellValue's single floor (floor-then-multiply is brittle when gm is fractional,
   // e.g. on a weekday with a gold-mult bonus).
@@ -481,12 +481,12 @@ group('sell value formula (Q-Leap 119 refactor + QA)', () => {
 });
 
 group('daily market (오늘의 시세) — date-seeded sell premium', () => {
-  withState({ prestigeCount: 0, bestLevel: 20, upgrades: defaultUpgrades(), dailyChallengeId: '' });
+  withState({ prestigeCount: 0, bestLevel: 20, runBestLevel: 20, upgrades: defaultUpgrades(), dailyChallengeId: '' });
   // deterministic per fixed date
   eq(F.getMarketLevel('2026-01-15'), F.getMarketLevel('2026-01-15'), 'market level deterministic for a date');
   eq(F.getMarketMul('2026-01-15'), F.getMarketMul('2026-01-15'), 'market mul deterministic for a date');
   const lv = F.getMarketLevel('2026-01-15');
-  ok(lv >= 11 && lv <= 20, 'market level within frontier band [bestLevel-9, bestLevel]');
+  ok(lv >= 11 && lv <= 20, 'market level within current-run frontier band [runBestLevel-9, runBestLevel]');
   const m = F.getMarketMul('2026-01-15');
   ok(m >= 2 && m <= 4, 'market mul in [2,4]');
   // varies across dates (sanity, not strict)
@@ -501,6 +501,11 @@ group('daily market (오늘의 시세) — date-seeded sell premium', () => {
   eq(F.sellValue({ level: 5 }), Math.floor(Math.pow(2, 5) * gm * 0.5), 'off-band level (5, band 11-20): no premium');
   // premium stacks multiplicatively with variant muls
   eq(F.sellValue({ level: mktLv, golden: true }), Math.floor(Math.pow(2, mktLv) * gm * 0.5 * 5 * mktMul), 'market premium stacks with golden ×5');
+  // anchors to runBestLevel (current run), not all-time bestLevel — so it stays relevant
+  // post-prestige (grid reset to low pieces) instead of stranding on unreachable highs.
+  withState({ prestigeCount: 3, bestLevel: 50, runBestLevel: 5, upgrades: defaultUpgrades(), dailyChallengeId: '' });
+  const postPrestigeLv = F.getMarketLevel('2026-01-15');
+  ok(postPrestigeLv >= 2 && postPrestigeLv <= 8, 'post-prestige market tracks runBestLevel band [2,8], not bestLevel-50 highs');
 });
 
 group('enlightenment gain formula (QA)', () => {

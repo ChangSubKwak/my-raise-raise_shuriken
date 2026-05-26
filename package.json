@@ -1,6 +1,6 @@
 {
   "name": "raise-shuriken",
-  "version": "3.66.4",
+  "version": "3.66.5",
   "private": true,
   "description": "표창키우기 — 합체 (Shuriken Merge). Single-file merge game.",
   "scripts": {
