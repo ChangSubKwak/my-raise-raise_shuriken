@@ -531,6 +531,21 @@ group('sellShuriken e2e — market premium gold + marketSells stat (v3.66.1 path
   eq(G.getState().stats.marketSells || 0, 0, 'off-market sale leaves marketSells at 0');
 });
 
+group('daysBetween — streak math across month/year/leap boundaries', () => {
+  if (typeof F.daysBetween !== 'function') { ok(true, 'daysBetween not exposed — skip'); return; }
+  const db = F.daysBetween;
+  eq(db('2026-5-27', '2026-5-27'), 0, 'same day → 0');
+  eq(db('2026-1-1', '2026-1-2'), 1, 'consecutive days → 1');
+  eq(db('2026-1-31', '2026-2-1'), 1, 'month boundary (Jan→Feb) → 1');
+  eq(db('2026-12-31', '2027-1-1'), 1, 'year boundary (Dec→Jan) → 1');
+  eq(db('2026-2-28', '2026-3-1'), 1, 'non-leap Feb 28 → Mar 1 → 1');
+  eq(db('2028-2-28', '2028-2-29'), 1, 'leap year has Feb 29 → 1');
+  eq(db('2028-2-29', '2028-3-1'), 1, 'leap Feb 29 → Mar 1 → 1');
+  eq(db('2026-5-1', '2026-5-3'), 2, 'a missed day → gap of 2 (streak should reset)');
+  eq(db('2026-1-1', '2026-2-1'), 31, 'Jan has 31 days');
+  eq(db('2026-1-2', '2026-1-1'), -1, 'reverse order → negative (never === 1, so no false streak)');
+});
+
 group('enlightenment gain formula (QA)', () => {
   // actual prestige reward = max(1, floor(runBestLevel/3))
   withState({ runBestLevel: 1 });
