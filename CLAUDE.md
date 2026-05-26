@@ -75,7 +75,7 @@ The UI is **tap-tap, not drag-drop**: tap source to select (highlights), tap tar
 
 **Upgrades** (modeled after original 표창키우기 item names):
 - `maxShuriken` — **최대 표창 수** (field cap). +1 slot per level, base 6 → cap 30. The defining stat — limits how many shurikens you can hold while waiting to merge.
-- `spawnRate` — **제작시간 감소**. Interval × 0.95^lv, base 5s.
+- `spawnRate` — **제작시간 감소**. `getSpawnInterval()` = `base × 0.95^lv × (many other multipliers: stars 0.7^n, swiftHands, burning, frenzy, trial, elite, strategy mode…)`, floored at **0.6s**. Base is **16s** (v3.63; raised from 12 to slow the gauge per player feedback). New players boot at `spawnProgress 0.6` so the first spawn is quick.
 - `spawnBatch` — **제작 최대치**. +1 shuriken spawned per tick (when progress hits 1.0). Cap 6.
 - `firerate` — **연마 (패시브 골드)**. Repurposed (combat sub-game removed): passive gold +8%/lv via `getPassiveGoldBonus()`. (id kept for save compat; legacy `getFireInterval`/`getTotalDPS` are now dead.)
 - `baseDmg` — **정밀 합성 (합성 골드)**. Repurposed: merge + ritual gold +8%/lv via `getMergeGoldBonus()`. (id kept; legacy `shurikenDmg` only feeds the info-modal DPS-share ratio where it cancels.)
