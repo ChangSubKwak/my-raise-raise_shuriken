@@ -546,6 +546,42 @@ group('daysBetween — streak math across month/year/leap boundaries', () => {
   eq(db('2026-1-2', '2026-1-1'), -1, 'reverse order → negative (never === 1, so no false streak)');
 });
 
+group('trial system — startTrial setup + endTrial win/loss + inactive guard', () => {
+  if (typeof F.startTrial !== 'function') { ok(true, 'startTrial not exposed — skip'); return; }
+  // setup: goal = max(5, runBestLevel+3), reward = 5 + floor(prestigeCount/3), timer 60
+  let s = withState({ runBestLevel: 10, prestigeCount: 6, enlightenment: 0 }); s.stats = {};
+  F.startTrial();
+  let st = G.getState();
+  ok(st.trialActive, 'startTrial activates trial');
+  eq(st.trialTimer, 60, 'timer set to 60s');
+  eq(st.trialGoalLv, 13, 'goal = runBestLevel + 3');
+  eq(st.trialReward, 7, 'reward = 5 + floor(prestigeCount/3)');
+  eq(st.trialStartBestLv, 10, 'records starting run-best');
+  // minimum goal floor + base reward
+  s = withState({ runBestLevel: 1, prestigeCount: 0 }); s.stats = {};
+  F.startTrial();
+  eq(G.getState().trialGoalLv, 5, 'goal floored at 5');
+  eq(G.getState().trialReward, 5, 'base reward 5 at prestige 0');
+  // checkTrialProgress wins when runBestLevel reaches goal
+  s = withState({ trialActive: true, trialTimer: 30, trialGoalLv: 8, trialReward: 5, runBestLevel: 8, enlightenment: 2 }); s.stats = {};
+  F.checkTrialProgress();
+  st = G.getState();
+  eq(st.trialActive, false, 'reaching goal ends trial (win)');
+  eq(st.enlightenment, 7, 'win grants reward enlightenment (2+5)');
+  eq(st.stats.trialsWon, 1, 'win counted');
+  // endTrial(false) = loss: no reward, no win count
+  s = withState({ trialActive: true, trialTimer: 0, trialGoalLv: 8, trialReward: 5, runBestLevel: 3, enlightenment: 9 }); s.stats = {};
+  F.endTrial(false);
+  st = G.getState();
+  eq(st.trialActive, false, 'loss ends trial');
+  eq(st.enlightenment, 9, 'loss grants no enlightenment');
+  eq(st.stats.trialsWon || 0, 0, 'loss not counted as win');
+  // inactive-trial guard: endTrial is a no-op (prevents double reward if called twice)
+  s = withState({ trialActive: false, trialReward: 5, enlightenment: 5 }); s.stats = {};
+  F.endTrial(true);
+  eq(G.getState().enlightenment, 5, 'endTrial on inactive trial is a no-op (no phantom reward)');
+});
+
 group('enlightenment gain formula (QA)', () => {
   // actual prestige reward = max(1, floor(runBestLevel/3))
   withState({ runBestLevel: 1 });
