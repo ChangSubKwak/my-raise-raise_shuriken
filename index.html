@@ -3115,6 +3115,11 @@ function activateBurning() {
 function getSpawnStartLevel() {
   return 1 + state.upgrades.spawnLevel + getSkillLv('masterSmith');
 }
+// Level the NEXT spawned shuriken will be — base start level + the post-prestige +2 boost
+// while it's active (Q-Leap 91). Pure (no decrement); spawnShuriken decrements the counter itself.
+function getNextSpawnLevel() {
+  return getSpawnStartLevel() + ((state.postPrestigeSpawns || 0) > 0 ? 2 : 0);
+}
 // Q-Leap 118: 골드 배수 분해 — 누적된 10개 출처를 한 곳에서 정의 (단일 진실 공급원).
 // getGoldMul은 이 곱. 활성(>1) 요소는 명예의 전당에 표시되어 경제가 투명해진다.
 // Strategy Mode (전략) — a prestige-tier choice of mutually-exclusive TRADE-OFF run modifiers.
@@ -3474,12 +3479,8 @@ function spawnShuriken() {
   if (empties.length === 0) return false;
   const idx = empties[Math.floor(Math.random() * empties.length)];
   const id = state.nextShurikenId++;
-  let startLv = getSpawnStartLevel();
-  // Q-Leap 91: 윤회 직후 spawn 부스트
-  if ((state.postPrestigeSpawns || 0) > 0) {
-    startLv += 2;
-    state.postPrestigeSpawns -= 1;
-  }
+  const startLv = getNextSpawnLevel(); // includes the post-prestige +2 boost while active
+  if ((state.postPrestigeSpawns || 0) > 0) state.postPrestigeSpawns -= 1; // Q-Leap 91: consume one boost
   state.grid[idx] = { id, level: startLv, fireTimer: 0 };
   freshSpawnIds.add(id);
   state.stats.totalSpawned = (state.stats.totalSpawned || 0) + 1;
@@ -4231,7 +4232,7 @@ function updateHUD() {
   document.getElementById('spawn-progress-bar').classList.toggle('full', isFull);
   document.getElementById('spawn-progress-label').innerHTML = isFull
     ? '<span style="color:#ffaa44">⏸ 가득참 — 합쳐서 공간을 확보하세요 (게이지 일시정지)</span>'
-    : `다음 표창 · <span id="spawn-time-label">${remaining.toFixed(1)}s</span> · <span style="color:#ffd966">탭하여 가속</span>`;
+    : `다음 표창 <b style="color:#a8e6ff">Lv ${getNextSpawnLevel()}</b>${(state.postPrestigeSpawns || 0) > 0 ? ` <span style="color:#cc88ff">⚡부스트 ${state.postPrestigeSpawns}</span>` : ''} · <span id="spawn-time-label">${remaining.toFixed(1)}s</span> · <span style="color:#ffd966">탭하여 가속</span>`;
   const instBtn = document.getElementById('instant-spawn-btn');
   instBtn.disabled = state.gem < 1 || isFull;
   const amBtn = document.getElementById('auto-merge-btn');

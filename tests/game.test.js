@@ -1909,6 +1909,13 @@ group('spawn batch / start level / star count formulas', () => {
   eq(F.getSpawnStartLevel(), 1, 'base spawn start level is 1');
   withState({ upgrades: Object.assign(defaultUpgrades(), { spawnLevel: 2 }), skills: { masterSmith: 2 } });
   eq(F.getSpawnStartLevel(), 5, 'spawnLevel 2 + masterSmith 2 → start Lv 5');
+  // getNextSpawnLevel = getSpawnStartLevel + post-prestige +2 boost while active
+  if (typeof F.getNextSpawnLevel === 'function') {
+    withState({ upgrades: defaultUpgrades(), skills: {}, postPrestigeSpawns: 0 });
+    eq(F.getNextSpawnLevel(), F.getSpawnStartLevel(), 'no boost → equals start level');
+    withState({ upgrades: defaultUpgrades(), skills: {}, postPrestigeSpawns: 5 });
+    eq(F.getNextSpawnLevel(), F.getSpawnStartLevel() + 2, 'post-prestige boost active → +2');
+  }
   // countStars = number of star pieces on the grid
   withState({ grid: gridFrom([{ level: 5, star: true }, { level: 3 }, { level: 5, star: true }, null, null, null]) });
   eq(F.countStars(), 2, 'counts star pieces on the grid');
