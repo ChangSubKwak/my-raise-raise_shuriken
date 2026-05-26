@@ -961,6 +961,30 @@ group('ritual daily-quest type advances on a ritual merge', () => {
   } finally { Math.random = realRandom; }
 });
 
+group('ritual crossing a daily-merge tier grants it (loop avoids jump-skip)', () => {
+  if (typeof F.doRitualMerge !== 'function') { ok(true, 'doRitualMerge not exposed — skip'); return; }
+  const realRandom = Math.random;
+  Math.random = () => 0.99;
+  try {
+    // dailyMergeCount 49; a 3-piece ritual increments by N-1=2 via a LOOP (49→50→51),
+    // so the tier-50 reward must fire. A naive `+= 2` would skip it.
+    const today = F.todayString();
+    const s = withState({
+      grid: place(9, { 0: 5, 1: 5, 2: 5 }), bestLevel: 10, gem: 0,
+      dailyMergeCount: 49, dailyMergeDate: today, dailyMergeClaimed: {},
+      dailyQuests: [], lastFirstMergeDate: today,
+    });
+    const allAch = {}; for (const a of C.ACHIEVEMENTS) allAch[a.id] = 1; // suppress achievement gems
+    s.achievements = allAch;
+    const done = {}; for (const n of [10, 25, 50, 75, C.ACHIEVEMENTS.length]) done[n] = 1;
+    s.stats = { achCompletions: done };
+    F.doRitualMerge();
+    eq(s.dailyMergeCount, 51, 'ritual advanced daily merge count 49 → 51 (loop +1 ×2)');
+    ok(s.dailyMergeClaimed[50], 'tier 50 claimed (not skipped past)');
+    ok(s.gem >= 5, 'tier-50 reward (💎5) granted');
+  } finally { Math.random = realRandom; }
+});
+
 group('ritual merge advances daily challenge progress (N-1 merges, parity with tryMerge)', () => {
   if (typeof F.doRitualMerge !== 'function') { ok(true, 'doRitualMerge not exposed — skip'); return; }
   const realRandom = Math.random;
