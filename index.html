@@ -3444,9 +3444,12 @@ function getPrestigeAdvice() {
     return { recommend: true, gain, reason: '첫 윤회 — 깨달음 스킬트리가 열립니다' };
   }
   const cur = state.enlightenment || 0;
-  // 이번 윤회가 보유 깨달음을 50%+ 늘려주면(또는 최소 2 이상) 추천.
-  if (gain >= Math.max(2, cur * 0.5)) {
-    return { recommend: true, gain, reason: `깨달음 +${gain} — 보유(${cur})에 큰 보탬` };
+  // Recommend when the gain is a big relative boost (≥50% of holdings) OR meaningful in
+  // absolute terms (≥10, i.e. a Lv30+ run). The absolute cap prevents the relative threshold
+  // from becoming unreachable for deep players (perpetual "hold"), since prestige also grants
+  // the permanent +50% gold multiplier regardless of enlightenment.
+  if (gain >= Math.max(2, Math.min(cur * 0.5, 10))) {
+    return { recommend: true, gain, reason: `깨달음 +${gain} · 영구 골드 +50% — 윤회 추천` };
   }
   return { recommend: false, gain, reason: `깨달음 +${gain} — 더 키운 뒤 윤회가 효율적` };
 }

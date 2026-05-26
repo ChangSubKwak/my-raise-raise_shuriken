@@ -500,8 +500,12 @@ group('prestige advice (Q-Leap 122)', () => {
   // subsequent: recommend only when gain is a big boost to current enlightenment
   withState({ bestLevel: 30, runBestLevel: 30, prestigeCount: 3, enlightenment: 5 }); // gain=10 >= max(2,2.5)
   eq(F.getPrestigeAdvice().recommend, true, 'large relative gain → recommended');
-  withState({ bestLevel: 30, runBestLevel: 9, prestigeCount: 3, enlightenment: 100 }); // gain=3 < 50
-  eq(F.getPrestigeAdvice().recommend, false, 'small relative gain → hold');
+  withState({ bestLevel: 30, runBestLevel: 9, prestigeCount: 3, enlightenment: 100 }); // gain=3 < min(50,10)=10
+  eq(F.getPrestigeAdvice().recommend, false, 'small absolute gain → hold');
+  // deep player: huge holdings but a solid run (gain 10, Lv30) → recommend (absolute-cap fix,
+  // so the relative 50% threshold can't make advice perpetually "hold")
+  withState({ bestLevel: 60, runBestLevel: 30, prestigeCount: 20, enlightenment: 500 }); // gain=10 >= min(250,10)=10
+  eq(F.getPrestigeAdvice().recommend, true, 'deep player with a solid run → recommend (not perpetual hold)');
 });
 
 // (v3.35) DPS/fire-interval test removed — getTotalDPS/getFireInterval deleted with combat.
