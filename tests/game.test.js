@@ -558,6 +558,29 @@ group('daysBetween — streak math across month/year/leap boundaries', () => {
   eq(db('2026-1-2', '2026-1-1'), -1, 'reverse order → negative (never === 1, so no false streak)');
 });
 
+group('weekly quest — baseline-delta progress + claim reward + double-claim guard', () => {
+  if (typeof F.claimWeeklyReward !== 'function') { ok(true, 'claimWeeklyReward not exposed — skip'); return; }
+  const s = withState({ gem: 0, enlightenment: 0 });
+  s.stats = { totalMerges: 100 };
+  // pre-unlock all achievements + completion tiers so checkAchievements (called inside claim)
+  // grants no incidental gems — isolates the weekly reward amount.
+  const allAch = {}; for (const a of C.ACHIEVEMENTS) allAch[a.id] = 1; s.achievements = allAch;
+  s.stats.achCompletions = {}; for (const n of [10, 25, 50, 75, C.ACHIEVEMENTS.length]) s.stats.achCompletions[n] = 1;
+  s.weeklyQuest = { type: 'totalMerges', target: 30, baseline: 80, claimed: false, reward: { gem: 25, enlightenment: 3 }, name: '주간X' };
+  eq(F.getWeeklyProgress(), 20, 'progress = stat(100) - baseline(80) = 20 (below target)');
+  eq(F.claimWeeklyReward(), false, 'cannot claim below target');
+  eq(G.getState().gem, 0, 'no reward granted below target');
+  // reach the target
+  G.getState().stats.totalMerges = 110; // 110 - 80 = 30 >= target
+  eq(F.getWeeklyProgress(), 30, 'progress clamped at target (30)');
+  ok(F.claimWeeklyReward(), 'claim succeeds at target');
+  eq(G.getState().gem, 25, 'gem reward granted');
+  eq(G.getState().enlightenment, 3, 'enlightenment reward granted');
+  eq(G.getState().stats.weeklyCompleted, 1, 'weeklyCompleted incremented');
+  eq(F.claimWeeklyReward(), false, 'cannot re-claim (claimed guard)');
+  eq(G.getState().gem, 25, 'no double reward on re-claim');
+});
+
 group('trial system — startTrial setup + endTrial win/loss + inactive guard', () => {
   if (typeof F.startTrial !== 'function') { ok(true, 'startTrial not exposed — skip'); return; }
   // setup: goal = max(5, runBestLevel+3), reward = 5 + floor(prestigeCount/3), timer 60
