@@ -6485,6 +6485,7 @@ function showShurikenInfo(idx) {
   // (getPassiveGoldBonus was missing here, so the readout understated the rate once 연마/firerate was bought.)
   const baseGoldRate = 0.5 * Math.pow(2, c.level - 1) * synergyMul * centerMul * getGoldMul() * getPassiveGoldBonus();
   const sellVal = sellValue(c); // Q-Leap 119: shared formula (0 if locked)
+  const isMarketLv = !c.locked && c.level === getMarketLevel(); // 오늘의 시세 대상?
   document.getElementById('info-title').textContent = `${levelName(c.level)} (Lv ${c.level})`;
   let traits = '';
   if (c.golden) traits += '<span class="info-trait golden">✦ 황금</span>';
@@ -6503,7 +6504,7 @@ function showShurikenInfo(idx) {
     <div class="info-row"><span class="if-k">현재 골드율</span><span class="if-v">${baseGoldRate.toFixed(1)} / 초${idx === getCenterIndex() ? ' <span style="color:#ffd966">◈중앙+25%</span>' : ''}</span></div>
     <div class="info-row"><span class="if-k">골드 기여</span><span class="if-v">${(getPieceGoldShare(idx) * 100).toFixed(1)}%</span></div>
     <div class="info-row"><span class="if-k">인접 시너지</span><span class="if-v">${adj}개 (+${Math.round((synergyMul-1)*100)}%)</span></div>
-    <div class="info-row"><span class="if-k">판매가</span><span class="if-v">${c.locked ? '잠김' : '💰 ' + fmt(sellVal)}</span></div>
+    <div class="info-row"><span class="if-k">판매가</span><span class="if-v">${c.locked ? '잠김' : '💰 ' + fmt(sellVal) + (isMarketLv ? ` <span style="color:#7fd6a0">📈시세×${getMarketMul()}</span>` : '')}</span></div>
     ${traits ? `<div class="info-row"><span class="if-k">속성</span><span class="info-traits">${traits}</span></div>` : ''}
     ${c.golden ? '<div class="info-row" style="color:#ffd966;font-size:11px;">✦ 합성 시 +1 점프 · 판매 5x</div>' : ''}
     ${c.star ? '<div class="info-row" style="color:#ddaaff;font-size:11px;">★ 그리드에 있으면 spawn ×1.43</div>' : ''}
