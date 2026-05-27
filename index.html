@@ -767,6 +767,8 @@
   }
   .codex-sub { font-size: 11px; color: #88a; text-align: center; margin-bottom: 10px; line-height: 1.4; }
   .codex-progress { font-size: 12px; color: #ffd966; text-align: center; font-weight: 700; margin-bottom: 12px; }
+  .codex-lore { font-size: 11px; color: #b8a8d8; font-style: italic; text-align: center; line-height: 1.5; margin-bottom: 12px; min-height: 0; }
+  .codex-lore:empty { display: none; }
   .codex-grid {
     display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; margin-bottom: 14px;
   }
@@ -1770,6 +1772,7 @@
     <div class="codex-title">📖 표창 도감</div>
     <div class="codex-sub" id="codex-sub">처음 도달한 레벨이 영구 기록됩니다 (윤회 무관 보존). 신규 등록 시 깨달음(悟) +1.</div>
     <div class="codex-progress" id="codex-progress">0 / 60 발견</div>
+    <div class="codex-lore" id="codex-lore"></div>
     <div class="codex-grid" id="codex-grid-modal"></div>
     <button class="codex-close" id="codex-close">닫기</button>
   </div>
@@ -5939,6 +5942,18 @@ function renderCodex() {
   if (prog) prog.textContent = `${found} / ${MAX_LV} 발견${milestoneTail}`;
   const cnt = document.getElementById('codex-count');
   if (cnt) cnt.textContent = `${found} / ${MAX_LV}`;
+  // narrative line (mobile-friendly — the slot tooltip is desktop-hover only): show the lore of
+  // the highest discovered milestone level. textContent, so the flavor's quotes need no escaping.
+  const loreEl = document.getElementById('codex-lore');
+  if (loreEl) {
+    let lore = '';
+    for (let lv = MAX_LV; lv >= 1; lv--) {
+      if (!state.codex[lv]) continue;
+      const f = getLevelFlavor(lv);
+      if (f) { const nm = lv < LEVEL_NAMES.length ? LEVEL_NAMES[lv] : `Lv ${lv}`; lore = `「${nm}」 ${f}`; break; }
+    }
+    loreEl.textContent = lore;
+  }
 }
 document.getElementById('codex-btn').addEventListener('click', () => {
   getAudio();
