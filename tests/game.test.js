@@ -558,6 +558,37 @@ group('daysBetween — streak math across month/year/leap boundaries', () => {
   eq(db('2026-1-2', '2026-1-1'), -1, 'reverse order → negative (never === 1, so no false streak)');
 });
 
+group('daily quest claim — gems, questBoost ×2, all-complete bonus (1/day), no double-claim', () => {
+  if (typeof F.claimQuestRewards !== 'function') { ok(true, 'claimQuestRewards not exposed — skip'); return; }
+  const allAch = {}; for (const a of C.ACHIEVEMENTS) allAch[a.id] = 1; // suppress incidental achievement gems
+  const doneTiers = {}; for (const n of [10, 25, 50, 75, C.ACHIEVEMENTS.length]) doneTiers[n] = 1;
+  // two completed quests, no challenge boost
+  let s = withState({ gem: 0, dailyChallengeId: '', lastAllQuestsDate: '' });
+  s.achievements = allAch; s.stats = { achCompletions: doneTiers };
+  s.dailyQuests = [
+    { type: 'merges', target: 10, progress: 10, claimed: false, reward: { gem: 3 } },
+    { type: 'spawn', target: 5, progress: 5, claimed: false, reward: { gem: 4 } },
+  ];
+  eq(F.claimQuestRewards(), 2, 'claimed both completed quests');
+  eq(G.getState().gem, 17, 'quest gems (3+4=7) + all-complete bonus (10)');
+  eq(G.getState().stats.questsCompleted, 2, 'questsCompleted += 2');
+  eq(G.getState().stats.allQuestDays, 1, 'allQuestDays += 1');
+  eq(F.claimQuestRewards(), 0, 'nothing left to claim');
+  eq(G.getState().gem, 17, 'no double reward on re-claim');
+  // questBoost challenge doubles quest gem AND the all-complete bonus
+  s = withState({ gem: 0, dailyChallengeId: 'questBoost', lastAllQuestsDate: '' });
+  s.achievements = allAch; s.stats = { achCompletions: doneTiers };
+  s.dailyQuests = [{ type: 'merges', target: 10, progress: 10, claimed: false, reward: { gem: 3 } }];
+  eq(F.claimQuestRewards(), 1, 'claimed the one completed quest');
+  eq(G.getState().gem, 26, 'questBoost: quest gem 3×2=6 + bonus 10×2=20');
+  // incomplete quests are not claimed
+  s = withState({ gem: 0, dailyChallengeId: '', lastAllQuestsDate: F.todayString() });
+  s.achievements = allAch; s.stats = { achCompletions: doneTiers };
+  s.dailyQuests = [{ type: 'merges', target: 10, progress: 4, claimed: false, reward: { gem: 3 } }];
+  eq(F.claimQuestRewards(), 0, 'incomplete quest not claimed');
+  eq(G.getState().gem, 0, 'no gem for incomplete quest');
+});
+
 group('weekly quest — baseline-delta progress + claim reward + double-claim guard', () => {
   if (typeof F.claimWeeklyReward !== 'function') { ok(true, 'claimWeeklyReward not exposed — skip'); return; }
   const s = withState({ gem: 0, enlightenment: 0 });

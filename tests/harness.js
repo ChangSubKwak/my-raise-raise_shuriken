@@ -100,7 +100,7 @@ function loadGame() {
     pushGrowthSnapshot, sparkline, validateAndRepairState,
     generateDailyQuests, mondayOfWeek, save, load, doPrestige, fmt, fmtPlaytime,
     daysBetween, dateKey, escAttr, getLevelFlavor,
-    getWeeklyProgress, claimWeeklyReward, ensureWeeklyQuest,
+    getWeeklyProgress, claimWeeklyReward, ensureWeeklyQuest, claimQuestRewards,
     // integration-level (DOM calls are stubbed to no-ops):
     tryMerge, autoMergeStep, emptySlots, spawnShuriken, doExchange, doRitualMerge, sellShuriken, update,
     startTrial, checkTrialProgress, endTrial, creditMerges, grantDailyFirstMerge, checkAchievements,
