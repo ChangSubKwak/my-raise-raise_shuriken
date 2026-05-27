@@ -26,7 +26,7 @@
 
 ---
 
-## T2 — 자동화 UI 단일화  [우선순위 P1 · 위험 낮음 · 로직 불변]
+## T2 — 자동화 UI 단일화  [✅ 구현됨 v3.67.0 · 🔍 브라우저 검증 대기]
 
 **문제:** 자동 토글 6개(autoMerge/autoSell/autoRitual/autoLock/autoFrenzy/prestigeSpeed)
 + 명상(전체 ON)이 메인 화면에 스위치 벽으로 노출.
