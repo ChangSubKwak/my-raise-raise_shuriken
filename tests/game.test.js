@@ -558,6 +558,38 @@ group('daysBetween — streak math across month/year/leap boundaries', () => {
   eq(db('2026-1-2', '2026-1-1'), -1, 'reverse order → negative (never === 1, so no false streak)');
 });
 
+group('attendance — daily gem scaling, streak inc/reset, 7-day milestone (one-shot), same-day no-op', () => {
+  if (typeof F.processAttendance !== 'function') { ok(true, 'processAttendance not exposed — skip'); return; }
+  const empty6 = () => gridFrom([null, null, null, null, null, null]);
+  const ymd = (msAgo) => F.dateKey(new Date(Date.now() - msAgo));
+  // first attendance → streak 1, 1 gem (1 + floor(1/3)=0)
+  let s = withState({ gem: 0, lastAttendDate: '', attendStreak: 0, grid: empty6() }); s.stats = {};
+  F.processAttendance();
+  eq(G.getState().attendStreak, 1, 'first attendance → streak 1');
+  eq(G.getState().gem, 1, 'first day → 1 gem');
+  eq(G.getState().lastAttendDate, F.todayString(), 'lastAttendDate = today');
+  // same-day re-claim is a no-op
+  s = withState({ gem: 5, attendStreak: 3 }); s.lastAttendDate = F.todayString(); s.stats = {};
+  F.processAttendance();
+  eq(G.getState().gem, 5, 'same-day re-claim grants nothing');
+  eq(G.getState().attendStreak, 3, 'streak unchanged same day');
+  // consecutive day → streak increments; streak 6 → 1 + min(4, floor(6/3)=2) = 3 gems
+  s = withState({ gem: 0, attendStreak: 5, grid: empty6() }); s.lastAttendDate = ymd(86400000); s.stats = {};
+  F.processAttendance();
+  eq(G.getState().attendStreak, 6, 'consecutive day → streak 5→6');
+  eq(G.getState().gem, 3, 'streak 6 → 3 daily gems');
+  // a missed day resets streak to 1
+  s = withState({ gem: 0, attendStreak: 10, grid: empty6() }); s.lastAttendDate = ymd(3 * 86400000); s.stats = {};
+  F.processAttendance();
+  eq(G.getState().attendStreak, 1, 'gap > 1 day → streak resets to 1');
+  // reaching streak 7 → daily 3 + 7-day bonus 5 + milestone 10 = 18, one-shot
+  s = withState({ gem: 0, attendStreak: 6, grid: empty6() }); s.lastAttendDate = ymd(86400000); s.stats = {};
+  F.processAttendance();
+  eq(G.getState().attendStreak, 7, 'streak → 7');
+  eq(G.getState().gem, 18, 'streak 7: daily 3 + weekly bonus 5 + milestone 10');
+  ok(G.getState().stats.attendMilestones[7], '7-day milestone recorded (one-shot guard)');
+});
+
 group('daily quest claim — gems, questBoost ×2, all-complete bonus (1/day), no double-claim', () => {
   if (typeof F.claimQuestRewards !== 'function') { ok(true, 'claimQuestRewards not exposed — skip'); return; }
   const allAch = {}; for (const a of C.ACHIEVEMENTS) allAch[a.id] = 1; // suppress incidental achievement gems
