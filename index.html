@@ -5897,6 +5897,10 @@ document.getElementById('grid-menu').addEventListener('click', (e) => {
     document.getElementById('menu-btn').classList.remove('on');
   }
 });
+// Escape a string for safe interpolation into a double-quoted HTML attribute.
+function escAttr(s) {
+  return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
 // Q-Leap 39: Codex modal
 function renderCodex() {
   // Two codex grids exist — the inline panel (#codex-grid) and the modal (#codex-grid-modal).
@@ -5914,8 +5918,12 @@ function renderCodex() {
     const name = lv < LEVEL_NAMES.length ? LEVEL_NAMES[lv] : `Lv ${lv}`;
     const color = got ? levelColor(lv) : '#666';
     if (got) {
-      html += `<div class="codex-slot found" title="${name}" style="border-color:${color}88;color:${color};">`
-            + `<div class="cs-lv">${lv}</div><div class="cs-name">${name}</div></div>`;
+      // surface milestone lore (getLevelFlavor) as a re-readable tooltip + 📜 marker. Flavor
+      // text contains literal quotes, so escape it for the title attribute (else it breaks HTML).
+      const fl = getLevelFlavor(lv);
+      const tip = escAttr(fl ? `${name} — ${fl}` : name);
+      html += `<div class="codex-slot found" title="${tip}" style="border-color:${color}88;color:${color};">`
+            + `<div class="cs-lv">${lv}</div><div class="cs-name">${name}${fl ? ' 📜' : ''}</div></div>`;
     } else {
       html += `<div class="codex-slot empty" title="미발견"><div class="cs-lv">?</div><div class="cs-name">—</div></div>`;
     }

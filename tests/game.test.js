@@ -531,6 +531,18 @@ group('sellShuriken e2e — market premium gold + marketSells stat (v3.66.1 path
   eq(G.getState().stats.marketSells || 0, 0, 'off-market sale leaves marketSells at 0');
 });
 
+group('escAttr — HTML attribute escaping (codex flavor tooltip safety)', () => {
+  if (typeof F.escAttr !== 'function') { ok(true, 'escAttr not exposed — skip'); return; }
+  eq(F.escAttr('plain'), 'plain', 'plain text unchanged');
+  eq(F.escAttr('a"b'), 'a&quot;b', 'double-quote escaped (would break title="...")');
+  eq(F.escAttr('a&b'), 'a&amp;b', 'ampersand escaped first');
+  eq(F.escAttr('<x>'), '&lt;x&gt;', 'angle brackets escaped');
+  eq(F.escAttr('"&<>'), '&quot;&amp;&lt;&gt;', 'amp escaped before others, no double-encoding');
+  // a real flavor string (contains literal double quotes) must not break an attribute
+  const fl = F.getLevelFlavor(10);
+  if (fl) ok(!/(^|[^&])"/.test(F.escAttr(fl)), 'escaped milestone flavor has no raw double-quote');
+});
+
 group('daysBetween — streak math across month/year/leap boundaries', () => {
   if (typeof F.daysBetween !== 'function') { ok(true, 'daysBetween not exposed — skip'); return; }
   const db = F.daysBetween;

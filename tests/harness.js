@@ -99,7 +99,7 @@ function loadGame() {
     addFrenzyCharge, hasSet, rollMergeProcs,
     pushGrowthSnapshot, sparkline, validateAndRepairState,
     generateDailyQuests, mondayOfWeek, save, load, doPrestige, fmt, fmtPlaytime,
-    daysBetween, dateKey,
+    daysBetween, dateKey, escAttr, getLevelFlavor,
     // integration-level (DOM calls are stubbed to no-ops):
     tryMerge, autoMergeStep, emptySlots, spawnShuriken, doExchange, doRitualMerge, sellShuriken, update,
     startTrial, checkTrialProgress, endTrial, creditMerges, grantDailyFirstMerge, checkAchievements,
