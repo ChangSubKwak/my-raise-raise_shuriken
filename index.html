@@ -349,6 +349,22 @@
   }
   .storage-row .sr-take:active { transform: scale(0.95); }
   .storage-empty { text-align: center; color: #666; padding: 20px; font-size: 11px; }
+  /* Curation T2: dedicated automation modal (mirrors storage-modal) */
+  #automation-modal {
+    position: fixed; inset: 0; z-index: 253;
+    display: none; align-items: center; justify-content: center;
+    background: rgba(0,0,0,0.85);
+  }
+  #automation-modal.show { display: flex; }
+  .automation-box {
+    background: linear-gradient(180deg, #18221c 0%, #060a08 100%);
+    border: 2px solid #88ccaa; border-radius: 18px;
+    padding: 18px 22px; max-width: 400px; width: 90%;
+    max-height: 84vh; overflow-y: auto;
+    box-shadow: 0 0 30px rgba(136,204,170,0.25);
+  }
+  .automation-title { font-size: 18px; font-weight: 900; color: #aaeebb; text-align: center; letter-spacing: 3px; margin-bottom: 4px; }
+  .automation-sub { font-size: 11px; color: #88a; text-align: center; margin-bottom: 12px; }
 
   /* Q-Leap 100: Hall of Fame modal */
   #hof-modal {
@@ -1495,6 +1511,7 @@
         <button id="log-btn" class="grid-action-btn" title="활동 로그 — 최근 30개 사건">📜 로그</button>
         <button id="help-btn" class="grid-action-btn" title="도움말 — 게임 시스템 가이드">❓ 도움말</button>
         <button id="storage-btn" class="grid-action-btn" title="보관소 — 그리드 외 3칸 보관">📦 보관 <span id="storage-count">0/3</span></button>
+        <button id="automation-btn" class="grid-action-btn" title="자동화 — 자동 합치기/매도/잠금/의식/우선순위/윤회가속 설정">⚙ 자동화</button>
         <button id="meditation-btn" class="grid-action-btn" title="명상 모드 — 모든 자동화 ON">🧘 명상</button>
       </div>
       <div id="set-badges" title="표창 세트 효과 — 그리드 구성으로 활성화"></div>
@@ -1702,7 +1719,15 @@
         <button id="exchange-btn-10" class="auto-sell-run" style="width:auto;padding:6px 14px;">×10</button>
       </div>
     </div>
-    <div class="shop-divider"></div>
+    <button class="codex-close" id="shop-close">닫기</button>
+  </div>
+</div>
+
+<!-- Curation T2: dedicated automation panel (moved out of the shop modal for discoverability) -->
+<div id="automation-modal">
+  <div class="automation-box">
+    <div class="automation-title">⚙ 자동화</div>
+    <div class="automation-sub">자동화는 게임을 idle하게 진행시킵니다. 🧘 명상은 아래를 한 번에 모두 켭니다.</div>
     <div class="auto-sell-box">
       <div class="auto-sell-title">🤖 자동 매도 <span style="color:#888;font-size:10px;font-weight:400;">(잠금/변종 보호)</span></div>
       <div class="auto-sell-row">
@@ -1749,7 +1774,7 @@
         <span style="font-size:11px;color:#aaa;">spawn ×1.43</span>
       </div>
     </div>
-    <button class="codex-close" id="shop-close">닫기</button>
+    <button class="codex-close" id="automation-close">닫기</button>
   </div>
 </div>
 
@@ -6609,6 +6634,19 @@ document.getElementById('storage-close').addEventListener('click', () => {
 });
 document.getElementById('storage-modal').addEventListener('click', (e) => {
   if (e.target.id === 'storage-modal') document.getElementById('storage-modal').classList.remove('show');
+});
+// Curation T2: dedicated automation modal (toggles moved out of the shop modal)
+document.getElementById('automation-btn').addEventListener('click', () => {
+  getAudio();
+  refreshAutoSellUI();
+  refreshAutoLockUI();
+  document.getElementById('automation-modal').classList.add('show');
+});
+document.getElementById('automation-close').addEventListener('click', () => {
+  document.getElementById('automation-modal').classList.remove('show');
+});
+document.getElementById('automation-modal').addEventListener('click', (e) => {
+  if (e.target.id === 'automation-modal') document.getElementById('automation-modal').classList.remove('show');
 });
 // Q-Leap 100: Hall of Fame
 function renderHallOfFame() {
