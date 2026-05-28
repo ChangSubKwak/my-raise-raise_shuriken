@@ -6536,6 +6536,7 @@ function showShurikenInfo(idx) {
     ${c.dark ? '<div class="info-row" style="color:#cc99ff;font-size:11px;">🌑 합성 시 인접 같은 Lv 흡수 (+1 추가)</div>' : ''}
     ${fuseKind ? `<button id="info-fuse-btn" style="width:100%;padding:9px;margin-top:6px;border-radius:8px;background:linear-gradient(180deg,#c89bff,#8a5cd0);border:none;color:#fff;font-family:inherit;font-weight:800;font-size:12px;cursor:pointer;">${fuseLabel}</button>` : ''}
     ${canStore ? `<button id="info-store-btn" style="width:100%;padding:9px;margin-top:6px;border-radius:8px;background:linear-gradient(180deg,#88ccaa,#44886a);border:none;color:#fff;font-family:inherit;font-weight:800;font-size:12px;cursor:pointer;">📦 보관소로 이동 (${(state.storage || []).length}/3)</button>` : ''}
+    ${!c.locked ? `<button id="info-sell-btn" style="width:100%;padding:9px;margin-top:6px;border-radius:8px;background:linear-gradient(180deg,#ffaa66,#cc7733);border:none;color:#fff;font-family:inherit;font-weight:800;font-size:12px;cursor:pointer;">💸 판매 (💰 ${fmt(sellVal)})${isMarketLv ? ' <span style="color:#ddffdd">📈시세×' + getMarketMul() + '</span>' : ''}</button>` : ''}
   `;
   const fuseBtn = document.getElementById('info-fuse-btn');
   if (fuseBtn) fuseBtn.addEventListener('click', () => {
@@ -6546,6 +6547,13 @@ function showShurikenInfo(idx) {
   if (storeBtn) storeBtn.addEventListener('click', () => {
     getAudio();
     if (storeShuriken(_infoModalIdx)) {
+      document.getElementById('info-modal').classList.remove('show');
+    }
+  });
+  const sellBtn = document.getElementById('info-sell-btn');
+  if (sellBtn) sellBtn.addEventListener('click', () => {
+    getAudio();
+    if (sellShuriken(_infoModalIdx)) {
       document.getElementById('info-modal').classList.remove('show');
     }
   });
