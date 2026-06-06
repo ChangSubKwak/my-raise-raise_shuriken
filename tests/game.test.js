@@ -572,6 +572,48 @@ group('info-modal gold rate guards Infinity (audit-2 source guard)', () => {
   ok(/!isFinite\(baseGoldRate\)/.test(RAW_HTML), 'info-modal gold rate now guards non-finite (∞)');
 });
 
+group('inheritance prestige preserves variant flags (audit-3)', () => {
+  if (typeof F.doPrestige !== 'function') { ok(true, 'doPrestige not exposed — skip'); return; }
+  // 계승(inheritance) Lv2 keeps the 2 highest pieces through 윤회. The rebuild used to drop
+  // golden/star/dark flags → a paid inheritance of a rare piece came back plain (lost ×5 sell,
+  // passive-gold synergy, variant-inheritance bias).
+  const s = withState({
+    bestLevel: 10, // prestige unlocked (>= 8)
+    grid: gridFrom([{ level: 9, dark: true }, { level: 7, golden: true }, 3, null, null, null]),
+    skills: Object.assign({}, G.defaultState().skills, { inheritance: 2 }),
+    upgrades: defaultUpgrades(), enlightenment: 50, prestigeCount: 0,
+  });
+  s.stats = {};
+  F.doPrestige();
+  const kept = G.getState().grid.filter(Boolean).sort((a, b) => b.level - a.level);
+  eq(kept.length, 2, 'two highest pieces inherited through prestige');
+  eq(kept[0].level, 9, 'highest inherited piece is the Lv9');
+  ok(kept[0].dark === true, 'inherited Lv9 keeps its dark flag (was silently stripped before)');
+  ok(kept[1].golden === true, 'inherited Lv7 keeps its golden flag');
+});
+
+group('reload clears run-transient combo/burning state (audit-3)', () => {
+  if (typeof F.save !== 'function' || typeof F.load !== 'function') { ok(true, 'save/load not exposed — skip'); return; }
+  // A save fired mid-combo used to restore comboCount verbatim → first post-reload merge got a
+  // free comboMult. frenzy/goldRush are intentionally persisted; combo/burning/blessed are not.
+  const s = withState({
+    comboCount: 5, comboTimer: 1.8, comboTimerMax: 2.5, burningTimer: 12,
+    blessedIdx: 3, blessedTimer: 4,
+    frenzyCharge: 40, goldRushTimer: 6,
+    upgrades: defaultUpgrades(),
+  });
+  s.stats = {};
+  F.save();
+  F.load();
+  const st = G.getState();
+  eq(st.comboCount, 0, 'comboCount cleared on reload (no free combo multiplier)');
+  eq(st.comboTimer, 0, 'comboTimer cleared on reload');
+  eq(st.burningTimer, 0, 'burningTimer cleared on reload');
+  eq(st.blessedIdx, -1, 'blessedIdx reset on reload');
+  eq(st.frenzyCharge, 40, 'frenzyCharge STILL persists across reload (intentional)');
+  eq(st.goldRushTimer, 6, 'goldRushTimer STILL persists across reload (intentional)');
+});
+
 group('next goal indicator (Q-Leap 117)', () => {
   withState({ bestLevel: 1 });
   let g = F.getNextGoal();

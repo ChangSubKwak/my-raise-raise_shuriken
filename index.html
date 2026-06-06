@@ -3014,6 +3014,18 @@ function load() {
     // Q-Leap 89 & 91
     state.luckyCharms = Math.max(0, +s.luckyCharms || 0);
     state.postPrestigeSpawns = Math.max(0, +s.postPrestigeSpawns || 0);
+    // Run-transient chain state must NOT survive a reload. The defaultState comments mark these
+    // "reset on load", and doPrestige zeroes the same fields for "a fresh run starts clean".
+    // Unlike frenzy/goldRush (intentionally persisted above), a stale comboCount would inflate
+    // the first post-reload merge's gold (comboMult = 1+(combo-1)*0.2) and a burning buff would
+    // resume after an arbitrarily long offline gap. Object.assign(defaultState(), s) had copied
+    // them back verbatim — clear them to honor the documented invariant + match prestige parity.
+    state.comboCount = 0;
+    state.comboTimer = 0;
+    state.comboTimerMax = 0;
+    state.burningTimer = 0;
+    state.blessedIdx = -1;
+    state.blessedTimer = 0;
     validateAndRepairState(); // Q-Leap 121: defensive — repair corrupt/legacy saves
     return true;
   } catch (e) { return false; }
@@ -5890,7 +5902,10 @@ function doPrestige() {
     kept = state.grid.filter(c => c).sort((a, b) => b.level - a.level).slice(0, keepN);
   }
   state.grid = new Array(getGridSize()).fill(null);
-  kept.forEach((c, i) => { state.grid[i] = { id: state.nextShurikenId++, level: c.level, fireTimer: 0 }; });
+  // Preserve variant flags (golden/star/dark) on inherited pieces — they carry real value
+  // (passive-gold multiplier, ×5 sell, variant-inheritance on future merges). Dropping them
+  // silently downgraded a paid 계승 inheritance of a rare piece into a plain one.
+  kept.forEach((c, i) => { state.grid[i] = { id: state.nextShurikenId++, level: c.level, fireTimer: 0, golden: !!c.golden, star: !!c.star, dark: !!c.dark }; });
   // Storage is an off-grid extension of the board → must reset with the grid, otherwise it
   // bypasses the prestige wipe and undermines the paid 계승(inheritance) skill.
   state.storage = [];
