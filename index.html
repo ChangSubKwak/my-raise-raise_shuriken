@@ -3032,6 +3032,25 @@ function validateAndRepairState() {
     if (typeof v !== 'number' || !isFinite(v) || v < 0) { state.upgrades[k] = defUpg[k]; repairs++; }
     else if (v !== Math.floor(v)) { state.upgrades[k] = Math.floor(v); repairs++; }
   }
+  // skills mirror upgrades: getSkillLv does `(state.skills && state.skills[id]) || 0` which
+  // catches NaN but NOT a non-numeric string — that string flows into Math.pow in
+  // getSpawnInterval (→ NaN interval → spawning stalls forever) and getGoldMul (→ NaN gold).
+  const defSk = defaultState().skills;
+  if (!state.skills || typeof state.skills !== 'object') { state.skills = Object.assign({}, defSk); repairs++; }
+  for (const k in defSk) {
+    const v = state.skills[k];
+    if (typeof v !== 'number' || !isFinite(v) || v < 0) { state.skills[k] = 0; repairs++; }
+    else if (v !== Math.floor(v)) { state.skills[k] = Math.floor(v); repairs++; }
+  }
+  // nextShurikenId drives every spawn's id AND the cell-id repair below (c.id = nextShurikenId++).
+  // A corrupt (NaN/string) value would make the repair assign NaN ids and every future spawn NaN.
+  // Re-derive from the highest live id when corrupt.
+  if (typeof state.nextShurikenId !== 'number' || !isFinite(state.nextShurikenId) || state.nextShurikenId < 1) {
+    let mx = 0;
+    for (const c of (Array.isArray(state.grid) ? state.grid : [])) if (c && isFinite(c.id)) mx = Math.max(mx, c.id);
+    for (const c of (Array.isArray(state.storage) ? state.storage : [])) if (c && isFinite(c.id)) mx = Math.max(mx, c.id);
+    state.nextShurikenId = mx + 1; repairs++;
+  }
   const size = getGridSize();
   // grid must be an array of exactly `size`, each cell null or a valid piece.
   if (!Array.isArray(state.grid)) { state.grid = new Array(size).fill(null); repairs++; }
@@ -3080,6 +3099,11 @@ function validateAndRepairState() {
   // bestLevel must be ≥ the highest level currently on the grid or in storage.
   for (const c of state.grid) if (c && c.level > state.bestLevel) { state.bestLevel = c.level; repairs++; }
   for (const c of state.storage) if (c && c.level > state.bestLevel) { state.bestLevel = c.level; repairs++; }
+  // runBestLevel (this-run frontier) is bestLevel's sibling — also validate it. Its advance sites
+  // use `if (newLv > state.runBestLevel)`, so a corrupt NaN is never overwritten (NaN comparisons
+  // are false) and renders literally as "이번 run Lv NaN" in the HUD. Clamp ≤ bestLevel.
+  fixNum('runBestLevel', 1, 1);
+  if (state.runBestLevel > state.bestLevel) { state.runBestLevel = state.bestLevel; repairs++; }
   // lifetime stat counters must be finite ≥ 0 — a corrupt NaN here would poison
   // displays (playtime, totals) and accumulation forever.
   if (state.stats && typeof state.stats === 'object') {
@@ -4148,6 +4172,11 @@ function update(dt) {
       state.frenzyTimer = 0;
       toast('⚡ 폭주 종료');
       document.body.classList.remove('frenzy-active');
+      // auto-frenzy: if the gauge refilled to MAX during the just-ended frenzy, chain into the
+      // next one. Without this, addFrenzyCharge's "already MAX" early-return means auto-frenzy
+      // never re-fires for the rest of the run — the automation silently goes inert after the
+      // first overlap. activateFrenzy guards timer>0 (now 0) + consumes charge, so it's safe.
+      if (state.autoFrenzyEnabled && (state.frenzyCharge || 0) >= FRENZY_MAX) activateFrenzy(true);
     }
   }
   // Q-Leap 104: Gold Rush timer
@@ -6543,7 +6572,7 @@ function showShurikenInfo(idx) {
   }
   const fuseLabel = fuseKind === 'golden' ? '✨ 황금 3개 → ★ 별 1개' : '✨ 별 3개 → 🌑 검은 1개';
   document.getElementById('info-body').innerHTML = `
-    <div class="info-row"><span class="if-k">현재 골드율</span><span class="if-v">${baseGoldRate.toFixed(1)} / 초${idx === getCenterIndex() ? ' <span style="color:#ffd966">◈중앙+25%</span>' : ''}</span></div>
+    <div class="info-row"><span class="if-k">현재 골드율</span><span class="if-v">${!isFinite(baseGoldRate) ? '∞' : baseGoldRate < 1000 ? baseGoldRate.toFixed(1) : fmt(baseGoldRate)} / 초${idx === getCenterIndex() ? ' <span style="color:#ffd966">◈중앙+25%</span>' : ''}</span></div>
     <div class="info-row"><span class="if-k">골드 기여</span><span class="if-v">${(getPieceGoldShare(idx) * 100).toFixed(1)}%</span></div>
     <div class="info-row"><span class="if-k">인접 시너지</span><span class="if-v">${adj}개 (+${Math.round((synergyMul-1)*100)}%)</span></div>
     <div class="info-row"><span class="if-k">판매가</span><span class="if-v">${c.locked ? '잠김' : '💰 ' + fmt(sellVal) + (isMarketLv ? ` <span style="color:#7fd6a0">📈시세×${getMarketMul()}</span>` : '')}</span></div>

@@ -487,6 +487,91 @@ group('corrupt upgrades no longer wipes the save (audit fix)', () => {
   ok(isFinite(F.getGridSize()), 'getGridSize() finite after repair');
 });
 
+group('corrupt skills repaired — no NaN spawn-interval / gold (audit-2)', () => {
+  // getSkillLv does `(skills && skills[id]) || 0` — catches NaN but a non-numeric STRING
+  // survives → Math.pow(0.96, "abc") = NaN → spawn interval NaN → generation stalls forever.
+  const s = G.defaultState();
+  s.skills = Object.assign({}, s.skills, { swiftHands: 'abc', goldMastery: -2, codexBoost: 3.9 });
+  G.setState(s);
+  let threw = false;
+  try { F.validateAndRepairState(); } catch (e) { threw = true; }
+  ok(!threw, 'validateAndRepairState survives corrupt skills');
+  const sk = G.getState().skills;
+  eq(sk.swiftHands, 0, 'non-numeric skill string repaired to 0');
+  eq(sk.goldMastery, 0, 'negative skill repaired to 0');
+  eq(sk.codexBoost, 3, 'fractional skill floored');
+  ok(isFinite(F.getSpawnInterval()), 'spawn interval finite after skills repair (no stall)');
+  ok(isFinite(F.getGoldMul()), 'gold multiplier finite after skills repair');
+});
+
+group('corrupt runBestLevel repaired + clamped (audit-2)', () => {
+  const s = G.defaultState();
+  s.bestLevel = 10; s.runBestLevel = NaN;
+  G.setState(s);
+  F.validateAndRepairState();
+  ok(isFinite(G.getState().runBestLevel), 'NaN runBestLevel repaired to a finite value');
+  // runBestLevel can never legitimately exceed all-time bestLevel → clamp
+  const s2 = G.defaultState();
+  s2.bestLevel = 5; s2.runBestLevel = 999;
+  G.setState(s2);
+  F.validateAndRepairState();
+  ok(G.getState().runBestLevel <= G.getState().bestLevel, 'runBestLevel clamped to bestLevel');
+});
+
+group('corrupt nextShurikenId repaired before id-repair loop (audit-2)', () => {
+  const s = G.defaultState();
+  s.nextShurikenId = NaN;
+  s.grid = gridFrom([5, null, null, null, null, null]);
+  s.grid[0].id = NaN; // also corrupt a cell id so the repair loop runs (c.id = nextShurikenId++)
+  G.setState(s);
+  F.validateAndRepairState();
+  ok(isFinite(G.getState().nextShurikenId), 'NaN nextShurikenId re-derived to a finite value');
+  ok(isFinite(G.getState().grid[0].id), 'repaired cell id is finite (not NaN++)');
+});
+
+group('auto-frenzy chains on expiry when gauge full (audit-2)', () => {
+  if (typeof F.update !== 'function') { ok(true, 'update() not exposed — skip'); return; }
+  const MAX = C.FRENZY_MAX;
+  const realRandom = Math.random;
+  Math.random = () => 0.999999;
+  // frenzy about to expire, gauge already refilled to MAX during it, auto ON.
+  const s = withState({
+    frenzyTimer: 0.05, frenzyCharge: MAX, autoFrenzyEnabled: true,
+    grid: gridFrom([null, null, null, null, null, null]), spawnProgress: 0,
+    upgrades: defaultUpgrades(), prestigeCount: 0, bestLevel: 1,
+  });
+  s.stats = {};
+  F.update(0.1); // expires the frenzy
+  Math.random = realRandom;
+  const st = G.getState();
+  ok((st.frenzyTimer || 0) > 0, 'auto-frenzy re-fired on expiry (timer reset) — not left inert');
+  eq(st.frenzyCharge, 0, 'chained activation consumed the gauge to 0');
+});
+
+group('auto-frenzy does NOT chain when toggle is OFF (audit-2)', () => {
+  if (typeof F.update !== 'function') { ok(true, 'update() not exposed — skip'); return; }
+  const MAX = C.FRENZY_MAX;
+  const realRandom = Math.random;
+  Math.random = () => 0.999999;
+  const s = withState({
+    frenzyTimer: 0.05, frenzyCharge: MAX, autoFrenzyEnabled: false,
+    grid: gridFrom([null, null, null, null, null, null]), spawnProgress: 0,
+    upgrades: defaultUpgrades(), prestigeCount: 0, bestLevel: 1,
+  });
+  s.stats = {};
+  F.update(0.1);
+  Math.random = realRandom;
+  const st = G.getState();
+  eq(st.frenzyTimer, 0, 'no re-fire when auto is OFF');
+  eq(st.frenzyCharge, MAX, 'gauge stays full for manual activation');
+});
+
+group('info-modal gold rate guards Infinity (audit-2 source guard)', () => {
+  // display-only fix (DOM out of unit scope) — assert the bare unguarded toFixed render is gone.
+  ok(!/baseGoldRate\.toFixed\(1\)\}\s*\/\s*초/.test(RAW_HTML), 'bare baseGoldRate.toFixed(1) render removed');
+  ok(/!isFinite\(baseGoldRate\)/.test(RAW_HTML), 'info-modal gold rate now guards non-finite (∞)');
+});
+
 group('next goal indicator (Q-Leap 117)', () => {
   withState({ bestLevel: 1 });
   let g = F.getNextGoal();
