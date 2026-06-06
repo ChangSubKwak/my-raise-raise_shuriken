@@ -6559,10 +6559,24 @@ function tryVariantFusion(kind, anchorIdx) {
 }
 // Q-Leap 55: info mode + modal
 let _infoModalIdx = -1;
+let _infoModalPieceId = -1; // identity of the displayed piece. Automation (auto-merge/ritual/sell)
+                            // keeps mutating the grid while the info modal is open, so a deferred
+                            // store/sell/fuse on _infoModalIdx could act on a DIFFERENT piece than
+                            // the one shown. Capture the id at open, re-check before any action.
+function _infoModalPieceValid() {
+  const cur = state.grid[_infoModalIdx];
+  if (!cur || cur.id !== _infoModalPieceId) {
+    toast('표창이 변경되었습니다');
+    document.getElementById('info-modal').classList.remove('show');
+    return false;
+  }
+  return true;
+}
 function showShurikenInfo(idx) {
   _infoModalIdx = idx;
   const c = state.grid[idx];
   if (!c) return;
+  _infoModalPieceId = c.id;
   const adj = countAdjacentSameLevel(idx);
   const synergyBoost = isChallenge('synergy2x') ? 0.4 : 0.2;
   const synergyMul = 1 + adj * synergyBoost;
@@ -6602,11 +6616,13 @@ function showShurikenInfo(idx) {
   const fuseBtn = document.getElementById('info-fuse-btn');
   if (fuseBtn) fuseBtn.addEventListener('click', () => {
     getAudio();
+    if (!_infoModalPieceValid()) return; // grid changed under the modal → don't fuse the wrong anchor
     if (tryVariantFusion(fuseKind, _infoModalIdx)) document.getElementById('info-modal').classList.remove('show');
   });
   const storeBtn = document.getElementById('info-store-btn');
   if (storeBtn) storeBtn.addEventListener('click', () => {
     getAudio();
+    if (!_infoModalPieceValid()) return; // don't store whatever piece now sits at the stale index
     if (storeShuriken(_infoModalIdx)) {
       document.getElementById('info-modal').classList.remove('show');
     }
@@ -6614,6 +6630,7 @@ function showShurikenInfo(idx) {
   const sellBtn = document.getElementById('info-sell-btn');
   if (sellBtn) sellBtn.addEventListener('click', () => {
     getAudio();
+    if (!_infoModalPieceValid()) return; // don't sell the wrong piece for the wrong gold
     if (sellShuriken(_infoModalIdx)) {
       document.getElementById('info-modal').classList.remove('show');
     }

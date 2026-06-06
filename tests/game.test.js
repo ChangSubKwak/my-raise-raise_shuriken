@@ -614,6 +614,15 @@ group('reload clears run-transient combo/burning state (audit-3)', () => {
   eq(st.goldRushTimer, 6, 'goldRushTimer STILL persists across reload (intentional)');
 });
 
+group('info modal guards stale-index actions (audit-4 source guard)', () => {
+  // automation can mutate the grid while the info modal is open; the store/sell/fuse buttons
+  // defer to _infoModalIdx at click time. DOM-interaction fix (out of unit scope) — assert the
+  // id-capture + per-handler re-check is wired so the wrong piece can't be stored/sold/fused.
+  ok(/_infoModalPieceId = c\.id/.test(RAW_HTML), 'info modal captures the displayed piece id at open');
+  const guards = (RAW_HTML.match(/if \(!_infoModalPieceValid\(\)\) return/g) || []).length;
+  ok(guards >= 3, `all three info-modal action buttons re-check piece identity (found ${guards})`);
+});
+
 group('next goal indicator (Q-Leap 117)', () => {
   withState({ bestLevel: 1 });
   let g = F.getNextGoal();
