@@ -431,6 +431,62 @@ group('dark absorb records the true level (Q-Leap 116 bugfix)', () => {
   ok(st.codex[7], 'codex registered Lv7 reached via dark absorb');
 });
 
+group('even-level 💎 jump-skip (audit fix — range count)', () => {
+  // dark absorb makes a deterministic 2-step jump: Lv7+Lv7→Lv8, dark absorbs Lv8 → Lv9.
+  // prevBest=7, newLv=9 crosses the EVEN Lv8 without landing on it. The old exact-landing
+  // check (newLv%2===0) granted 0 💎; the range count grants 1 (for crossing Lv8).
+  const today = F.todayString();
+  const allAch = {}; for (const a of C.ACHIEVEMENTS) allAch[a.id] = 1; // pre-unlock → checkAchievements grants nothing
+  const s = withState({
+    grid: gridFrom([{ level: 7, dark: true }, 7, 8, null, null, null]),
+    codex: {}, gem: 0, bestLevel: 7, upgrades: defaultUpgrades(), prestigeCount: 0,
+    dailyQuests: [], lastFirstMergeDate: today, // suppress daily-first-merge +3
+  });
+  s.stats = {}; s.achievements = Object.assign({}, allAch);
+  for (let lv = 1; lv <= 9; lv++) s.codex[lv] = true; // pre-fill so codex grants no incidental gems
+  const realRandom = Math.random;
+  Math.random = () => 0.999999; // no lucky jump, no spontaneous variant, no procs
+  F.tryMerge(0, 1);
+  Math.random = realRandom;
+  const st = G.getState();
+  eq(st.grid[1].level, 9, 'dark absorb produced the Lv9 jump');
+  eq(st.gem, 1, 'crossing even Lv8 (landing on odd Lv9) grants 1 💎, not 0');
+});
+
+group('codex registration jump-skip (audit fix — register every crossed level)', () => {
+  // same 7→8→9 dark-absorb jump, codex empty. Old code registered only the landing Lv9,
+  // stranding Lv8 (lost 깨달음 + understated codex count). Fix registers every crossed level.
+  const s = withState({
+    grid: gridFrom([{ level: 7, dark: true }, 7, 8, null, null, null]),
+    codex: {}, enlightenment: 0, bestLevel: 7, upgrades: defaultUpgrades(), prestigeCount: 0,
+  });
+  s.stats = {};
+  const realRandom = Math.random;
+  Math.random = () => 0.999999;
+  F.tryMerge(0, 1);
+  Math.random = realRandom;
+  const st = G.getState();
+  ok(st.codex[8], 'intermediate Lv8 registered (was silently skipped before)');
+  ok(st.codex[9], 'landing Lv9 registered');
+});
+
+group('corrupt upgrades no longer wipes the save (audit fix)', () => {
+  // A NaN maxShuriken made getGridSize() return NaN → new Array(NaN) threw inside
+  // validateAndRepairState → load()'s catch silently discarded the ENTIRE save.
+  const s = G.defaultState();
+  s.upgrades = { maxShuriken: NaN, spawnRate: -3, spawnBatch: 'x', firerate: 2.7 };
+  G.setState(s);
+  let threw = false;
+  try { F.validateAndRepairState(); } catch (e) { threw = true; }
+  ok(!threw, 'validateAndRepairState survives corrupt upgrades (no save-wipe)');
+  const u = G.getState().upgrades;
+  eq(u.maxShuriken, 0, 'NaN maxShuriken repaired to default');
+  eq(u.spawnRate, 0, 'negative spawnRate repaired');
+  eq(u.spawnBatch, 0, 'non-number spawnBatch repaired');
+  eq(u.firerate, 2, 'fractional firerate floored');
+  ok(isFinite(F.getGridSize()), 'getGridSize() finite after repair');
+});
+
 group('next goal indicator (Q-Leap 117)', () => {
   withState({ bestLevel: 1 });
   let g = F.getNextGoal();
@@ -1398,12 +1454,17 @@ group('ritual merge grants new-best even-level 💎 (parity with tryMerge)', () 
     ok(F.doRitualMerge(), 'ritual performed (Lv4×3 → Lv6)');
     eq(s.bestLevel, 6, 'new best level is 6');
     eq(s.gem, 1, 'new best even Lv6 via ritual grants 💎+1');
-    // odd landing level grants no even-bonus gem
+    // jump-aware (audit fix): best 3 → Lv5 lands on ODD 5 but CROSSES even Lv4 → grants 💎+1.
     s = withState({ grid: place(9, { 0: 3, 1: 3, 2: 3 }), bestLevel: 3, gem: 0, dailyQuests: [], lastFirstMergeDate: today });
     s.stats = {}; s.achievements = Object.assign({}, allAch);
     ok(F.doRitualMerge(), 'ritual performed (Lv3×3 → Lv5)');
     eq(s.bestLevel, 5, 'new best level is 5 (odd)');
-    eq(s.gem, 0, 'odd landing Lv5 grants no even-bonus gem');
+    eq(s.gem, 1, 'odd landing Lv5 still grants 💎+1 for crossing even Lv4 (jump-safe)');
+    // true no-cross case: best 4 → Lv5 crosses NO new even → 0 gem.
+    s = withState({ grid: place(9, { 0: 3, 1: 3, 2: 3 }), bestLevel: 4, gem: 0, dailyQuests: [], lastFirstMergeDate: today });
+    s.stats = {}; s.achievements = Object.assign({}, allAch);
+    ok(F.doRitualMerge(), 'ritual performed (Lv3×3 → Lv5 from best 4)');
+    eq(s.gem, 0, 'landing Lv5 from best 4 crosses no new even → no gem');
   } finally { Math.random = realRandom; }
 });
 

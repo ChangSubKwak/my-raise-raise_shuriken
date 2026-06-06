@@ -2850,9 +2850,12 @@ function doRitualMerge() {
   if (newLv > state.bestLevel) {
     const prevBest = state.bestLevel;
     state.bestLevel = newLv;
-    if (newLv % 2 === 0) { state.gem += 1; toast(`💎 +1 (Lv ${newLv} 달성)`); } // parity with tryMerge (was missing — drift fix)
+    // 짝수 레벨 💎 — 점프가 건너뛴 짝수 레벨도 모두 (jump-safe; parity with tryMerge)
+    const evenCrossed = Math.floor(newLv / 2) - Math.floor(prevBest / 2);
+    if (evenCrossed > 0) { state.gem += evenCrossed; toast(`💎 +${evenCrossed} (Lv ${newLv} 달성)`); }
     setTimeout(() => showRecordOverlay(newLv), 720);
     for (let L = prevBest + 1; L <= newLv; L++) triggerMilestone(L); // every milestone level crossed (jump-safe; ritual can leap multiple Lv)
+    for (let L = prevBest + 1; L <= newLv; L++) registerCodex(L); // 도감도 점프가 건너뛴 모든 레벨 (jump-safe; parity with tryMerge)
     announceTranscendIfNeeded(newLv, prevBest); // Q-Leap 116: ritual path now grants transcend milestones too
   }
   if (newLv > state.runBestLevel) state.runBestLevel = newLv;
@@ -3019,6 +3022,16 @@ function load() {
 // 게임이 깨지지 않도록 핵심 불변식을 강제한다. 복구한 항목 수를 반환(테스트/진단용).
 function validateAndRepairState() {
   let repairs = 0;
+  // upgrades must be a sane object of finite non-negative integers BEFORE getGridSize()
+  // reads maxShuriken — a corrupt maxShuriken makes getGridSize() return NaN → new Array(NaN)
+  // throws RangeError → load()'s catch wipes the ENTIRE save. Sanitize upgrades first.
+  const defUpg = defaultState().upgrades;
+  if (!state.upgrades || typeof state.upgrades !== 'object') { state.upgrades = Object.assign({}, defUpg); repairs++; }
+  for (const k in defUpg) {
+    const v = state.upgrades[k];
+    if (typeof v !== 'number' || !isFinite(v) || v < 0) { state.upgrades[k] = defUpg[k]; repairs++; }
+    else if (v !== Math.floor(v)) { state.upgrades[k] = Math.floor(v); repairs++; }
+  }
   const size = getGridSize();
   // grid must be an array of exactly `size`, each cell null or a valid piece.
   if (!Array.isArray(state.grid)) { state.grid = new Array(size).fill(null); repairs++; }
@@ -3840,12 +3853,16 @@ function tryMerge(fromIdx, toIdx) {
     if (isNewRecord) {
       const prevBest = state.bestLevel;
       state.bestLevel = newLv;
-      if (newLv % 2 === 0) { state.gem += 1; toast(`💎 +1 (Lv ${newLv} 달성)`); }
+      // 짝수 레벨 💎 — 점프 머지가 건너뛴 짝수 레벨도 모두 보상 (jump-safe range count)
+      const evenCrossed = Math.floor(newLv / 2) - Math.floor(prevBest / 2);
+      if (evenCrossed > 0) { state.gem += evenCrossed; toast(`💎 +${evenCrossed} (Lv ${newLv} 달성)`); }
       // big celebration overlay — fires once per record
       // (delay so the merge animation gets to play first)
       setTimeout(() => showRecordOverlay(newLv), 720);
       // Q-Leap 49: milestone explosions for major thresholds (every level crossed — jump-safe)
       for (let L = prevBest + 1; L <= newLv; L++) triggerMilestone(L);
+      // 도감도 점프가 건너뛴 모든 레벨 등록 (깨달음 grant + 완성 카운트 — jump-safe)
+      for (let L = prevBest + 1; L <= newLv; L++) registerCodex(L);
       announceTranscendIfNeeded(newLv, prevBest); // Q-Leap 98/102/116
     }
     if (newLv > state.runBestLevel) state.runBestLevel = newLv;
