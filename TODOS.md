@@ -43,7 +43,7 @@
 
 ---
 
-## T3 — 일일 허브 통합  [우선순위 P1 · 위험 낮음 · 보상 불변]
+## T3 — 일일 허브 통합  [✅ 구현됨 v3.68.0 · 🔍 브라우저 검증 대기]
 
 **문제:** 일일미션·주간미션·일일도전·일일합성·룰렛·출석 6개가 산재(quest-btn, spin-btn,
 배너, 출석 모달). 신규 플레이어가 "오늘 할 것"을 한눈에 못 봄.
@@ -56,6 +56,17 @@
 
 **위험/검증:** claim 버튼 재배선 + 진행도 readout 정확성 → 브라우저에서 각 claim 확인.
 **스코프:** index.html (허브 모달 + 렌더 함수 통합). 보상 경로는 이미 테스트됨.
+
+**구현 노트 (v3.68.0):** `#today-modal` "📅 오늘" 허브 신설. quest-modal 셸 제거 →
+미션/주간 DOM을 허브로 이동(quest-list/weekly-quest-box id 보존, renderQuests 불변).
+룰렛/환산소를 shop-modal에서 허브로 이동(spin-btn/exchange-btn id 보존). 도전/합성/
+출석은 read-only 상태 readout(today-challenge/today-merge/today-attend) 추가. 메뉴 버튼
+`quest-btn`(id 보존, 라벨 📅 오늘)이 renderToday()로 허브 오픈. renderShop에서 spin/
+exchange 갱신 로직을 `refreshDailyActionsUI()`로 추출 → renderToday + doDailySpin/
+doExchange가 공유(허브 상태 라이브 갱신). 출석 모달 로그인 팝업은 유지(허브엔 상태만).
+중복 id 0 (scan clean), 729 테스트 그린. **브라우저 확인 필요:** 📅 오늘 버튼→허브 오픈,
+미션/주간 claim, 룰렛/환산 동작+상태 갱신, 도전/합성/출석 readout 정확성, shop에 룰렛/
+환산 없음, 닫기/바깥클릭.
 
 ---
 

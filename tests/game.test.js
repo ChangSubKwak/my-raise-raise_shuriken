@@ -623,6 +623,29 @@ group('info modal guards stale-index actions (audit-4 source guard)', () => {
   ok(guards >= 3, `all three info-modal action buttons re-check piece identity (found ${guards})`);
 });
 
+group('curation T3: unified 오늘 hub structure (source guard)', () => {
+  // DOM consolidation (out of unit scope) — assert the hub exists, the daily surfaces were
+  // RELOCATED into it (present exactly once → no duplicate-id breakage), and the old quest-modal
+  // shell is gone. Reward logic is unchanged (renderQuests + claim fns already tested elsewhere).
+  ok(/<div id="today-modal">/.test(RAW_HTML), 'today-modal hub exists');
+  ok(/id="today-close"/.test(RAW_HTML), 'hub has a close button');
+  ok(!/<div id="quest-modal">/.test(RAW_HTML), 'old quest-modal shell removed (merged into hub)');
+  // each relocated daily surface must appear exactly once (id) — duplicate would be a real bug
+  for (const id of ['quest-list', 'weekly-quest-box', 'spin-btn', 'exchange-btn', 'exchange-btn-10']) {
+    const n = (RAW_HTML.match(new RegExp('id="' + id + '"', 'g')) || []).length;
+    eq(n, 1, `${id} appears exactly once (relocated, not duplicated)`);
+  }
+  // hub status readouts present
+  for (const id of ['today-challenge', 'today-merge', 'today-attend']) {
+    ok(new RegExp('id="' + id + '"').test(RAW_HTML), `hub has ${id} status readout`);
+  }
+  // the entry button opens the hub via renderToday (not the old quest-modal)
+  ok(/renderToday\(\);\s*\n\s*document\.getElementById\('today-modal'\)\.classList\.add\('show'\)/.test(RAW_HTML),
+    'quest-btn handler opens today-modal via renderToday');
+  ok(/function renderToday\(\)/.test(RAW_HTML), 'renderToday defined');
+  ok(/function refreshDailyActionsUI\(\)/.test(RAW_HTML), 'refreshDailyActionsUI (shared spin/exchange) defined');
+});
+
 group('next goal indicator (Q-Leap 117)', () => {
   withState({ bestLevel: 1 });
   let g = F.getNextGoal();

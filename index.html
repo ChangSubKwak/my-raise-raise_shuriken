@@ -366,6 +366,26 @@
   .automation-title { font-size: 18px; font-weight: 900; color: #aaeebb; text-align: center; letter-spacing: 3px; margin-bottom: 4px; }
   .automation-sub { font-size: 11px; color: #88a; text-align: center; margin-bottom: 12px; }
 
+  /* Curation T3: unified daily hub modal (mirrors automation-modal) */
+  #today-modal {
+    position: fixed; inset: 0; z-index: 253;
+    display: none; align-items: center; justify-content: center;
+    background: rgba(0,0,0,0.85);
+  }
+  #today-modal.show { display: flex; }
+  .today-box {
+    background: linear-gradient(180deg, #1c1f2a 0%, #07080c 100%);
+    border: 2px solid #ffcc66; border-radius: 18px;
+    padding: 18px 22px; max-width: 440px; width: 92%;
+    max-height: 86vh; overflow-y: auto;
+    box-shadow: 0 0 30px rgba(255,204,102,0.22);
+  }
+  .today-title { font-size: 18px; font-weight: 900; color: #ffd98a; text-align: center; letter-spacing: 3px; margin-bottom: 4px; }
+  .today-sub { font-size: 11px; color: #aa9; text-align: center; margin-bottom: 12px; }
+  .today-section-label { font-size: 13px; font-weight: 800; color: #ffcc88; margin: 14px 0 5px; letter-spacing: 1px; border-top: 1px solid rgba(255,204,102,0.12); padding-top: 10px; }
+  .today-section-label:first-of-type { border-top: none; padding-top: 0; }
+  .today-status { font-size: 11px; color: #bbc; background: rgba(255,255,255,0.04); border-radius: 8px; padding: 8px 10px; line-height: 1.5; }
+
   /* Q-Leap 100: Hall of Fame modal */
   #hof-modal {
     position: fixed; inset: 0; z-index: 254;
@@ -669,20 +689,7 @@
   .prio-btn.active { background: linear-gradient(180deg, #66ccff, #2288cc); color: #fff; border-color: #66ccff; }
   .prio-btn:active { transform: scale(0.95); }
 
-  /* Quest modal — Q-Leap 41 */
-  #quest-modal {
-    position: fixed; inset: 0; z-index: 249;
-    display: none; align-items: center; justify-content: center;
-    background: rgba(0,0,0,0.85);
-  }
-  #quest-modal.show { display: flex; }
-  .quest-box {
-    background: linear-gradient(180deg, #1a2030 0%, #0a0e18 100%);
-    border: 2px solid #66ccff; border-radius: 18px;
-    padding: 18px 22px; max-width: 380px; width: 90%;
-    box-shadow: 0 0 40px rgba(102,204,255,0.35);
-    max-height: 85vh; overflow-y: auto;
-  }
+  /* Quest list styles — Q-Leap 41 (modal shell merged into #today-modal in Curation T3) */
   .quest-title {
     font-size: 20px; font-weight: 900; color: #88dcff;
     text-align: center; letter-spacing: 4px; margin-bottom: 6px;
@@ -1504,7 +1511,7 @@
       </div>
       <div id="grid-menu" style="display:none;">
         <button id="codex-btn" class="grid-action-btn" title="표창 도감 — 처음 도달한 레벨이 영구 기록됩니다">📖 도감</button>
-        <button id="quest-btn" class="grid-action-btn" title="일일 미션 — 매일 3개의 목표, 보석 보상">📋 미션</button>
+        <button id="quest-btn" class="grid-action-btn" title="오늘 — 일일 미션·주간·도전·합성·출석·룰렛·환산을 한곳에">📅 오늘</button>
         <button id="shop-btn" class="grid-action-btn" title="보석 상점 — 일회성 효과 구매">🛒 상점</button>
         <button id="trophy-btn" class="grid-action-btn" title="명예 & 통계 — 도달한 명예와 일생 통계 확인">🏆 명예</button>
         <button id="hof-btn" class="grid-action-btn" title="명예의 전당 — 평생 기록 쇼케이스">🏛 전당</button>
@@ -1703,22 +1710,7 @@
     <div class="shop-sub">보석으로 일회성 효과 구매. 가격이 자연 제한이라 자유 사용.</div>
     <div class="shop-gem" id="shop-gem">💎 0</div>
     <div class="shop-list" id="shop-list"></div>
-    <div class="shop-divider"></div>
-    <div class="auto-sell-box">
-      <div class="auto-sell-title">🎲 일일 룰렛 <span style="color:#888;font-size:10px;font-weight:400;">(매일 1회)</span></div>
-      <div class="auto-sell-row" style="gap:6px;">
-        <div style="flex:1;color:#aaa;font-size:11px;">오늘의 보상: <span id="spin-status">미수령</span><br/><span style="color:#666;font-size:10px;">날짜 시드 기반 — 결정적 결과</span></div>
-        <button id="spin-btn" class="auto-sell-run" style="width:auto;padding:6px 14px;">룰렛 돌리기</button>
-      </div>
-    </div>
-    <div class="auto-sell-box">
-      <div class="auto-sell-title">💱 보석 환산소 <span style="color:#888;font-size:10px;font-weight:400;">(골드 → 💎)</span></div>
-      <div class="auto-sell-row" style="gap:6px;">
-        <div style="flex:1;color:#aaa;font-size:11px;">현재: <span id="exchange-rate">10,000</span> 골드 = 💎 1<br/><span style="color:#666;font-size:10px;">윤회 당 −1,000 (최소 2,000)</span></div>
-        <button id="exchange-btn" class="auto-sell-run" style="width:auto;padding:6px 14px;">환산 (×1)</button>
-        <button id="exchange-btn-10" class="auto-sell-run" style="width:auto;padding:6px 14px;">×10</button>
-      </div>
-    </div>
+    <div class="shop-sub" style="margin-top:8px;">🎲 일일 룰렛 · 💱 보석 환산소는 <b>📅 오늘</b> 허브로 이동했습니다.</div>
     <button class="codex-close" id="shop-close">닫기</button>
   </div>
 </div>
@@ -1778,17 +1770,40 @@
   </div>
 </div>
 
-<div id="quest-modal">
-  <div class="quest-box">
-    <div class="quest-title">📋 일일 미션</div>
-    <div class="quest-sub">매일 자정 새 미션 3개가 생성됩니다. 클리어 후 [받기]로 보석 획득.</div>
+<!-- Curation T3: unified daily hub — all "오늘 할 것"을 한 곳에 (미션/주간/도전/합성/출석/룰렛/환산) -->
+<div id="today-modal">
+  <div class="today-box">
+    <div class="today-title">📅 오늘</div>
+    <div class="today-sub">오늘의 모든 일일 콘텐츠를 한곳에서. 매일 자정 갱신.</div>
+
+    <div class="today-section-label">🎯 오늘의 도전</div>
+    <div class="today-status" id="today-challenge">—</div>
+
+    <div class="today-section-label">📋 일일 미션</div>
     <div class="quest-list" id="quest-list"></div>
     <button class="quest-claim-all" id="quest-claim-all">완료 미션 모두 받기</button>
-    <div class="quest-weekly-divider"></div>
-    <div class="quest-title" style="font-size:16px;margin-top:8px;">🏅 주간 미션</div>
-    <div class="quest-sub">매주 월요일 자정 갱신. 큰 도전, 큰 보상.</div>
+
+    <div class="today-section-label">🏅 주간 미션</div>
     <div id="weekly-quest-box"></div>
-    <button class="codex-close" id="quest-close">닫기</button>
+
+    <div class="today-section-label">📆 일일 합성 · 출석</div>
+    <div class="today-status" id="today-merge">—</div>
+    <div class="today-status" id="today-attend" style="margin-top:6px;">—</div>
+
+    <div class="today-section-label">🎲 일일 룰렛 <span style="color:#888;font-size:10px;font-weight:400;">(매일 1회)</span></div>
+    <div class="auto-sell-row" style="gap:6px;">
+      <div style="flex:1;color:#aaa;font-size:11px;">오늘의 보상: <span id="spin-status">미수령</span><br/><span style="color:#666;font-size:10px;">날짜 시드 기반 — 결정적 결과</span></div>
+      <button id="spin-btn" class="auto-sell-run" style="width:auto;padding:6px 14px;">룰렛 돌리기</button>
+    </div>
+
+    <div class="today-section-label">💱 보석 환산소 <span style="color:#888;font-size:10px;font-weight:400;">(골드 → 💎)</span></div>
+    <div class="auto-sell-row" style="gap:6px;">
+      <div style="flex:1;color:#aaa;font-size:11px;">현재: <span id="exchange-rate">10,000</span> 골드 = 💎 1<br/><span style="color:#666;font-size:10px;">윤회 당 −1,000 (최소 2,000)</span></div>
+      <button id="exchange-btn" class="auto-sell-run" style="width:auto;padding:6px 14px;">환산 (×1)</button>
+      <button id="exchange-btn-10" class="auto-sell-run" style="width:auto;padding:6px 14px;">×10</button>
+    </div>
+
+    <button class="codex-close" id="today-close" style="margin-top:14px;">닫기</button>
   </div>
 </div>
 
@@ -2467,7 +2482,7 @@ function refreshQuestBadge() {
   // include weekly claimable
   if (state.weeklyQuest && !state.weeklyQuest.claimed && getWeeklyProgress() >= state.weeklyQuest.target) claimable++;
   btn.classList.toggle('has-reward', claimable > 0);
-  btn.textContent = claimable > 0 ? `📋 미션 (${claimable}!)` : '📋 미션';
+  btn.textContent = claimable > 0 ? `📅 오늘 (${claimable}!)` : '📅 오늘';
 }
 
 // ---------- Q-Leap 42: 보석 상점 ----------
@@ -6107,14 +6122,14 @@ function renderQuests() {
 }
 document.getElementById('quest-btn').addEventListener('click', () => {
   getAudio();
-  renderQuests();
-  document.getElementById('quest-modal').classList.add('show');
+  renderToday();
+  document.getElementById('today-modal').classList.add('show');
 });
-document.getElementById('quest-close').addEventListener('click', () => {
-  document.getElementById('quest-modal').classList.remove('show');
+document.getElementById('today-close').addEventListener('click', () => {
+  document.getElementById('today-modal').classList.remove('show');
 });
-document.getElementById('quest-modal').addEventListener('click', (e) => {
-  if (e.target.id === 'quest-modal') document.getElementById('quest-modal').classList.remove('show');
+document.getElementById('today-modal').addEventListener('click', (e) => {
+  if (e.target.id === 'today-modal') document.getElementById('today-modal').classList.remove('show');
 });
 document.getElementById('quest-claim-all').addEventListener('click', () => {
   getAudio();
@@ -6153,6 +6168,7 @@ function doDailySpin() {
   addEvent('milestone', `일일 룰렛 → 💎 +${reward}`);
   flashJumpScreen(2 + Math.min(3, Math.floor(reward / 4)));
   sfx('spawn');
+  refreshDailyActionsUI(); // T3: spin lives in the 오늘 hub now — refresh its status live
   renderShop();
   refreshUI();
   save();
@@ -6174,15 +6190,15 @@ function doExchange(count) {
   toast(`💱 환산 완료: ${fmt(totalCost)} 골드 → 💎 +${count}`);
   addEvent('milestone', `환산 ${fmt(totalCost)} 골드 → 💎 +${count}`);
   sfx('spawn');
+  refreshDailyActionsUI(); // T3: exchange lives in the 오늘 hub now — refresh its status live
   renderShop();
   refreshUI();
   save();
 }
-function renderShop() {
-  const list = document.getElementById('shop-list');
-  if (!list) return;
-  document.getElementById('shop-gem').textContent = `💎 ${state.gem}`;
-  // Q-Leap 82: update exchange UI
+// Curation T3: spin + exchange status live in the 오늘 hub now. Shared so both the hub
+// (renderToday) and any caller can refresh them — single source for the daily-action UI.
+function refreshDailyActionsUI() {
+  // Q-Leap 82: exchange UI
   const erEl = document.getElementById('exchange-rate');
   if (erEl) erEl.textContent = fmt(getExchangeRate());
   const ex1 = document.getElementById('exchange-btn');
@@ -6192,8 +6208,7 @@ function renderShop() {
   // Q-Leap 88: daily spin status
   const spinBtn = document.getElementById('spin-btn');
   const spinStatus = document.getElementById('spin-status');
-  const todayStr = todayString();
-  const claimed = state.lastSpinDate === todayStr;
+  const claimed = state.lastSpinDate === todayString();
   if (spinStatus) spinStatus.textContent = claimed
     ? `오늘 수령 (💎 +${state.lastSpinReward || 0})`
     : `미수령 (예상 💎 +${spinRewardForToday()})`;
@@ -6201,6 +6216,40 @@ function renderShop() {
     spinBtn.disabled = claimed;
     spinBtn.textContent = claimed ? '내일 또 오세요' : '룰렛 돌리기';
   }
+}
+// Curation T3: render the unified 오늘 hub — reuses renderQuests (missions+weekly, reward logic
+// unchanged) + refreshDailyActionsUI (spin/exchange) + read-only status for 도전/합성/출석.
+function renderToday() {
+  renderQuests();
+  refreshDailyActionsUI();
+  const chEl = document.getElementById('today-challenge');
+  if (chEl) {
+    const ch = activeChallenge();
+    if (ch) {
+      const prog = Math.min(state.dailyChallengeProgress || 0, DAILY_CHALLENGE_TARGET);
+      chEl.innerHTML = state.dailyChallengeDone
+        ? `${ch.icon} <b>${ch.name}</b> · ✅ 완수 (연속 ${state.challengeStreak || 1}일)`
+        : `${ch.icon} <b>${ch.name}</b> · ${ch.desc} · 🎯 ${prog}/${DAILY_CHALLENGE_TARGET}`;
+    } else {
+      chEl.textContent = '오늘은 도전이 없습니다.';
+    }
+  }
+  const mgEl = document.getElementById('today-merge');
+  if (mgEl) {
+    const cnt = state.dailyMergeCount || 0;
+    const tiers = Object.keys(DAILY_MERGE_TIERS).map(Number).sort((a, b) => a - b);
+    const next = tiers.find(t => t > cnt);
+    mgEl.innerHTML = next
+      ? `🔗 오늘 합성 <b>${cnt}</b>회 · 다음 ${next}회 → 💎 +${DAILY_MERGE_TIERS[next]}`
+      : `🔗 오늘 합성 <b>${cnt}</b>회 · 모든 일일 보상 수령 완료 🎉`;
+  }
+  const atEl = document.getElementById('today-attend');
+  if (atEl) atEl.innerHTML = `🗓 출석 <b>${state.attendStreak || 1}</b>일 연속 · 매일 접속 시 보상 증가 (7일마다 보너스)`;
+}
+function renderShop() {
+  const list = document.getElementById('shop-list');
+  if (!list) return;
+  document.getElementById('shop-gem').textContent = `💎 ${state.gem}`;
   let html = '';
   for (const it of SHOP_ITEMS) {
     let extra = '';
