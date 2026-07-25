@@ -2166,6 +2166,10 @@ function defaultState() {
     // Q-Leap 124: 표창 원정 — 표창 1개를 실시간 파견 (그리드 이탈), 완료 후 수령
     expedition: null,   // null | { piece, tier, startedAt, endsAt }
     expedHintShown: false, // 원정 해금 1회성 안내 (기존 Lv10+ 세이브에도 새 기능 공지로 1회 발화)
+    // Q-Leap 125: 시련의 탑 — 윤회 시 선택하는 제약 런 사다리 (층당 1회성 보상)
+    towerFloor: 0,      // 최고 돌파 층 (영구, 윤회 보존)
+    towerActive: 0,     // 현재 도전 중인 층 id (0 = 없음; 런 한정)
+    towerArmed: false,  // 다음 윤회에 다음 층 도전 예약 (윤회 시 소비)
     // Q-Leap 75: 명상 모드 — toggles all auto-features simultaneously
     meditationMode: false,
     strategyMode: 'none', // Strategy Mode (전략): trade-off run modifier, prestige-tier
@@ -2383,6 +2387,8 @@ const ACHIEVEMENTS = [
   { id: 'a_grade_s',      name: 'S급 진형',        icon: '🎌', desc: '진형 등급 S 달성',       check: (s) => !!(typeof getFormationGrade === 'function' && getFormationGrade().grade === 'S') },
   { id: 'a_exped_1',      name: '원정의 시작',     icon: '🗺', desc: '표창 원정 첫 파견',      check: (s) => ((s.stats || {}).expeditions || 0) >= 1 },
   { id: 'a_exped_25',     name: '원정대장',        icon: '🏔', desc: '표창 원정 25회 파견',    check: (s) => ((s.stats || {}).expeditions || 0) >= 25, gem: 8 },
+  { id: 'a_tower_1',      name: '탑에 오르다',     icon: '🗼', desc: '시련의 탑 1층 돌파',     check: (s) => (s.towerFloor || 0) >= 1 },
+  { id: 'a_tower_all',    name: '시련을 넘어선 자', icon: '⛩', desc: '시련의 탑 완주 (6층)',   check: (s) => (s.towerFloor || 0) >= TOWER_FLOORS.length, gem: 20 },
 ];
 
 // Q-Leap 41: Daily quest templates. Generator picks 3 each day (seeded by date).
@@ -2855,6 +2861,7 @@ function rollMergeProcs(units, newLv) {
   }
 }
 function doRitualMerge() {
+  if (isTowerRitualBanned()) { toast('🗼 침묵의 층 — 의식 합성 금지'); sfx('move'); return false; } // Q-Leap 125
   const groups = findRitualGroups();
   if (groups.length === 0) { toast('의식 발동 가능한 같은 Lv 3+ 연결 그룹이 없음'); sfx('move'); return false; }
   groups.sort((a, b) => b.indices.length - a.indices.length || b.level - a.level);
@@ -2913,6 +2920,7 @@ function doRitualMerge() {
   if (newLv > state.runBestLevel) state.runBestLevel = newLv;
   autoLockPass(); // Q-Leap 71: auto-lock high-Lv pieces (parity with tryMerge — was missing, ritual-created pieces went unlocked)
   if (state.trialActive) checkTrialProgress(); // Q-Leap: ritual jumps can complete a trial goal too
+  if (state.towerActive) checkTowerProgress(); // Q-Leap 125: ritual jumps can clear a tower floor too (parity)
   registerCodex(newLv); // Q-Leap 116: shared — ritual now grants codex milestones + weekday bonus
   const ritualGold = Math.floor(Math.pow(2, newLv) * getGoldMul() * g.indices.length * 2 * getMergeGoldBonus());
   state.gold += ritualGold;
@@ -2953,6 +2961,12 @@ function doRitualMerge() {
 function refreshRitualBadge() {
   const btn = document.getElementById('ritual-btn');
   if (!btn) return;
+  if (isTowerRitualBanned()) { // Q-Leap 125: 침묵의 층 — 버튼도 잠금 표시
+    btn.classList.remove('has-reward');
+    btn.textContent = '✨ 의식 🚫';
+    btn.disabled = true;
+    return;
+  }
   const n = findRitualGroups().length;
   btn.classList.toggle('has-reward', n > 0);
   btn.textContent = n > 0 ? `✨ 의식 (${n})` : '✨ 의식';
@@ -3166,6 +3180,14 @@ function validateAndRepairState() {
       if (typeof p.fireTimer !== 'number' || !isFinite(p.fireTimer)) p.fireTimer = 0;
     }
   }
+  // tower (Q-Leap 125) — towerFloor: 0..N int; towerActive: valid floor id or 0; armed: bool.
+  // A corrupt towerActive would apply phantom constraints forever (spawn slow, auto ban).
+  if (typeof state.towerFloor !== 'number' || !isFinite(state.towerFloor) || state.towerFloor < 0) { state.towerFloor = 0; repairs++; }
+  state.towerFloor = Math.min(TOWER_FLOORS.length, Math.floor(state.towerFloor));
+  if (typeof state.towerActive !== 'number' || !isFinite(state.towerActive) || !(state.towerActive === 0 || TOWER_FLOORS.some(f => f.floor === state.towerActive))) {
+    state.towerActive = 0; repairs++;
+  }
+  state.towerArmed = !!state.towerArmed;
   // numeric scalars must be finite + in-range.
   const fixNum = (key, min, fallback) => {
     if (typeof state[key] !== 'number' || !isFinite(state[key]) || state[key] < min) { state[key] = fallback; repairs++; }
@@ -3271,7 +3293,7 @@ function getSpawnInterval() {
   const frenzyMul = (state.frenzyTimer || 0) > 0 ? 0.5 : 1; // Q-Leap 77: 폭주 ×2 spawn
   const weekdayMul = weekdayBonus().spawnMul || 1; // Q-Leap 87
   const eliteMul = hasSet('elite') ? 0.9 : 1; // Q-Leap 105: 정예 진형 +10% 가속
-  return Math.max(0.6, base * Math.pow(0.95, state.upgrades.spawnRate) * burnMul * skillMul * shopBoost * trialBoost * starBoost * chalBoost * prestigeSpeed * frenzyMul * weekdayMul * eliteMul * getStrategySpawnMul()); // floor raised 0.4→0.6 to cap max spawn speed
+  return Math.max(0.6, base * Math.pow(0.95, state.upgrades.spawnRate) * burnMul * skillMul * shopBoost * trialBoost * starBoost * chalBoost * prestigeSpeed * frenzyMul * weekdayMul * eliteMul * getStrategySpawnMul() * getTowerSpawnMul()); // floor raised 0.4→0.6 to cap max spawn speed
 }
 
 // Q-Leap 77: Frenzy constants
@@ -3315,11 +3337,13 @@ function activateBurning() {
 }
 // (v3.35) getBaseDmg removed — only the deleted shurikenDmg used it.
 function getSpawnStartLevel() {
+  if (isTowerSpawnLv1()) return 1; // Q-Leap 125: 고행의 층 — 생성 Lv 1 고정 (HUD 표기도 정직하게)
   return 1 + state.upgrades.spawnLevel + getSkillLv('masterSmith');
 }
 // Level the NEXT spawned shuriken will be — base start level + the post-prestige +2 boost
 // while it's active (Q-Leap 91). Pure (no decrement); spawnShuriken decrements the counter itself.
 function getNextSpawnLevel() {
+  if (isTowerSpawnLv1()) return 1; // 고행의 층은 post-prestige +2 부스트도 무시 — 진짜 '고정'
   return getSpawnStartLevel() + ((state.postPrestigeSpawns || 0) > 0 ? 2 : 0);
 }
 // Q-Leap 118: 골드 배수 분해 — 누적된 10개 출처를 한 곳에서 정의 (단일 진실 공급원).
@@ -3340,6 +3364,61 @@ function getStrategyMode() {
 function getStrategyGoldMul()    { return getStrategyMode().goldMul    || 1; }
 function getStrategySpawnMul()   { return getStrategyMode().spawnMul   || 1; }
 function getStrategyVariantMul() { return getStrategyMode().variantMul || 1; }
+
+// ── Q-Leap 125: 시련의 탑 (Trial Tower) ─────────────────────────────────────
+// 윤회 2회 해금. 윤회 패널에서 "다음 윤회에 N층 도전"을 무장(arm)하면 새 런이 그 층의
+// 제약과 함께 시작된다. 목표 Lv(runBestLevel) 도달 시 돌파 — 층당 1회성 💎+悟 보상.
+// 전략 모드가 '상시 트레이드오프'라면 탑은 '자발적 핸디캡 런'이라는 별개의 결정 축:
+// 보상은 1회성이라 반복 파밍 인플레이션이 없고(반인플레이션 원칙), 제약은 기존 훅
+// (생성 간격·골드 분해·자동화 게이트·의식 가드·생성 Lv)만 사용한다 — 그리드 크기는
+// 절대 건드리지 않는다 (CLAUDE.md 금기: state.grid.length === getGridSize() 가정).
+const TOWER_UNLOCK_PRESTIGE = 2;
+const TOWER_FLOORS = [
+  { floor: 1, name: '인내의 층', icon: '🐢', desc: '생성 50% 느림',                goalLv: 12, spawnMul: 1.5,                 reward: { gem: 15 } },
+  { floor: 2, name: '수공의 층', icon: '✋', desc: '자동 합치기·자동 의식 금지',    goalLv: 14, banAuto: true,                 reward: { gem: 20, enlightenment: 2 } },
+  { floor: 3, name: '무욕의 층', icon: '🕳', desc: '골드 획득 −60%',               goalLv: 16, goldMul: 0.4,                  reward: { gem: 25, enlightenment: 3 } },
+  { floor: 4, name: '침묵의 층', icon: '🤫', desc: '의식 합성 금지',               goalLv: 18, banRitual: true,               reward: { gem: 35, enlightenment: 4 } },
+  { floor: 5, name: '고행의 층', icon: '⛓', desc: '생성 Lv 1 고정',               goalLv: 21, spawnLv1: true,                reward: { gem: 50, enlightenment: 6 } },
+  { floor: 6, name: '초탈의 층', icon: '🌫', desc: '생성 50% 느림 + 골드 −60%',    goalLv: 24, spawnMul: 1.5, goldMul: 0.4,  reward: { gem: 80, enlightenment: 10 } },
+];
+function isTowerUnlocked() { return (state.prestigeCount || 0) >= TOWER_UNLOCK_PRESTIGE; }
+function getTowerFloorDef(n) { return TOWER_FLOORS.find(f => f.floor === n) || null; }
+function getActiveTowerFloor() { return (state.towerActive || 0) > 0 ? getTowerFloorDef(state.towerActive) : null; }
+function getNextTowerFloor() { return getTowerFloorDef((state.towerFloor || 0) + 1); } // null → 완주
+function getTowerSpawnMul()    { const f = getActiveTowerFloor(); return (f && f.spawnMul) || 1; }
+function getTowerGoldMul()     { const f = getActiveTowerFloor(); return (f && f.goldMul) || 1; }
+function isTowerAutoBanned()   { const f = getActiveTowerFloor(); return !!(f && f.banAuto); }
+function isTowerRitualBanned() { const f = getActiveTowerFloor(); return !!(f && f.banRitual); }
+function isTowerSpawnLv1()     { const f = getActiveTowerFloor(); return !!(f && f.spawnLv1); }
+// 돌파 판정 — runBestLevel ≥ goal (≥ 비교라 점프 머지가 목표를 뛰어넘어도 안전).
+function checkTowerProgress() {
+  const f = getActiveTowerFloor();
+  if (!f) return false;
+  if ((state.runBestLevel || 1) < f.goalLv) return false;
+  state.towerFloor = Math.max(state.towerFloor || 0, f.floor);
+  state.towerActive = 0;
+  state.gem = (state.gem || 0) + (f.reward.gem || 0);
+  if (f.reward.enlightenment) state.enlightenment = (state.enlightenment || 0) + f.reward.enlightenment;
+  state.stats.towerClears = (state.stats.towerClears || 0) + 1;
+  toast(`🗼 ${f.floor}층 「${f.name}」 돌파! 💎+${f.reward.gem}${f.reward.enlightenment ? ` · 悟+${f.reward.enlightenment}` : ''}`);
+  addEvent('tower', `시련의 탑 ${f.floor}층 「${f.name}」 돌파`);
+  flashJumpScreen(5);
+  sfx('mergeMystic');
+  checkAchievements();
+  refreshUI();
+  save();
+  return true;
+}
+function abandonTower() {
+  if (!(state.towerActive > 0)) return false;
+  const f = getActiveTowerFloor();
+  state.towerActive = 0;
+  toast(`🗼 시련 포기${f ? ` (${f.floor}층)` : ''} — 다음 윤회에서 재도전 가능`);
+  addEvent('tower', '시련 포기');
+  refreshUI();
+  save();
+  return true;
+}
 function getGoldMulBreakdown() {
   const sets = getActiveSets();
   return [
@@ -3354,6 +3433,7 @@ function getGoldMulBreakdown() {
     { key: 'transcend', label: '🌌 초월',      mul: getTranscendMul() },                      // Q-Leap 98
     { key: 'goldRush',  label: '💰 골드러시',  mul: (state.goldRushTimer || 0) > 0 ? 2 : 1 }, // Q-Leap 104
     { key: 'strategy',  label: '⚖ 전략',      mul: getStrategyGoldMul() },
+    { key: 'tower',     label: '🗼 시련',      mul: getTowerGoldMul() },                       // Q-Leap 125
   ];
 }
 function getGoldMul() {
@@ -3766,6 +3846,8 @@ function noteLevelReached(newLv) {
   }
   if (newLv > state.runBestLevel) state.runBestLevel = newLv;
   registerCodex(newLv);
+  if (state.trialActive) checkTrialProgress(); // 원정 성장도 도전/탑 목표를 채울 수 있다 (경로 패리티)
+  if (state.towerActive) checkTowerProgress();
 }
 function claimExpedition() {
   const ex = state.expedition;
@@ -4104,6 +4186,7 @@ function tryMerge(fromIdx, toIdx) {
     autoLockPass();
     // Q-Leap 43: trial — check if goal reached
     if (state.trialActive) checkTrialProgress();
+    if (state.towerActive) checkTowerProgress(); // Q-Leap 125: 탑 돌파 판정 (합성 경로)
     // Q-Leap 39/50/96/116: codex registration + milestones (shared helper)
     registerCodex(newLv);
     flashCell(toIdx);
@@ -4438,8 +4521,9 @@ function update(dt) {
     playTimeFractional -= sec;
   }
 
-  // auto merge — gated by unlock; burning mode bypasses the gate temporarily
-  const autoMergeActive = (state.autoMerge && state.autoMergeUnlocked) || isBurning();
+  // auto merge — gated by unlock; burning mode bypasses the gate temporarily.
+  // Q-Leap 125: 수공의 층은 버닝의 자동합성 우회까지 막는다 (제약 런의 요점 — 손 합성만).
+  const autoMergeActive = ((state.autoMerge && state.autoMergeUnlocked) || isBurning()) && !isTowerAutoBanned();
   if (autoMergeActive) {
     autoMergeTimer -= dt;
     if (autoMergeTimer <= 0) {
@@ -4447,8 +4531,8 @@ function update(dt) {
       autoMergeStep();
     }
   }
-  // Q-Leap 72: auto-ritual — fire when 3+ group exists
-  if (state.autoRitualEnabled) {
+  // Q-Leap 72: auto-ritual — fire when 3+ group exists (수공/침묵의 층에서는 금지)
+  if (state.autoRitualEnabled && !isTowerAutoBanned() && !isTowerRitualBanned()) {
     autoRitualTimer -= dt;
     if (autoRitualTimer <= 0) {
       autoRitualTimer = 1.5; // throttle
@@ -4498,8 +4582,10 @@ function updateHUD() {
     const sm = getStrategyMode();
     const stratTag = sm.id !== 'none' ? ` <span style="color:#c89bff">· ${sm.label}</span>` : ''; // active strategy mode, visible during play
     const mktTag = ` <span style="color:#7fd6a0">· 📈 시세 Lv ${getMarketLevel()} ×${getMarketMul()}</span>`; // 오늘의 시세
-    if (wb.label) wkBanner.innerHTML = `${wb.icon} ${wb.label}${stratTag}${mktTag}`;
-    else          wkBanner.innerHTML = `📈 오늘의 시세 Lv ${getMarketLevel()} ×${getMarketMul()}${stratTag}`;
+    const twF = getActiveTowerFloor(); // Q-Leap 125: 진행 중인 시련 층 상시 표시
+    const twTag = twF ? ` <span style="color:#ffd28a">· 🗼 ${twF.floor}층 Lv ${state.runBestLevel || 1}/${twF.goalLv}</span>` : '';
+    if (wb.label) wkBanner.innerHTML = `${wb.icon} ${wb.label}${stratTag}${mktTag}${twTag}`;
+    else          wkBanner.innerHTML = `📈 오늘의 시세 Lv ${getMarketLevel()} ×${getMarketMul()}${stratTag}${twTag}`;
   }
   // Q-Leap 124: expedition status chip — per-frame pass, but DOM writes are gated by a
   // signature (remaining-sec granularity) so it repaints at most once per second.
@@ -6038,8 +6124,41 @@ function renderPrestige() {
     const sm = getStrategyMode();
     const npm = getNextPrestigeMilestone(state.prestigeCount);
     const pmLine = npm ? `<br><span style="color:#cc88ff;font-size:11px;">다음 ☯ 마일스톤: 윤회 ${npm.n}회 (💎+${npm.gem})</span>` : '';
+    // Q-Leap 125: 시련의 탑 섹션 — 상태에 따라 (진행 중 → 포기 버튼 / 다음 층 → 무장 토글 / 완주)
+    let towerHtml = '';
+    if (isTowerUnlocked()) {
+      const af = getActiveTowerFloor();
+      const nf = getNextTowerFloor();
+      if (af) {
+        towerHtml = `<div style="margin-top:7px;font-size:11px;">🗼 <b style="color:#ffd28a">${af.floor}층 「${af.name}」 진행 중</b> — 목표 Lv ${af.goalLv} (현재 ${state.runBestLevel || 1})`
+          + `<button id="tower-abandon" style="margin-left:6px;padding:2px 8px;border-radius:7px;border:1px solid #9a5a5a;background:linear-gradient(180deg,#6e3f3f,#482727);color:#ffdddd;font-family:inherit;font-weight:800;font-size:10px;cursor:pointer;">포기</button></div>`;
+      } else if (nf) {
+        towerHtml = `<div style="margin-top:7px;font-size:11px;">🗼 시련의 탑 (${state.towerFloor || 0}/${TOWER_FLOORS.length}층 돌파)`
+          + `<button id="tower-arm" style="margin-left:6px;padding:3px 9px;border-radius:7px;border:1px solid ${state.towerArmed ? '#d0a95c' : '#5a6a9a'};background:linear-gradient(180deg,${state.towerArmed ? '#6e5c2e,#483c1a' : '#3f4a6e,#272e48'});color:${state.towerArmed ? '#ffe9a8' : '#d8e0ff'};font-family:inherit;font-weight:800;font-size:11px;cursor:pointer;">${state.towerArmed ? `✅ ${nf.floor}층 예약됨` : `${nf.floor}층 도전 예약`}</button>`
+          + `<br><span style="color:#aa99cc;">${nf.icon} 「${nf.name}」 ${nf.desc} · 목표 Lv ${nf.goalLv} · 💎${nf.reward.gem}${nf.reward.enlightenment ? `+悟${nf.reward.enlightenment}` : ''} — 다음 윤회에 시작</span></div>`;
+      } else {
+        towerHtml = `<div style="margin-top:7px;font-size:11px;color:#ffd28a;">🗼 시련의 탑 완주! (${TOWER_FLOORS.length}/${TOWER_FLOORS.length})</div>`;
+      }
+    } else {
+      towerHtml = `<div style="margin-top:7px;font-size:11px;color:#8a80a8;">🗼 시련의 탑 — 윤회 ${TOWER_UNLOCK_PRESTIGE}회 달성 시 해금</div>`;
+    }
     info.innerHTML = `윤회 시 깨달음(悟) <b style="color:#cc88ff">+${enlightGain}</b> 획득<br>총 윤회 ${state.prestigeCount}회 · 영구 골드 +${state.prestigeCount * 50}%${adviceLine}${pmLine}`
-      + `<div style="margin-top:7px;font-size:11px;">전략 모드 <button id="strat-cycle" style="margin-left:4px;padding:3px 9px;border-radius:7px;border:1px solid #6a5a9a;background:linear-gradient(180deg,#4a3f6e,#2e2748);color:#e8d8ff;font-family:inherit;font-weight:800;font-size:11px;cursor:pointer;">${sm.label}</button><br><span style="color:#aa99cc;">${sm.desc}</span></div>`;
+      + `<div style="margin-top:7px;font-size:11px;">전략 모드 <button id="strat-cycle" style="margin-left:4px;padding:3px 9px;border-radius:7px;border:1px solid #6a5a9a;background:linear-gradient(180deg,#4a3f6e,#2e2748);color:#e8d8ff;font-family:inherit;font-weight:800;font-size:11px;cursor:pointer;">${sm.label}</button><br><span style="color:#aa99cc;">${sm.desc}</span></div>`
+      + towerHtml;
+    const armBtn = document.getElementById('tower-arm');
+    if (armBtn) armBtn.onclick = () => {
+      getAudio();
+      state.towerArmed = !state.towerArmed;
+      toast(state.towerArmed ? '🗼 다음 윤회에 시련 시작 — 윤회 버튼으로 진행' : '🗼 시련 예약 해제');
+      sfx('move');
+      renderPrestige(); save();
+    };
+    const abandonBtn = document.getElementById('tower-abandon');
+    if (abandonBtn) abandonBtn.onclick = () => {
+      getAudio();
+      abandonTower();
+      renderPrestige();
+    };
     const stratBtn = document.getElementById('strat-cycle');
     if (stratBtn) stratBtn.onclick = () => {
       getAudio();
@@ -6155,6 +6274,21 @@ function doPrestige() {
   state.goldRushTimer = 0;
   state.burningTimer = 0;
   document.body.classList.remove('frenzy-active');
+  // Q-Leap 125: 시련의 탑 — 진행 중이던 시련은 런과 함께 끝난다 (미돌파 = 실패, 보상 없음).
+  if ((state.towerActive || 0) > 0) {
+    addEvent('tower', `시련 ${state.towerActive}층 중단 (윤회)`);
+    state.towerActive = 0;
+  }
+  // 무장(arm)돼 있으면 소비하고 다음 층 입장 — 새 런이 제약과 함께 시작된다.
+  if (state.towerArmed) {
+    state.towerArmed = false;
+    const nf = getNextTowerFloor();
+    if (nf && isTowerUnlocked()) {
+      state.towerActive = nf.floor;
+      setTimeout(() => toast(`🗼 ${nf.floor}층 「${nf.name}」 입장 — ${nf.desc} · 목표 Lv ${nf.goalLv}`), 900);
+      addEvent('tower', `시련의 탑 ${nf.floor}층 입장`);
+    }
+  }
   startStage();
   startTrial();        // Q-Leap 43
   checkAchievements();
@@ -6180,6 +6314,7 @@ document.getElementById('instant-spawn-btn').addEventListener('click', (e) => {
 });
 document.getElementById('auto-merge-btn').addEventListener('click', () => {
   getAudio();
+  if (isTowerAutoBanned()) { toast('🗼 수공의 층 — 자동 합치기 금지 (포기는 윤회 패널에서)'); return; } // Q-Leap 125
   if (!state.autoMergeUnlocked) {
     tryUnlockAutoMerge();
     return;
@@ -6658,6 +6793,7 @@ function renderTrophy() {
       ['💸 누적 판매',       s.totalSold || 0],
       ['📈 시세 매도',       s.marketSells || 0],
       ['🗺 원정 파견',       s.expeditions || 0],
+      ['🗼 시련의 탑',       `${state.towerFloor || 0} / ${TOWER_FLOORS.length}층`],
       ['⚗ 변종 융합',        s.fusionsUsed || 0],
       ['🔱 표창 분할',       s.splitsUsed || 0],
       ['✦ 황금 코팅',        s.coatingsUsed || 0],
@@ -7240,6 +7376,7 @@ const HELP_SECTIONS = {
     { title: '💱 보석 환산소', body: '상점 내. 골드를 보석으로 환산 (비율 = 10000 − 윤회×1000, 최소 2000). 후기 정체 해소.' },
     { title: '🌌 깨달음 스킬', body: '9종 트리 — 골드/spawn/행운/계승/축복지속/도감/황금운/별운 등. 윤회 시 누적.' },
     { title: '⚖ 전략 모드', body: 'Lv 8+ 윤회 패널의 <span class="hk">전략 버튼</span>으로 런 스타일 선택: <span class="hk">부유</span>(골드+30%·생성18%↓) / <span class="hk">신속</span>(생성18%↑·골드−15%) / <span class="hk">변종</span>(변종×2·골드−12%) / 균형(없음). 이득마다 상응하는 손실 — 지배적 선택이 없는 트레이드오프.' },
+    { title: '🗼 시련의 탑', body: '윤회 2회 해금. 윤회 패널에서 <span class="hk">다음 층 도전을 예약</span>하면 다음 윤회 런이 그 층의 제약과 함께 시작. 목표 Lv 도달 시 돌파 — <span class="hk">층당 1회성 💎+깨달음</span> 보상. 6층: 생성 느림/자동화 금지/골드 감소/의식 금지/생성 Lv1 고정/복합. 포기하면 다음 윤회에 재도전. 전략 모드와 중첩 가능 — 자발적 핸디캡의 명예 사다리.' },
     { title: '🏛 명예의 전당', body: '평생 기록 + 🎯다음 목표 + 💰골드 배수 분해 + 📈성장 스파크라인을 한눈에.' },
   ],
   convenience: [

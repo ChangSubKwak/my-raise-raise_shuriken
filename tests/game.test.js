@@ -673,7 +673,7 @@ group('gold multiplier breakdown (Q-Leap 118 refactor)', () => {
   approx(product, F.getGoldMul(), 'breakdown product == getGoldMul', 1e-9);
   // each factor labeled and numeric
   const bd = F.getGoldMulBreakdown();
-  eq(bd.length, 11, '11 gold-multiplier sources defined (incl. strategy mode)');
+  eq(bd.length, 12, '12 gold-multiplier sources defined (incl. strategy mode + tower)');
   ok(bd.every(f => typeof f.mul === 'number' && f.label), 'every factor has label + numeric mul');
   // prestige factor reflects count
   const pf = bd.find(f => f.key === 'prestige');
@@ -2615,6 +2615,96 @@ group('expedition (Q-Leap 124)', () => {
     lastQuestDate: F.todayString() });
   eq(F.startExpedition(0, 1), true, 'quest-wired start succeeds');
   eq(s9.dailyQuests[0].progress, 1, 'expedition quest progress credited on departure');
+});
+
+group('trial tower (Q-Leap 125)', () => {
+  const FLOORS = C.TOWER_FLOORS;
+  eq(FLOORS.length, 6, 'six tower floors');
+  for (let i = 1; i < FLOORS.length; i++) {
+    ok(FLOORS[i].goalLv > FLOORS[i - 1].goalLv, `floor ${i + 1} goal above floor ${i}`);
+    ok(FLOORS[i].reward.gem > FLOORS[i - 1].reward.gem, `floor ${i + 1} gem reward above floor ${i}`);
+  }
+  ok(FLOORS.every((f, i) => f.floor === i + 1), 'floor ids are 1..N in order');
+
+  // unlock gate
+  withState({ prestigeCount: C.TOWER_UNLOCK_PRESTIGE - 1 });
+  eq(F.isTowerUnlocked(), false, 'locked below prestige gate');
+  withState({ prestigeCount: C.TOWER_UNLOCK_PRESTIGE });
+  eq(F.isTowerUnlocked(), true, 'unlocked at prestige gate');
+
+  // constraint hooks: inactive by default, active only during their floor
+  withState({});
+  eq(F.getTowerSpawnMul(), 1, 'no spawn penalty when inactive');
+  eq(F.getTowerGoldMul(), 1, 'no gold penalty when inactive');
+  withState({ towerActive: 1 });
+  eq(F.getTowerSpawnMul(), FLOORS[0].spawnMul, 'floor 1 slows spawn');
+  withState({ towerActive: 2 });
+  eq(F.isTowerAutoBanned(), true, 'floor 2 bans automation');
+  withState({ towerActive: 3 });
+  eq(F.getTowerGoldMul(), FLOORS[2].goldMul, 'floor 3 cuts gold');
+  ok(F.getGoldMul() < 1e9 && F.getGoldMulBreakdown().some(f => f.key === 'tower' && f.mul === FLOORS[2].goldMul), 'tower factor wired into gold breakdown');
+  withState({ towerActive: 4 });
+  eq(F.isTowerRitualBanned(), true, 'floor 4 bans ritual');
+  eq(F.doRitualMerge(), false, 'doRitualMerge blocked on ritual-ban floor');
+  withState({ towerActive: 5, upgrades: Object.assign(defaultUpgrades(), { spawnLevel: 7 }), postPrestigeSpawns: 5 });
+  eq(F.getSpawnStartLevel(), 1, 'floor 5 pins spawn start level to 1');
+  eq(F.getNextSpawnLevel(), 1, 'floor 5 ignores post-prestige boost too');
+
+  // spawn interval integration (floor 1: ×1.5 vs clean state)
+  withState({});
+  const cleanInterval = F.getSpawnInterval();
+  withState({ towerActive: 1 });
+  approx(F.getSpawnInterval(), Math.max(0.6, cleanInterval * FLOORS[0].spawnMul), 'spawn interval scaled by tower mul', 1e-9);
+
+  // clear: goal reached → reward, floor recorded, constraint lifted
+  const s1 = withState({ towerActive: 1, towerFloor: 0, runBestLevel: FLOORS[0].goalLv, gem: 0, enlightenment: 0 });
+  eq(F.checkTowerProgress(), true, 'floor clears at goal level');
+  eq(s1.towerFloor, 1, 'cleared floor recorded');
+  eq(s1.towerActive, 0, 'constraint lifted after clear');
+  ok(s1.gem >= FLOORS[0].reward.gem, 'gem reward granted (+ a_tower_1 achievement gem on top)');
+  eq(s1.stats.towerClears, 1, 'clear stat credited');
+  // below goal → no clear
+  const s2 = withState({ towerActive: 2, towerFloor: 1, runBestLevel: FLOORS[1].goalLv - 1 });
+  eq(F.checkTowerProgress(), false, 'no clear below goal');
+  eq(s2.towerActive, 2, 'constraint stays until goal');
+  // jump past goal still clears (≥ comparison — jump-skip safe)
+  const s3 = withState({ towerActive: 2, towerFloor: 1, runBestLevel: FLOORS[1].goalLv + 5, enlightenment: 0 });
+  eq(F.checkTowerProgress(), true, 'jump past goal clears');
+  eq(s3.enlightenment, FLOORS[1].reward.enlightenment, 'enlightenment reward granted');
+
+  // abandon
+  const s4 = withState({ towerActive: 3 });
+  eq(F.abandonTower(), true, 'abandon works while active');
+  eq(s4.towerActive, 0, 'abandon lifts constraint');
+  withState({});
+  eq(F.abandonTower(), false, 'abandon no-ops when inactive');
+
+  // prestige flow: armed → consumed → next floor entered; active floor fails on prestige
+  const s5 = withState({ bestLevel: 12, prestigeCount: C.TOWER_UNLOCK_PRESTIGE, towerArmed: true, towerFloor: 0 });
+  F.doPrestige();
+  eq(s5.towerArmed, false, 'arm consumed by prestige');
+  eq(s5.towerActive, 1, 'next floor entered on armed prestige');
+  const s6 = withState({ bestLevel: 12, prestigeCount: 3, towerActive: 2, towerArmed: false });
+  F.doPrestige();
+  eq(s6.towerActive, 0, 'active floor ends (fails) on prestige');
+  // armed below unlock (e.g. save tamper) → no entry
+  const s7 = withState({ bestLevel: 12, prestigeCount: 0, towerArmed: true, towerFloor: 0 });
+  F.doPrestige();
+  eq(s7.towerActive, 0, 'no tower entry when still locked (post-prestige count 1 < gate)');
+
+  // tower completion: no next floor after final clear
+  withState({ towerFloor: FLOORS.length });
+  eq(F.getNextTowerFloor(), null, 'no next floor after full clear');
+
+  // save integrity
+  const s8 = withState({ towerFloor: 99, towerActive: 42, towerArmed: 'yes' });
+  F.validateAndRepairState();
+  eq(s8.towerFloor, FLOORS.length, 'towerFloor clamped to floor count');
+  eq(s8.towerActive, 0, 'invalid towerActive dropped (no phantom constraints)');
+  eq(s8.towerArmed, true, 'towerArmed coerced to boolean');
+
+  // achievements registered
+  ok(C.ACHIEVEMENTS.some(a => a.id === 'a_tower_1') && C.ACHIEVEMENTS.some(a => a.id === 'a_tower_all'), 'tower achievements registered');
 });
 
 // ---- helpers ----
