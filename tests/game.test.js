@@ -2705,6 +2705,33 @@ group('trial tower (Q-Leap 125)', () => {
 
   // achievements registered
   ok(C.ACHIEVEMENTS.some(a => a.id === 'a_tower_1') && C.ACHIEVEMENTS.some(a => a.id === 'a_tower_all'), 'tower achievements registered');
+
+  // ── v3.70.1 audit fixes ──
+  // inheritance insta-clear exploit: tower entry must NOT carry inherited pieces
+  const s9 = withState({ bestLevel: 30, prestigeCount: 3, towerArmed: true, towerFloor: 0,
+    skills: { goldMastery: 0, swiftHands: 0, fate: 0, masterSmith: 0, inheritance: 3, blessTime: 0, codexBoost: 0, goldenLuck: 0, starLuck: 0 },
+    grid: gridFrom([28, 27, 26, null, null, null]) });
+  F.doPrestige();
+  eq(s9.towerActive, 1, 'armed prestige enters floor 1');
+  ok(s9.grid.every(c => c === null), 'tower entry carries NO inherited pieces (insta-clear exploit closed)');
+  // same skills WITHOUT arming → inheritance works normally
+  const s10 = withState({ bestLevel: 30, prestigeCount: 3, towerArmed: false,
+    skills: { goldMastery: 0, swiftHands: 0, fate: 0, masterSmith: 0, inheritance: 3, blessTime: 0, codexBoost: 0, goldenLuck: 0, starLuck: 0 },
+    grid: gridFrom([28, 27, 26, null, null, null]) });
+  F.doPrestige();
+  eq(s10.grid.filter(Boolean).length, 3, 'normal prestige still honors inheritance');
+
+  // stale cleared-floor active (multi-tab race) → repaired, no duplicate reward
+  const s11 = withState({ towerFloor: 3, towerActive: 2 });
+  F.validateAndRepairState();
+  eq(s11.towerActive, 0, 'already-cleared floor cannot stay active (duplicate-reward guard)');
+  const s12 = withState({ towerFloor: 3, towerActive: 4 });
+  F.validateAndRepairState();
+  eq(s12.towerActive, 4, 'legitimate next-floor active survives repair');
+
+  // structural guards: merge-all gate + shop-강화 progress checks wired
+  ok(/merge-all-btn'\)\.addEventListener[\s\S]{0,300}isTowerAutoBanned/.test(RAW_HTML), 'merge-all button gated on auto-ban floor');
+  ok(/registerCodex\(state\.grid\[minIdx\]\.level\);[\s\S]{0,400}checkTowerProgress/.test(RAW_HTML), '표창 강화 triggers tower progress check');
 });
 
 // ---- helpers ----
