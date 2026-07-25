@@ -2603,6 +2603,12 @@ group('expedition (Q-Leap 124)', () => {
   }
   ok(drawn, 'expedition quest drawable once unlocked (deterministic date seeds)');
 
+  // weekly-quest pool: expedition weekly gated by unlock (impossible-week protection)
+  withState({ bestLevel: 9, weekStartDate: '', weeklyQuest: null });
+  F.ensureWeeklyQuest();
+  ok(G.getState().weeklyQuest.type !== 'expeditions', 'weekly pool excludes expeditions before unlock');
+  // (post-unlock inclusion is seed-dependent per week — covered by the daily-pool draw test above)
+
   // startExpedition credits daily-quest progress
   const s9 = withState({ bestLevel: 12, grid: gridFrom([9, null, null, null, null, null]),
     dailyQuests: [{ type: 'expedition', target: 1, progress: 0, reward: { gem: 4 }, claimed: false }],

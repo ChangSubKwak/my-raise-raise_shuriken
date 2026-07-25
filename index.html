@@ -2165,6 +2165,7 @@ function defaultState() {
     storage: [],
     // Q-Leap 124: 표창 원정 — 표창 1개를 실시간 파견 (그리드 이탈), 완료 후 수령
     expedition: null,   // null | { piece, tier, startedAt, endsAt }
+    expedHintShown: false, // 원정 해금 1회성 안내 (기존 Lv10+ 세이브에도 새 기능 공지로 1회 발화)
     // Q-Leap 75: 명상 모드 — toggles all auto-features simultaneously
     meditationMode: false,
     strategyMode: 'none', // Strategy Mode (전략): trade-off run modifier, prestige-tier
@@ -2655,6 +2656,8 @@ const WEEKLY_TEMPLATES = [
   { type: 'trialsWon',       target: 3,   icon: '⚔', name: '윤회 도전 3회 성공',   reward: { gem: 35, enlightenment: 4 } },
   { type: 'blessedMerges',   target: 20,  icon: '🙏', name: '축복 합성 20회',      reward: { gem: 30, enlightenment: 2 } },
   { type: 'luckyMerges',     target: 25,  icon: '🍀', name: '행운 합성 25회',      reward: { gem: 30, enlightenment: 2 } },
+  // Q-Leap 124: 원정 주간 미션 — 미해금 시 ensureWeeklyQuest의 풀에서 제외
+  { type: 'expeditions',     target: 5,   icon: '🗺', name: '표창 원정 5회 파견',   reward: { gem: 35, enlightenment: 3 } },
 ];
 function mondayOfWeek(date) {
   const d = date || new Date();
@@ -2668,7 +2671,10 @@ function ensureWeeklyQuest() {
   const wk = mondayOfWeek();
   if (state.weekStartDate !== wk || !state.weeklyQuest) {
     const rand = questSeed('w-' + wk);
-    const tpl = WEEKLY_TEMPLATES[Math.floor(rand() * WEEKLY_TEMPLATES.length)];
+    // Expedition weekly only when the system is reachable — an impossible week-long quest
+    // is worse than a re-roll (daily-quest pool parity).
+    const pool = WEEKLY_TEMPLATES.filter(t => t.type !== 'expeditions' || isExpeditionUnlocked());
+    const tpl = pool[Math.floor(rand() * pool.length)];
     state.weeklyQuest = {
       type: tpl.type, target: tpl.target, icon: tpl.icon, name: tpl.name,
       baseline: state.stats[tpl.type] || 0,
@@ -4409,6 +4415,13 @@ function update(dt) {
   if (state.trialActive) {
     state.trialTimer -= dt;
     if (state.trialTimer <= 0) endTrial(false);
+  }
+  // Q-Leap 124: one-time expedition unlock hint (also fires once for pre-existing Lv10+ saves)
+  if (!state.expedHintShown && isExpeditionUnlocked()) {
+    state.expedHintShown = true;
+    toast('🗺 표창 원정 해금! ℹ 정보 모드에서 표창을 탭해 파견하세요');
+    addEvent('expedition', '원정 해금 (Lv 10) — 정보 모드에서 파견 가능');
+    flashJumpScreen(2);
   }
   goldFractional += goldRate * dt;
   if (goldFractional >= 1) {
