@@ -2396,6 +2396,8 @@ const QUEST_TEMPLATES = [
   { type: 'blessed', target: 2,     icon: '🙏', desc: t => `축복 칸 합성 ${t}회`,    reward: { gem: 4 } },
   { type: 'sell',    target: 10,    icon: '💸', desc: t => `표창 ${t}개 판매`,       reward: { gem: 3 } },
   { type: 'ritual',  target: 3,     icon: '🔱', desc: t => `의식 합성 ${t}회`,       reward: { gem: 5 } },
+  // Q-Leap 124: 원정 미션 — 해금(Lv 10) 전 플레이어에겐 풀에서 제외 (generateDailyQuests)
+  { type: 'expedition', target: 1,  icon: '🗺', desc: t => `표창 원정 ${t}회 파견`,  reward: { gem: 4 } },
 ];
 
 // Mulberry32 — deterministic per-date seed
@@ -2418,14 +2420,18 @@ function questSeed(dateStr) {
 function todayString() { return dateKey(); }
 function generateDailyQuests(dateStr) {
   const rand = questSeed(dateStr);
+  // Expedition quests only for players who can actually start one — otherwise a locked
+  // player draws a quest that is impossible to progress all day. (Pool is evaluated at
+  // generation time; unlocking mid-day doesn't reshuffle — consistent with market/quests.)
+  const pool = QUEST_TEMPLATES.filter(t => t.type !== 'expedition' || isExpeditionUnlocked());
   // sample 3 distinct templates (by index)
-  const idxs = QUEST_TEMPLATES.map((_, i) => i);
+  const idxs = pool.map((_, i) => i);
   for (let i = idxs.length - 1; i > 0; i--) {
     const j = Math.floor(rand() * (i + 1));
     [idxs[i], idxs[j]] = [idxs[j], idxs[i]];
   }
   return idxs.slice(0, 3).map(i => {
-    const tpl = QUEST_TEMPLATES[i];
+    const tpl = pool[i];
     return { type: tpl.type, target: tpl.target, progress: 0, reward: { ...tpl.reward }, claimed: false };
   });
 }
@@ -3101,6 +3107,10 @@ function validateAndRepairState() {
     let mx = 0;
     for (const c of (Array.isArray(state.grid) ? state.grid : [])) if (c && isFinite(c.id)) mx = Math.max(mx, c.id);
     for (const c of (Array.isArray(state.storage) ? state.storage : [])) if (c && isFinite(c.id)) mx = Math.max(mx, c.id);
+    // expedition piece (Q-Leap 124) is the third off-grid location — omitting it here would
+    // let the re-derived counter collide with the piece's id when it returns to the grid.
+    const exP = state.expedition && state.expedition.piece;
+    if (exP && isFinite(exP.id)) mx = Math.max(mx, exP.id);
     state.nextShurikenId = mx + 1; repairs++;
   }
   const size = getGridSize();
@@ -3722,7 +3732,9 @@ function startExpedition(idx, tierIdx) {
   const t = EXPEDITION_TIERS[tierIdx];
   state.expedition = { piece: c, tier: tierIdx, startedAt: Date.now(), endsAt: Date.now() + t.minutes * 60000 };
   state.grid[idx] = null;
+  if (selectedIdx === idx) selectedIdx = -1; // piece left the grid — clear stale selection (sellShuriken parity)
   state.stats.expeditions = (state.stats.expeditions || 0) + 1;
+  addQuestProgress('expedition', 1);
   const durLabel = t.minutes >= 60 ? `${t.minutes / 60}시간` : `${t.minutes}분`;
   toast(`${t.icon} ${t.name} 출발 — Lv ${c.level} 표창 (${durLabel})`);
   addEvent('expedition', `${t.name} 출발 · Lv ${c.level} (${durLabel})`);
@@ -6632,6 +6644,7 @@ function renderTrophy() {
       ['🏭 누적 생성',       s.totalSpawned || 0],
       ['💸 누적 판매',       s.totalSold || 0],
       ['📈 시세 매도',       s.marketSells || 0],
+      ['🗺 원정 파견',       s.expeditions || 0],
       ['⚗ 변종 융합',        s.fusionsUsed || 0],
       ['🔱 표창 분할',       s.splitsUsed || 0],
       ['✦ 황금 코팅',        s.coatingsUsed || 0],

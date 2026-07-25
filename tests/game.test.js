@@ -2582,6 +2582,33 @@ group('expedition (Q-Leap 124)', () => {
   ok(RAW_HTML.includes('id="expedition-chip"'), 'expedition chip element present');
   ok(RAW_HTML.includes("getElementById('expedition-chip').addEventListener"), 'chip click handler wired');
   ok(C.ACHIEVEMENTS.some(a => a.id === 'a_exped_1') && C.ACHIEVEMENTS.some(a => a.id === 'a_exped_25'), 'expedition achievements registered');
+
+  // nextShurikenId re-derivation must cover the expedition piece (3rd off-grid location)
+  const s8 = withState({ bestLevel: 12, nextShurikenId: NaN,
+    grid: gridFrom([{ level: 3 }, null, null, null, null, null]),
+    expedition: { piece: { id: 50, level: 9, fireTimer: 0 }, tier: 1, startedAt: 1, endsAt: Date.now() + 1000 } });
+  F.validateAndRepairState();
+  ok(s8.nextShurikenId > 50, 'nextShurikenId re-derived above expedition piece id (no collision on return)');
+
+  // daily-quest integration: expedition template excluded before unlock, drawable after
+  withState({ bestLevel: C.EXPEDITION_UNLOCK_LV - 1 });
+  for (let d = 1; d <= 30; d++) {
+    const qs = F.generateDailyQuests(`2026-7-${d}`);
+    ok(qs.every(q => q.type !== 'expedition'), `no expedition quest before unlock (day ${d})`);
+  }
+  withState({ bestLevel: C.EXPEDITION_UNLOCK_LV });
+  let drawn = false;
+  for (let d = 1; d <= 30; d++) {
+    if (F.generateDailyQuests(`2026-7-${d}`).some(q => q.type === 'expedition')) { drawn = true; break; }
+  }
+  ok(drawn, 'expedition quest drawable once unlocked (deterministic date seeds)');
+
+  // startExpedition credits daily-quest progress
+  const s9 = withState({ bestLevel: 12, grid: gridFrom([9, null, null, null, null, null]),
+    dailyQuests: [{ type: 'expedition', target: 1, progress: 0, reward: { gem: 4 }, claimed: false }],
+    lastQuestDate: F.todayString() });
+  eq(F.startExpedition(0, 1), true, 'quest-wired start succeeds');
+  eq(s9.dailyQuests[0].progress, 1, 'expedition quest progress credited on departure');
 });
 
 // ---- helpers ----
