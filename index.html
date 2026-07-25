@@ -518,6 +518,26 @@
     color: #aaffcc; line-height: 1.3;
   }
 
+  /* Q-Leap 124: expedition status chip */
+  #expedition-chip {
+    width: 100%; max-width: 380px; margin-top: 2px;
+    background: linear-gradient(90deg, rgba(136,170,255,0.16), rgba(102,136,221,0.06));
+    border: 1px solid #88aaff88; border-radius: 8px;
+    padding: 4px 10px; text-align: center;
+    font-size: 11px; font-weight: 700;
+    color: #bbccff; line-height: 1.3; cursor: pointer;
+    user-select: none; -webkit-user-select: none;
+  }
+  #expedition-chip.done {
+    background: linear-gradient(90deg, rgba(255,217,102,0.22), rgba(204,153,51,0.08));
+    border-color: #ffd966aa; color: #ffe9a8;
+    animation: expeditionDonePulse 1.2s ease-in-out infinite;
+  }
+  @keyframes expeditionDonePulse {
+    0%, 100% { box-shadow: 0 0 4px rgba(255,217,102,0.25); }
+    50%      { box-shadow: 0 0 14px rgba(255,217,102,0.6); }
+  }
+
   /* Log modal — Q-Leap 52 */
   #log-modal {
     position: fixed; inset: 0; z-index: 252;
@@ -1522,6 +1542,7 @@
         <button id="meditation-btn" class="grid-action-btn" title="명상 모드 — 모든 자동화 ON">🧘 명상</button>
       </div>
       <div id="set-badges" title="표창 세트 효과 — 그리드 구성으로 활성화"></div>
+      <div id="expedition-chip" style="display:none;" title="표창 원정 — ℹ 정보 모드에서 표창을 탭해 파견 (Lv 10 해금)"></div>
       <div id="grid"></div>
       <div style="font-size:10px;color:#888;text-align:center;">
         같은 Lv 탭→탭 또는 <b>드래그</b>로 합체 · 길게누름 = 🔒 잠금<br>
@@ -2142,6 +2163,8 @@ function defaultState() {
     prestigeSpeedEnabled: false,
     // Q-Leap 74: 표창 보관소 — store up to 3 shurikens outside the grid
     storage: [],
+    // Q-Leap 124: 표창 원정 — 표창 1개를 실시간 파견 (그리드 이탈), 완료 후 수령
+    expedition: null,   // null | { piece, tier, startedAt, endsAt }
     // Q-Leap 75: 명상 모드 — toggles all auto-features simultaneously
     meditationMode: false,
     strategyMode: 'none', // Strategy Mode (전략): trade-off run modifier, prestige-tier
@@ -2357,6 +2380,8 @@ const ACHIEVEMENTS = [
   { id: 'a_daily_merge',  name: '하루의 정진',     icon: '📆', desc: '일일 합성 마일스톤 첫 달성', check: (s) => ((s.stats || {}).dailyMergeTiers || 0) >= 1 },
   { id: 'a_cashout',      name: '콤보 정산가',     icon: '🎁', desc: '콤보 캐시아웃 첫 발동',   check: (s) => ((s.stats || {}).comboCashouts || 0) >= 1 },
   { id: 'a_grade_s',      name: 'S급 진형',        icon: '🎌', desc: '진형 등급 S 달성',       check: (s) => !!(typeof getFormationGrade === 'function' && getFormationGrade().grade === 'S') },
+  { id: 'a_exped_1',      name: '원정의 시작',     icon: '🗺', desc: '표창 원정 첫 파견',      check: (s) => ((s.stats || {}).expeditions || 0) >= 1 },
+  { id: 'a_exped_25',     name: '원정대장',        icon: '🏔', desc: '표창 원정 25회 파견',    check: (s) => ((s.stats || {}).expeditions || 0) >= 25, gem: 8 },
 ];
 
 // Q-Leap 41: Daily quest templates. Generator picks 3 each day (seeded by date).
@@ -3108,6 +3133,23 @@ function validateAndRepairState() {
     if (typeof c.fireTimer !== 'number' || !isFinite(c.fireTimer)) c.fireTimer = 0;
     return true;
   });
+  // expedition (Q-Leap 124) — null or { piece, tier, endsAt }. A corrupt entry would crash
+  // the HUD chip (piece.level read) or claim NaN gold, so drop it wholesale when invalid —
+  // losing the piece is recoverable, a poisoned claim path is not.
+  if (state.expedition === undefined) state.expedition = null;
+  if (state.expedition !== null) {
+    const ex = state.expedition;
+    const p = ex && typeof ex === 'object' ? ex.piece : null;
+    const okPiece = p && typeof p === 'object' && typeof p.level === 'number' && isFinite(p.level) && p.level >= 1;
+    const okTier = typeof ex.tier === 'number' && !!EXPEDITION_TIERS[ex.tier];
+    const okEnd = typeof ex.endsAt === 'number' && isFinite(ex.endsAt) && ex.endsAt > 0;
+    if (!okPiece || !okTier || !okEnd) { state.expedition = null; repairs++; }
+    else {
+      p.level = Math.floor(p.level);
+      if (typeof p.id !== 'number' || !isFinite(p.id)) { p.id = state.nextShurikenId++; repairs++; }
+      if (typeof p.fireTimer !== 'number' || !isFinite(p.fireTimer)) p.fireTimer = 0;
+    }
+  }
   // numeric scalars must be finite + in-range.
   const fixNum = (key, min, fallback) => {
     if (typeof state[key] !== 'number' || !isFinite(state[key]) || state[key] < min) { state[key] = fallback; repairs++; }
@@ -3126,6 +3168,9 @@ function validateAndRepairState() {
   // bestLevel must be ≥ the highest level currently on the grid or in storage.
   for (const c of state.grid) if (c && c.level > state.bestLevel) { state.bestLevel = c.level; repairs++; }
   for (const c of state.storage) if (c && c.level > state.bestLevel) { state.bestLevel = c.level; repairs++; }
+  if (state.expedition && state.expedition.piece && state.expedition.piece.level > state.bestLevel) {
+    state.bestLevel = state.expedition.piece.level; repairs++;
+  }
   // runBestLevel (this-run frontier) is bestLevel's sibling — also validate it. Its advance sites
   // use `if (newLv > state.runBestLevel)`, so a corrupt NaN is never overwritten (NaN comparisons
   // are false) and renders literally as "이번 run Lv NaN" in the HUD. Clamp ≤ bestLevel.
@@ -3629,6 +3674,126 @@ function getUpgradeCost(u) {
   const lvl = state.upgrades[u.id];
   return Math.ceil(u.costBase * Math.pow(u.costMul, lvl));
 }
+
+// ── Q-Leap 124: 표창 원정 (Expedition) ──────────────────────────────────────
+// 표창 1개를 그리드에서 빼서 실시간으로 파견한다 (동시 1개). 파견 중엔 그 표창의
+// 패시브 골드·인접 시너지·별 오라·합성 재료 가치를 모두 잃는다 — 귀환 보상(프리미엄
+// 골드 + 💎 + 성장 확률)은 그 기회비용의 대가다. 오늘의 시세와 같은 "보유 vs 활용"
+// 결정 축이며, endsAt이 실시간 타임스탬프라 오프라인 중에도 진행된다(4h 캡의 밸브).
+// 골드는 수령 시점 배수로 계산(sellValue와 동일한 원칙) — 별도 영구 배수 없음.
+const EXPEDITION_UNLOCK_LV = 10; // bestLevel 게이트 (금 tier 도달)
+const EXPEDITION_TIERS = [
+  { id: 'scout', name: '정찰',   icon: '🗺', minutes: 10,  minLv: 5,  goldMul: 2.0, gem: 1, growChance: 0 },
+  { id: 'raid',  name: '원정',   icon: '⚔', minutes: 60,  minLv: 8,  goldMul: 2.5, gem: 3, growChance: 0.06 },
+  { id: 'grand', name: '대원정', icon: '🏔', minutes: 480, minLv: 12, goldMul: 3.0, gem: 7, growChance: 0.18 },
+];
+function isExpeditionUnlocked() { return (state.bestLevel || 1) >= EXPEDITION_UNLOCK_LV; }
+// 변종은 원정 💎 보상을 증폭 (희귀도 사다리와 정렬: 황금×2 < 별×3 < 검은×4, 곱연산).
+function expeditionVariantMul(c) {
+  let m = 1;
+  if (c && c.golden) m *= 2;
+  if (c && c.star)   m *= 3;
+  if (c && c.dark)   m *= 4;
+  return m;
+}
+// 귀환 골드 = 그 표창의 기본 패시브 기여(시너지/중앙 제외) × 파견 시간 × tier 프리미엄.
+// 온라인 기준 순이익은 (goldMul−1)×기여분 — 그리드에 두는 것과 항상 맞비교되는 구조.
+function getExpeditionGold(level, tierIdx) {
+  const t = EXPEDITION_TIERS[tierIdx];
+  if (!t) return 0;
+  const rate = 0.5 * Math.pow(2, level - 1) * getGoldMul() * getPassiveGoldBonus();
+  return Math.floor(rate * t.minutes * 60 * t.goldMul);
+}
+function getExpeditionGem(c, tierIdx) {
+  const t = EXPEDITION_TIERS[tierIdx];
+  return t ? Math.round(t.gem * expeditionVariantMul(c)) : 0;
+}
+function canSendExpedition(c, tierIdx) {
+  const t = EXPEDITION_TIERS[tierIdx];
+  return !!(t && c && !c.locked && !state.expedition && isExpeditionUnlocked() && c.level >= t.minLv);
+}
+function getExpeditionRemainingSec() {
+  if (!state.expedition) return 0;
+  return Math.max(0, Math.ceil((state.expedition.endsAt - Date.now()) / 1000));
+}
+function startExpedition(idx, tierIdx) {
+  const c = state.grid[idx];
+  if (!canSendExpedition(c, tierIdx)) return false;
+  const t = EXPEDITION_TIERS[tierIdx];
+  state.expedition = { piece: c, tier: tierIdx, startedAt: Date.now(), endsAt: Date.now() + t.minutes * 60000 };
+  state.grid[idx] = null;
+  state.stats.expeditions = (state.stats.expeditions || 0) + 1;
+  const durLabel = t.minutes >= 60 ? `${t.minutes / 60}시간` : `${t.minutes}분`;
+  toast(`${t.icon} ${t.name} 출발 — Lv ${c.level} 표창 (${durLabel})`);
+  addEvent('expedition', `${t.name} 출발 · Lv ${c.level} (${durLabel})`);
+  sfx('move');
+  renderGrid();
+  refreshUI();
+  checkAchievements();
+  save();
+  return true;
+}
+// 원정 성장처럼 합성이 아닌 경로로 새 레벨에 도달했을 때의 기록 처리.
+// tryMerge의 신기록 블록과 같은 패턴 (jump-safe: 건너뛴 레벨 전부 보상/도감 등록).
+function noteLevelReached(newLv) {
+  if (newLv > state.bestLevel) {
+    const prevBest = state.bestLevel;
+    state.bestLevel = newLv;
+    const evenCrossed = Math.floor(newLv / 2) - Math.floor(prevBest / 2);
+    if (evenCrossed > 0) state.gem += evenCrossed;
+    setTimeout(() => showRecordOverlay(newLv), 720);
+    for (let L = prevBest + 1; L <= newLv; L++) triggerMilestone(L);
+    for (let L = prevBest + 1; L <= newLv; L++) registerCodex(L);
+    announceTranscendIfNeeded(newLv, prevBest);
+  }
+  if (newLv > state.runBestLevel) state.runBestLevel = newLv;
+  registerCodex(newLv);
+}
+function claimExpedition() {
+  const ex = state.expedition;
+  if (!ex || getExpeditionRemainingSec() > 0) return false;
+  const empties = emptySlots();
+  if (empties.length === 0) { toast('그리드 가득 — 공간을 비워야 귀환합니다'); return false; }
+  const t = EXPEDITION_TIERS[ex.tier];
+  const piece = ex.piece;
+  const gold = getExpeditionGold(piece.level, ex.tier);
+  const gem = getExpeditionGem(piece, ex.tier);
+  state.gold += gold;
+  state.stats.totalGoldEarned = (state.stats.totalGoldEarned || 0) + gold;
+  state.gem = (state.gem || 0) + gem;
+  let grew = false;
+  if (t.growChance > 0 && Math.random() < t.growChance) {
+    piece.level += 1;
+    grew = true;
+    noteLevelReached(piece.level);
+  }
+  const targetIdx = empties[0];
+  piece.fireTimer = 0;
+  state.grid[targetIdx] = piece;
+  state.expedition = null;
+  state.stats.expeditionsClaimed = (state.stats.expeditionsClaimed || 0) + 1;
+  toast(`${t.icon} 귀환! 💰+${fmt(gold)} · 💎+${gem}${grew ? ` · 🌟 Lv ${piece.level} 성장!` : ''}`);
+  addEvent('expedition', `${t.name} 귀환 · 💰${fmt(gold)} · 💎${gem}${grew ? ' · 성장 +1' : ''}`);
+  sfx('mergeGold');
+  flashCell(targetIdx);
+  if (grew) flashJumpScreen(2);
+  renderGrid();
+  refreshUI();
+  checkAchievements();
+  save();
+  return true;
+}
+document.getElementById('expedition-chip').addEventListener('click', () => {
+  getAudio();
+  if (!state.expedition) return;
+  const remain = getExpeditionRemainingSec();
+  if (remain > 0) {
+    const exT = EXPEDITION_TIERS[state.expedition.tier];
+    toast(`${exT.icon} ${exT.name} 진행 중 — ${fmtPlaytime(remain)} 남음`);
+    return;
+  }
+  claimExpedition();
+});
 
 // ---------- Grid Operations ----------
 function emptySlots() {
@@ -4310,6 +4475,27 @@ function updateHUD() {
     const mktTag = ` <span style="color:#7fd6a0">· 📈 시세 Lv ${getMarketLevel()} ×${getMarketMul()}</span>`; // 오늘의 시세
     if (wb.label) wkBanner.innerHTML = `${wb.icon} ${wb.label}${stratTag}${mktTag}`;
     else          wkBanner.innerHTML = `📈 오늘의 시세 Lv ${getMarketLevel()} ×${getMarketMul()}${stratTag}`;
+  }
+  // Q-Leap 124: expedition status chip — per-frame pass, but DOM writes are gated by a
+  // signature (remaining-sec granularity) so it repaints at most once per second.
+  const exChip = document.getElementById('expedition-chip');
+  if (exChip) {
+    if (state.expedition) {
+      const exT = EXPEDITION_TIERS[state.expedition.tier];
+      const remain = getExpeditionRemainingSec();
+      const sig = remain > 0 ? 'run:' + remain : 'done';
+      if (exChip._sig !== sig) {
+        exChip._sig = sig;
+        exChip.style.display = '';
+        exChip.classList.toggle('done', remain <= 0);
+        exChip.innerHTML = remain > 0
+          ? `${exT.icon} ${exT.name} 중 · Lv ${state.expedition.piece.level} · ⏳ ${fmtPlaytime(remain)}`
+          : `${exT.icon} ${exT.name} 완료! <b>탭하여 귀환 수령</b>`;
+      }
+    } else if (exChip._sig !== 'off') {
+      exChip._sig = 'off';
+      exChip.style.display = 'none';
+    }
   }
   // Q-Leap 95: set-effect badges
   const setBadges = document.getElementById('set-badges');
@@ -5868,6 +6054,10 @@ function renderPrestige() {
           ['윤회 도전',         state.trialActive ? `${Math.ceil(state.trialTimer)}초 남음` : '미진행'],
           ['콤보 최고',         (state.stats.bestCombo || 0) + 'x'],
         ];
+        if (state.expedition) {
+          const exT = EXPEDITION_TIERS[state.expedition.tier];
+          rows.push(['⚠ 원정 중', `<span style="color:#ffaa66">${exT.icon} Lv ${state.expedition.piece.level} 소멸 (보상 포기)</span>`]);
+        }
         summary.innerHTML = rows.map(([k, v]) =>
           `<div style="display:flex;justify-content:space-between;"><span style="color:#aaa;">${k}</span><span style="color:#fff;font-weight:700;">${v}</span></div>`
         ).join('');
@@ -5924,6 +6114,9 @@ function doPrestige() {
   // Storage is an off-grid extension of the board → must reset with the grid, otherwise it
   // bypasses the prestige wipe and undermines the paid 계승(inheritance) skill.
   state.storage = [];
+  // Expedition is likewise off-grid board state — an active expedition would smuggle a
+  // high-level piece (+ its claim rewards) across the wipe. The prestige modal warns first.
+  state.expedition = null;
   state.blessedIdx = -1;
   state.blessedTimer = 0;
   state._claimedLines = {}; // Q-Leap 92
@@ -6649,6 +6842,20 @@ function showShurikenInfo(idx) {
     else if (c.star && countVariant('star') >= 3) fuseKind = 'star';
   }
   const fuseLabel = fuseKind === 'golden' ? '✨ 황금 3개 → ★ 별 1개' : '✨ 별 3개 → 🌑 검은 1개';
+  // Q-Leap 124: expedition send buttons — one per tier this piece qualifies for
+  let expedHtml = '';
+  if (!c.locked && isExpeditionUnlocked()) {
+    if (state.expedition) {
+      expedHtml = '<div class="info-row" style="color:#8899cc;font-size:11px;">🗺 원정 진행 중 — 귀환 후 재파견 가능</div>';
+    } else {
+      const btns = EXPEDITION_TIERS.map((t, i) => {
+        if (c.level < t.minLv) return '';
+        const durLabel = t.minutes >= 60 ? `${t.minutes / 60}시간` : `${t.minutes}분`;
+        return `<button class="info-exped-btn" data-tier="${i}" title="예상 보상: 💰${fmt(getExpeditionGold(c.level, i))} + 💎${getExpeditionGem(c, i)}${t.growChance > 0 ? ` · 성장 ${Math.round(t.growChance * 100)}%` : ''}" style="flex:1;padding:8px 4px;border-radius:8px;background:linear-gradient(180deg,#7f96e0,#4a5fae);border:none;color:#fff;font-family:inherit;font-weight:800;font-size:11px;cursor:pointer;line-height:1.4;">${t.icon} ${t.name}<br><span style="font-weight:600;font-size:10px;opacity:0.85;">${durLabel} · 💎${getExpeditionGem(c, i)}</span></button>`;
+      }).join('');
+      if (btns) expedHtml = `<div style="display:flex;gap:5px;margin-top:6px;" title="원정 — 표창을 파견해 프리미엄 골드+💎 획득. 파견 중엔 그리드에서 사라짐">${btns}</div>`;
+    }
+  }
   document.getElementById('info-body').innerHTML = `
     <div class="info-row"><span class="if-k">현재 골드율</span><span class="if-v">${!isFinite(baseGoldRate) ? '∞' : baseGoldRate < 1000 ? baseGoldRate.toFixed(1) : fmt(baseGoldRate)} / 초${idx === getCenterIndex() ? ' <span style="color:#ffd966">◈중앙+25%</span>' : ''}</span></div>
     <div class="info-row"><span class="if-k">골드 기여</span><span class="if-v">${(getPieceGoldShare(idx) * 100).toFixed(1)}%</span></div>
@@ -6659,9 +6866,17 @@ function showShurikenInfo(idx) {
     ${c.star ? '<div class="info-row" style="color:#ddaaff;font-size:11px;">★ 그리드에 있으면 spawn ×1.43</div>' : ''}
     ${c.dark ? '<div class="info-row" style="color:#cc99ff;font-size:11px;">🌑 합성 시 인접 같은 Lv 흡수 (+1 추가)</div>' : ''}
     ${fuseKind ? `<button id="info-fuse-btn" style="width:100%;padding:9px;margin-top:6px;border-radius:8px;background:linear-gradient(180deg,#c89bff,#8a5cd0);border:none;color:#fff;font-family:inherit;font-weight:800;font-size:12px;cursor:pointer;">${fuseLabel}</button>` : ''}
+    ${expedHtml}
     ${canStore ? `<button id="info-store-btn" style="width:100%;padding:9px;margin-top:6px;border-radius:8px;background:linear-gradient(180deg,#88ccaa,#44886a);border:none;color:#fff;font-family:inherit;font-weight:800;font-size:12px;cursor:pointer;">📦 보관소로 이동 (${(state.storage || []).length}/3)</button>` : ''}
     ${!c.locked ? `<button id="info-sell-btn" style="width:100%;padding:9px;margin-top:6px;border-radius:8px;background:linear-gradient(180deg,#ffaa66,#cc7733);border:none;color:#fff;font-family:inherit;font-weight:800;font-size:12px;cursor:pointer;">💸 판매 (💰 ${fmt(sellVal)})${isMarketLv ? ' <span style="color:#ddffdd">📈시세×' + getMarketMul() + '</span>' : ''}</button>` : ''}
   `;
+  document.getElementById('info-body').querySelectorAll('.info-exped-btn').forEach((b) => {
+    b.addEventListener('click', () => {
+      getAudio();
+      if (!_infoModalPieceValid()) return; // grid changed under the modal → don't send the wrong piece
+      if (startExpedition(_infoModalIdx, +b.dataset.tier)) document.getElementById('info-modal').classList.remove('show');
+    });
+  });
   const fuseBtn = document.getElementById('info-fuse-btn');
   if (fuseBtn) fuseBtn.addEventListener('click', () => {
     getAudio();
@@ -6982,6 +7197,7 @@ const HELP_SECTIONS = {
     { title: '🎌 진형 등급', body: '그리드 평균 Lv ÷ 최고 Lv 비율로 S/A/B/C 등급. 헤더에 실시간 표시. 약한 표창을 정리할수록 등급↑.' },
     { title: '🎁 콤보 캐시아웃', body: '콤보 ×10 이상으로 끝나면 <span class="hk">정점²×5×골드배수</span> 골드 정산 지급.' },
     { title: '📈 오늘의 시세', body: '매일 자정 한 Lv이 <span class="hk">판매 ×2~4 프리미엄</span> (요일 배너에 표시, 날짜 시드). 해당 Lv 표창을 그날 팔면 보너스 골드 — 단 표창은 소비되어 합성/패시브를 잃으므로 <span class="hk">팔까 키울까</span> 타이밍 결정. 변종 배수와 곱연산.' },
+    { title: '🗺 표창 원정', body: 'Lv 10 해금. <span class="hk">ℹ 정보 모드</span>로 표창을 탭해 파견 (동시 1개): 정찰 10분(Lv5+)/원정 1시간(Lv8+)/대원정 8시간(Lv12+). 파견 중엔 그리드에서 사라져 패시브·시너지·합성 재료를 잃지만, 귀환 시 <span class="hk">×2~3 프리미엄 골드 + 💎</span> (변종은 💎 ×2~4배). 대원정은 <span class="hk">Lv +1 성장 18%</span>. 오프라인에도 진행 — 자기 전 대원정이 정석. 윤회 시 원정 중인 표창은 소멸(보상 포기) 주의.' },
   ],
   missions: [
     { title: '📋 일일 미션', body: '매일 자정 9종 중 3개 무작위. 보석 3~6 보상. <span class="hk">매일 다른 조합</span> (date-seeded). 3개 전부 완료 시 추가 보너스.' },

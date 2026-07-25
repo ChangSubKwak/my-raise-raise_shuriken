@@ -2484,6 +2484,106 @@ group('grid size scaling', () => {
   eq(F.getGridSize(), 9, 'grid grows +1/level');
 });
 
+group('expedition (Q-Leap 124)', () => {
+  const T = C.EXPEDITION_TIERS;
+  eq(T.length, 3, 'three expedition tiers');
+  ok(T[0].minutes < T[1].minutes && T[1].minutes < T[2].minutes, 'tier durations ascend');
+  ok(T[0].minLv < T[1].minLv && T[1].minLv < T[2].minLv, 'tier min levels ascend');
+  ok(T[0].goldMul < T[1].goldMul && T[1].goldMul < T[2].goldMul, 'tier gold premiums ascend');
+  ok(T[0].growChance === 0 && T[2].growChance > T[1].growChance, 'grow chance: none on scout, best on grand');
+
+  // unlock gate
+  withState({ bestLevel: C.EXPEDITION_UNLOCK_LV - 1 });
+  eq(F.isExpeditionUnlocked(), false, 'locked below unlock level');
+  withState({ bestLevel: C.EXPEDITION_UNLOCK_LV });
+  eq(F.isExpeditionUnlocked(), true, 'unlocked at gate level');
+
+  // variant gem multiplier ladder
+  eq(F.expeditionVariantMul({}), 1, 'plain piece variant mul 1');
+  eq(F.expeditionVariantMul({ golden: true }), 2, 'golden ×2');
+  eq(F.expeditionVariantMul({ star: true }), 3, 'star ×3');
+  eq(F.expeditionVariantMul({ dark: true }), 4, 'dark ×4');
+  eq(F.expeditionVariantMul({ golden: true, star: true, dark: true }), 24, 'stacked variants multiply');
+
+  // gold formula: piece passive weight × duration × premium, claim-time multipliers
+  withState({ bestLevel: 12 });
+  for (const [lv, ti] of [[5, 0], [8, 1], [12, 2]]) {
+    const expect = Math.floor(0.5 * Math.pow(2, lv - 1) * F.getGoldMul() * F.getPassiveGoldBonus() * T[ti].minutes * 60 * T[ti].goldMul);
+    eq(F.getExpeditionGold(lv, ti), expect, `gold reward formula (lv ${lv}, tier ${ti})`);
+  }
+  eq(F.getExpeditionGold(5, 99), 0, 'invalid tier → 0 gold');
+  eq(F.getExpeditionGem({ star: true }, 1), T[1].gem * 3, 'gem reward scales with variant');
+
+  // eligibility gating
+  withState({ bestLevel: 12 });
+  eq(F.canSendExpedition({ id: 1, level: 4, fireTimer: 0 }, 0), false, 'below tier minLv blocked');
+  eq(F.canSendExpedition({ id: 1, level: 5, fireTimer: 0 }, 0), true, 'at tier minLv allowed');
+  eq(F.canSendExpedition({ id: 1, level: 20, fireTimer: 0, locked: true }, 0), false, 'locked piece blocked');
+  withState({ bestLevel: 9 });
+  eq(F.canSendExpedition({ id: 1, level: 20, fireTimer: 0 }, 0), false, 'blocked before unlock');
+
+  // start → grid slot freed, state set, stat credited
+  const s1 = withState({ bestLevel: 12, grid: gridFrom([8, null, null, null, null, null]) });
+  eq(F.startExpedition(0, 1), true, 'startExpedition succeeds');
+  eq(s1.grid[0], null, 'piece removed from grid');
+  ok(s1.expedition && s1.expedition.piece.level === 8 && s1.expedition.tier === 1, 'expedition state holds the piece');
+  eq(s1.stats.expeditions, 1, 'departure stat credited');
+  ok(F.getExpeditionRemainingSec() > 0, 'remaining time counts down from full duration');
+  eq(F.canSendExpedition({ id: 9, level: 20, fireTimer: 0 }, 0), false, 'second concurrent expedition blocked');
+  eq(F.claimExpedition(), false, 'cannot claim before completion');
+
+  // claim: rewards granted, piece returns to first empty slot
+  s1.expedition.endsAt = Date.now() - 1000;
+  const expGold = F.getExpeditionGold(8, 1);
+  const gem0 = s1.gem;
+  eq(F.claimExpedition(), true, 'claim succeeds after completion');
+  eq(s1.expedition, null, 'expedition cleared after claim');
+  ok(s1.grid[0] && s1.grid[0].level >= 8, 'piece returned to grid');
+  ok(s1.gold >= expGold, 'premium gold granted');
+  ok(s1.gem >= gem0 + T[1].gem, 'gem reward granted');
+  eq(s1.stats.expeditionsClaimed, 1, 'claim stat credited');
+
+  // claim blocked while grid is full (grid-full tension applies to returns too)
+  const s2 = withState({ bestLevel: 12, grid: gridFrom([3, 3, 3, 3, 3, 3]),
+    expedition: { piece: { id: 99, level: 8, fireTimer: 0 }, tier: 0, startedAt: Date.now() - 1000, endsAt: Date.now() - 1 } });
+  eq(F.claimExpedition(), false, 'claim blocked on full grid');
+  ok(s2.expedition !== null, 'expedition preserved until space is freed');
+
+  // grand-tier growth: force the roll, verify record bookkeeping (noteLevelReached)
+  const realRandom = Math.random;
+  Math.random = () => 0; // always below growChance
+  const s3 = withState({ bestLevel: 12, runBestLevel: 12, grid: gridFrom([null, null, null, null, null, null]),
+    expedition: { piece: { id: 7, level: 12, fireTimer: 0 }, tier: 2, startedAt: 1, endsAt: Date.now() - 1 } });
+  eq(F.claimExpedition(), true, 'grand claim succeeds');
+  Math.random = realRandom;
+  eq(s3.grid[0].level, 13, 'grand expedition grew the piece +1');
+  eq(s3.bestLevel, 13, 'growth past record updates bestLevel');
+  ok(s3.codex && s3.codex[13], 'grown level registered in codex');
+
+  // save integrity: corrupt expedition dropped, valid one survives
+  const s4 = withState({ expedition: { piece: { level: 'x' }, tier: 0, endsAt: Date.now() } });
+  F.validateAndRepairState();
+  eq(s4.expedition, null, 'corrupt expedition piece → dropped');
+  const s5 = withState({ expedition: { piece: { id: 1, level: 9, fireTimer: 0 }, tier: 99, endsAt: Date.now() } });
+  F.validateAndRepairState();
+  eq(s5.expedition, null, 'invalid tier → dropped');
+  const s6 = withState({ bestLevel: 3, expedition: { piece: { id: 1, level: 9, fireTimer: 0 }, tier: 1, startedAt: 1, endsAt: Date.now() + 1000 } });
+  F.validateAndRepairState();
+  ok(s6.expedition !== null, 'valid expedition survives repair');
+  eq(s6.bestLevel, 9, 'bestLevel raised to cover the expedition piece (grid/storage parity)');
+
+  // prestige wipes the off-grid expedition (storage parity — no smuggling across 윤회)
+  const s7 = withState({ bestLevel: 12, gold: 5000,
+    expedition: { piece: { id: 1, level: 9, fireTimer: 0 }, tier: 1, startedAt: 1, endsAt: Date.now() + 1000 } });
+  F.doPrestige();
+  eq(s7.expedition, null, 'prestige clears active expedition');
+
+  // structural guards: chip element + handler wiring exist in the HTML
+  ok(RAW_HTML.includes('id="expedition-chip"'), 'expedition chip element present');
+  ok(RAW_HTML.includes("getElementById('expedition-chip').addEventListener"), 'chip click handler wired');
+  ok(C.ACHIEVEMENTS.some(a => a.id === 'a_exped_1') && C.ACHIEVEMENTS.some(a => a.id === 'a_exped_25'), 'expedition achievements registered');
+});
+
 // ---- helpers ----
 function defaultUpgrades() {
   return { maxShuriken: 0, spawnRate: 0, spawnBatch: 0, firerate: 0, baseDmg: 0, goldMul: 0, spawnLevel: 0, luckChance: 0 };

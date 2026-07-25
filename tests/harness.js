@@ -107,8 +107,10 @@ function loadGame() {
     getNextAchievementMilestone, getAchievementGem, getNextCodexMilestone, getNextPrestigeMilestone,
     tryVariantFusion, countVariant, countAdjacentSameLevel,
     getStrategyMode, getStrategyGoldMul, getStrategySpawnMul, getStrategyVariantMul,
+    isExpeditionUnlocked, expeditionVariantMul, getExpeditionGold, getExpeditionGem,
+    canSendExpedition, getExpeditionRemainingSec, startExpedition, claimExpedition, noteLevelReached,
   },
-  consts: { FRENZY_MAX, FRENZY_DURATION, TRANSCEND_BASE, DAILY_CHALLENGE_TARGET, SET_DEFS, ACHIEVEMENTS, LEVEL_NAMES, TRANSCEND_NAMES_61_80 },
+  consts: { FRENZY_MAX, FRENZY_DURATION, TRANSCEND_BASE, DAILY_CHALLENGE_TARGET, SET_DEFS, ACHIEVEMENTS, LEVEL_NAMES, TRANSCEND_NAMES_61_80, EXPEDITION_TIERS, EXPEDITION_UNLOCK_LV },
 };
 `;
 
