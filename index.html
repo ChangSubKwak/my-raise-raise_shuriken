@@ -32,10 +32,20 @@
   #hud {
     padding: 8px 12px; display: flex; justify-content: space-between; align-items: center;
     background: rgba(10,10,20,0.6); font-size: 13px; font-weight: 700;
+    /* wrap: width:100% 배너(도전/요일)가 각자 한 줄을 온전히 차지하게 — nowrap이면
+       flex-shrink로 우겨넣어져 협소 화면에서 텍스트가 서로 겹친다 (감사 v3.75.1) */
+    flex-wrap: wrap;
   }
   #hud .stage-name { color: #ffd966; font-size: 15px; }
   #hud .gold { color: #ffd966; }
   #hud .gem  { color: #a8e6ff; }
+  /* 협소 화면: 긴 초월 명칭(예: 천외천(天外天) (Lv 78))이 4줄로 감기던 혼잡 완화 */
+  @media (max-width: 400px) {
+    #hud { padding: 6px 8px; font-size: 12px; }
+    #hud .stage-name { font-size: 12px; max-width: 46%; line-height: 1.25; }
+    /* 도전/요일 배너가 한 줄에 우겨넣어져 서로 겹쳐 보이던 문제 — 각자 전체 폭 한 줄로 */
+    #hud #daily-challenge-banner, #hud #weekday-banner { flex: 1 1 100%; }
+  }
 
   /* (v3.36) #wave-bar/#wave-fill CSS removed — orphaned combat-era top progress bar, no element. */
 
@@ -1011,9 +1021,17 @@
     background: linear-gradient(180deg, #11111e 0%, #0a0a16 100%);
     padding: 12px; flex: 1.5; display: flex; flex-direction: column; gap: 8px;
     align-items: center; justify-content: center;
+    /* 콘텐츠가 배정 높이를 넘으면 center는 '위쪽으로도' 오버플로해 HUD/배너를 덮는다
+       (협소 화면에서 버튼·배지가 겹쳐 보이던 원인). safe center = 넘칠 땐 start로 폴백. */
+    justify-content: safe center;
     border-top: 1px solid #2a2a3e;
     transition: background 0.3s;
     min-height: 0; /* allow flex shrink; the stage itself scrolls if content overflows */
+  }
+  /* 모바일: grid-wrap을 고정 몫(flex 1.5)에 가두면 내용이 아래로 넘쳐 스폰 바를 덮는다 —
+     내용 크기대로 흐르게 하고 스크롤은 #stage가 담당. (본 규칙 뒤에 두어야 flex:1.5를 이김) */
+  @media (max-width: 800px) {
+    #grid-wrap { flex: 0 0 auto; }
   }
   /* Header wraps cleanly; secondary buttons live in a collapsible ☰ menu so the
      header stays compact and never overflows into adjacent UI. */
@@ -1226,12 +1244,12 @@
     border-top: 1px solid #2a2a3e;
     align-items: stretch; flex-shrink: 0;
   }
-  /* keep the progress bar dominant; controls wrap beneath it on narrow widths
-     so the auto-merge / burn buttons are never clipped off the row. */
   /* progress bar takes the full first row; controls wrap beneath so the
-     auto-merge / burn buttons are never clipped off the row on narrow widths. */
+     auto-merge / forge buttons are never clipped off the row on narrow widths.
+     (감사 v3.75.1: v3.74 제거 수술이 이 규칙의 선언 블록 줄을 지워 앞 선택자들이
+     아래 progress-wrap 규칙에 병합됐었다 — 컨트롤들이 전부 100% 폭으로 세로 적층) */
   #spawn-bar > #instant-spawn-btn,
-  #spawn-bar > .auto-merge-group,
+  #spawn-bar > .auto-merge-group { flex: 1 1 auto; }
   #spawn-progress-wrap {
     flex: 1 1 100%; display: flex; flex-direction: column; gap: 4px; justify-content: center;
     cursor: pointer; user-select: none; padding: 4px 6px; border-radius: 8px;
@@ -2273,8 +2291,7 @@ function defaultState() {
     // Combo (chain merges) — not persisted; reset on load
     comboCount: 0,
     comboTimer: 0,
-    // Burning mode — temporary boosted state
-    burningTimer: 0,
+    burningTimer: 0, // legacy (T1b v3.74: 버닝 제거 — 세이브 호환용 무해 필드, 로드/윤회 시 0)
     // Blessed cell — Q-Leap 38: random grid cell becomes blessed every 30s, grants merge bonuses
     blessedIdx: -1,
     blessedTimer: 0, // seconds until reroll; 0 → pick new immediately
@@ -3083,8 +3100,7 @@ function load() {
     // Run-transient chain state must NOT survive a reload. The defaultState comments mark these
     // "reset on load", and doPrestige zeroes the same fields for "a fresh run starts clean".
     // Unlike frenzy/goldRush (intentionally persisted above), a stale comboCount would inflate
-    // the first post-reload merge's gold (comboMult = 1+(combo-1)*0.2) and a burning buff would
-    // resume after an arbitrarily long offline gap. Object.assign(defaultState(), s) had copied
+    // the first post-reload merge's gold (comboMult = 1+(combo-1)*0.2). Object.assign had copied
     // them back verbatim — clear them to honor the documented invariant + match prestige parity.
     state.comboCount = 0;
     state.comboTimer = 0;
@@ -4116,7 +4132,7 @@ function tryMerge(fromIdx, toIdx, isAuto) {
   if (a.level === b.level) {
     // Jump merge — small chance of +N levels (원작 패턴)
     // Lucky-chance upgrade adds +1% per Lv (cap 10) to the +2 threshold.
-    // Burning mode doubles all jump probabilities.
+    // 폭주 중엔 모든 점프 확률 ×2 (T1b: 버닝에서 흡수).
     const luckBonus = (state.upgrades.luckChance || 0) * 0.01
                     + getSkillLv('fate') * 0.008 // fate skill: +0.8%/Lv
                     + (weekdayBonus().luckPlus || 0) // Q-Leap 87
@@ -4530,7 +4546,11 @@ function _schedulePluck() {
   const delay = (p.pluckMin + Math.random() * (p.pluckMax - p.pluckMin)) * 1000;
   _music.pluckTimer = setTimeout(() => {
     if (!_music || !_audio) return;
-    try { _playPluck(_audio, getAmbienceParams()); } catch (e) {}
+    // 감사 v3.75.1: 컨텍스트가 suspended면 currentTime이 0에 얼어붙어 플럭들이 같은
+    // 시각에 누적 예약된다 — 첫 제스처의 resume()에서 한꺼번에 터지는 폭음. 건너뛴다.
+    if (_audio.state !== 'suspended') {
+      try { _playPluck(_audio, getAmbienceParams()); } catch (e) {}
+    }
     _schedulePluck();
   }, delay);
 }
@@ -4561,8 +4581,21 @@ function startAmbience() {
     };
     _music = { pad1: mkPad(-5), pad2: mkPad(5), filter, padGain, pluckTimer: 0 };
     _schedulePluck();
-  } catch (e) { _music = null; }
+  } catch (e) {
+    // 부분 생성된 노드가 _musicGain에 연결된 채 남지 않게 정리 (감사 v3.75.1)
+    try { if (typeof filter !== 'undefined') filter.disconnect(); } catch (e2) {}
+    try { if (typeof padGain !== 'undefined') padGain.disconnect(); } catch (e2) {}
+    _music = null;
+  }
 }
+// 감사 v3.75.1: 백그라운드 탭에선 rAF가 멈춰 패드가 낡은 음높이로 무한 드론 — 탭이
+// 숨겨지면 정취를 내리고, 돌아오면 새 상태로 다시 시작 (suspended 폭음 완화도 겸함)
+document.addEventListener('visibilitychange', () => {
+  try {
+    if (document.hidden) stopAmbience();
+    else if (state.musicEnabled && _audio) startAmbience();
+  } catch (e) {}
+});
 function stopAmbience() {
   if (!_music) return;
   clearTimeout(_music.pluckTimer);
@@ -4760,7 +4793,7 @@ function update(dt) {
     playTimeFractional -= sec;
   }
 
-  // auto merge — gated by unlock; burning mode bypasses the gate temporarily.
+  // auto merge — gated by unlock.
   // Q-Leap 125: 수공의 층 — 자동 합성 금지 (제약 런의 요점: 손 합성만).
   const autoMergeActive = (state.autoMerge && state.autoMergeUnlocked) && !isTowerAutoBanned(); // (T1b: 버닝 우회 제거)
   if (autoMergeActive) {
@@ -6220,7 +6253,7 @@ function renderStats() {
   if (el('stat-playtime')) el('stat-playtime').textContent = fmtPlaytime(s.playTimeSec || 0);
   // Composite progression score: 4 axes averaged
   //   bestLevel / 30, achievements unlocked, totalMerges / 2000, prestigeCount / 5
-  const achvCount = Object.keys(state.achievements || {}).length;
+  const achvCount = ACHIEVEMENTS.filter(a => (state.achievements || {})[a.id]).length; // 고아 키(제거된 실적) 제외
   const score = (
     Math.min(1, (state.bestLevel || 0) / 30) +
     Math.min(1, achvCount / ACHIEVEMENTS.length) +
@@ -7089,7 +7122,7 @@ function renderTrophy() {
   // tab active state
   document.querySelectorAll('.trophy-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === trophyTab));
   if (trophyTab === 'achievements') {
-    const unlocked = Object.keys(state.achievements || {}).length;
+    const unlocked = ACHIEVEMENTS.filter(a => (state.achievements || {})[a.id]).length; // 고아 키 제외 (107/106 방지)
     progress.textContent = `명예 ${unlocked} / ${ACHIEVEMENTS.length}`;
     let html = '<div class="ach-grid">';
     for (const a of ACHIEVEMENTS) {
@@ -7553,7 +7586,7 @@ document.getElementById('automation-modal').addEventListener('click', (e) => {
 // Q-Leap 100: Hall of Fame
 function renderHallOfFame() {
   const s = state.stats || {};
-  const achUnlocked = Object.keys(state.achievements || {}).length;
+  const achUnlocked = ACHIEVEMENTS.filter(a => (state.achievements || {})[a.id]).length; // 고아 키 제외
   const codexN = Object.keys(state.codex || {}).length;
   const trans = getTranscendence();
   const goal = getNextGoal(); // Q-Leap 117
