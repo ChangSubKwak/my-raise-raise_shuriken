@@ -109,11 +109,11 @@ function loadGame() {
     getStrategyMode, getStrategyGoldMul, getStrategySpawnMul, getStrategyVariantMul,
     isExpeditionUnlocked, expeditionVariantMul, getExpeditionGold, getExpeditionGem,
     canSendExpedition, getExpeditionRemainingSec, startExpedition, claimExpedition, noteLevelReached,
-    isTowerUnlocked, getTowerFloorDef, getActiveTowerFloor, getNextTowerFloor,
+    isTowerUnlocked, getTowerFloorDef, getDeepFloorDef, getActiveTowerFloor, getNextTowerFloor,
     getTowerSpawnMul, getTowerGoldMul, isTowerAutoBanned, isTowerRitualBanned, isTowerSpawnLv1,
     checkTowerProgress, abandonTower,
   },
-  consts: { FRENZY_MAX, FRENZY_DURATION, TRANSCEND_BASE, DAILY_CHALLENGE_TARGET, SET_DEFS, ACHIEVEMENTS, LEVEL_NAMES, TRANSCEND_NAMES_61_80, EXPEDITION_TIERS, EXPEDITION_UNLOCK_LV, TOWER_FLOORS, TOWER_UNLOCK_PRESTIGE },
+  consts: { FRENZY_MAX, FRENZY_DURATION, TRANSCEND_BASE, DAILY_CHALLENGE_TARGET, SET_DEFS, ACHIEVEMENTS, LEVEL_NAMES, TRANSCEND_NAMES_61_80, EXPEDITION_TIERS, EXPEDITION_UNLOCK_LV, TOWER_FLOORS, TOWER_UNLOCK_PRESTIGE, TOWER_DEEP_PATTERNS, TOWER_MAX_FLOOR },
 };
 `;
 

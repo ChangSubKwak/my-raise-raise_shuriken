@@ -2692,14 +2692,15 @@ group('trial tower (Q-Leap 125)', () => {
   F.doPrestige();
   eq(s7.towerActive, 0, 'no tower entry when still locked (post-prestige count 1 < gate)');
 
-  // tower completion: no next floor after final clear
+  // tower completion: base ladder hands off to the deep ladder (Q-Leap 126)
   withState({ towerFloor: FLOORS.length });
-  eq(F.getNextTowerFloor(), null, 'no next floor after full clear');
+  const afterBase = F.getNextTowerFloor();
+  ok(afterBase && afterBase.floor === FLOORS.length + 1 && afterBase.deep === 1, 'base-ladder completion hands off to deep floor 1');
 
   // save integrity
-  const s8 = withState({ towerFloor: 99, towerActive: 42, towerArmed: 'yes' });
+  const s8 = withState({ towerFloor: 99, towerActive: NaN, towerArmed: 'yes' });
   F.validateAndRepairState();
-  eq(s8.towerFloor, FLOORS.length, 'towerFloor clamped to floor count');
+  eq(s8.towerFloor, 99, 'deep towerFloor preserved (no clamp to base floor count)');
   eq(s8.towerActive, 0, 'invalid towerActive dropped (no phantom constraints)');
   eq(s8.towerArmed, true, 'towerArmed coerced to boolean');
 
@@ -2732,6 +2733,91 @@ group('trial tower (Q-Leap 125)', () => {
   // structural guards: merge-all gate + shop-강화 progress checks wired
   ok(/merge-all-btn'\)\.addEventListener[\s\S]{0,300}isTowerAutoBanned/.test(RAW_HTML), 'merge-all button gated on auto-ban floor');
   ok(/registerCodex\(state\.grid\[minIdx\]\.level\);[\s\S]{0,400}checkTowerProgress/.test(RAW_HTML), '표창 강화 triggers tower progress check');
+});
+
+group('tower deep floors (Q-Leap 126)', () => {
+  const FLOORS = C.TOWER_FLOORS;
+  const BASE = FLOORS.length;             // 6
+  const PATS = C.TOWER_DEEP_PATTERNS;
+
+  // pure generation: deterministic, only valid deep floor numbers
+  const d1 = F.getDeepFloorDef(BASE + 1);
+  ok(d1 && d1.floor === BASE + 1 && d1.deep === 1, 'deep floor 1 generated at base+1');
+  eq(JSON.stringify(F.getDeepFloorDef(BASE + 1)), JSON.stringify(d1), 'deep def is deterministic (pure fn of floor number)');
+  eq(F.getDeepFloorDef(BASE), null, 'no deep def for base floors');
+  eq(F.getDeepFloorDef(0), null, 'no deep def for 0');
+  eq(F.getDeepFloorDef(BASE + 1.5), null, 'no deep def for non-integer');
+  eq(F.getDeepFloorDef(C.TOWER_MAX_FLOOR + 1), null, 'no deep def beyond max floor');
+
+  // getTowerFloorDef bridges: base floors from the table, deeper ones synthesized
+  eq(F.getTowerFloorDef(3), FLOORS[2], 'base floor still served from table');
+  ok(!!F.getTowerFloorDef(BASE + 4), 'deep floor served via synthesis');
+
+  // difficulty ramps with depth: goal +2/floor, spawn slower, gold thinner (until caps)
+  const d2 = F.getDeepFloorDef(BASE + 2), d6 = F.getDeepFloorDef(BASE + 6);
+  eq(d1.goalLv, FLOORS[BASE - 1].goalLv + 2, 'deep goal starts +2 above final base floor');
+  eq(d2.goalLv, d1.goalLv + 2, 'goal rises +2 per deep floor');
+  ok(d1.desc && d1.desc.length > 0, 'deep floor has a human-readable desc');
+  // pattern rotation: floor BASE+1 uses pattern 0 (spawnMul+goldMul), BASE+6 wraps back harder
+  ok(d1.spawnMul && d1.goldMul && !d1.banAuto, 'deep 1 = soft double constraint (pattern 0)');
+  ok(d6.spawnMul > d1.spawnMul, 'same pattern is harsher on the second lap');
+  ok(d6.goldMul < d1.goldMul, 'gold penalty deepens on the second lap');
+  ok(F.getDeepFloorDef(BASE + 2).banAuto, 'pattern 1 bans automation');
+  ok(F.getDeepFloorDef(BASE + 3).banRitual, 'pattern 2 bans ritual');
+  ok(F.getDeepFloorDef(BASE + 4).spawnLv1, 'pattern 3 pins spawn Lv 1');
+  const d5 = F.getDeepFloorDef(BASE + 5);
+  ok(d5.banAuto && d5.banRitual && d5.spawnMul, 'pattern 4 (적멸) stacks three constraints');
+  // caps hold at extreme depth
+  const dDeep = F.getDeepFloorDef(BASE + 50);
+  ok(dDeep.spawnMul <= 2.5 || !dDeep.spawnMul, 'spawnMul capped at 2.5');
+  ok(!dDeep.goldMul || dDeep.goldMul >= 0.25, 'goldMul floored at 0.25');
+  // rewards scale but stay one-shot-sized
+  ok(d2.reward.gem > d1.reward.gem && d2.reward.enlightenment > d1.reward.enlightenment, 'deeper floors reward more (one-shot each)');
+
+  // constraint hooks fire for an active deep floor
+  withState({ towerActive: BASE + 1 });
+  eq(F.getTowerSpawnMul(), d1.spawnMul, 'deep spawn penalty applied');
+  eq(F.getTowerGoldMul(), d1.goldMul, 'deep gold penalty applied');
+  withState({ towerActive: BASE + 2 });
+  eq(F.isTowerAutoBanned(), true, 'deep auto-ban applied');
+  withState({ towerActive: BASE + 3 });
+  eq(F.isTowerRitualBanned(), true, 'deep ritual-ban applied');
+  eq(F.doRitualMerge(), false, 'ritual blocked on deep ban floor');
+
+  // clearing a deep floor: reward granted, progress recorded, next deep floor offered
+  const s1 = withState({ towerActive: BASE + 1, towerFloor: BASE, runBestLevel: d1.goalLv, gem: 0, enlightenment: 0 });
+  eq(F.checkTowerProgress(), true, 'deep floor clears at its goal');
+  eq(s1.towerFloor, BASE + 1, 'deep clear recorded');
+  ok(s1.gem >= d1.reward.gem, 'deep gem reward granted');
+  eq(s1.enlightenment, d1.reward.enlightenment, 'deep enlightenment reward granted');
+  ok(F.getNextTowerFloor() && F.getNextTowerFloor().floor === BASE + 2, 'ladder continues to the next deep floor');
+
+  // armed prestige enters a deep floor with no inheritance (same exploit guard as base)
+  const s2 = withState({ bestLevel: 30, prestigeCount: 5, towerArmed: true, towerFloor: BASE,
+    skills: { goldMastery: 0, swiftHands: 0, fate: 0, masterSmith: 0, inheritance: 3, blessTime: 0, codexBoost: 0, goldenLuck: 0, starLuck: 0 },
+    grid: gridFrom([28, 27, 26, null, null, null]) });
+  F.doPrestige();
+  eq(s2.towerActive, BASE + 1, 'armed prestige enters deep floor 1');
+  ok(s2.grid.every(c => c === null), 'deep entry also carries no inherited pieces');
+
+  // save integrity for deep values
+  const s3 = withState({ towerFloor: 1e9 });
+  F.validateAndRepairState();
+  eq(s3.towerFloor, C.TOWER_MAX_FLOOR, 'absurd towerFloor clamped to max');
+  const s4 = withState({ towerFloor: BASE, towerActive: BASE + 1 });
+  F.validateAndRepairState();
+  eq(s4.towerActive, BASE + 1, 'active deep floor survives repair');
+  const s5 = withState({ towerFloor: BASE + 9, towerActive: BASE + 2 });
+  F.validateAndRepairState();
+  eq(s5.towerActive, 0, 'already-cleared deep floor cannot stay active');
+
+  // deep achievements registered and keyed off base length
+  const a3 = C.ACHIEVEMENTS.find(a => a.id === 'a_tower_deep3');
+  const a10 = C.ACHIEVEMENTS.find(a => a.id === 'a_tower_deep10');
+  ok(a3 && a10, 'deep achievements registered');
+  eq(a3.check({ towerFloor: BASE + 3 }), true, 'deep3 achievement at base+3');
+  eq(a3.check({ towerFloor: BASE + 2 }), false, 'deep3 not before base+3');
+  eq(a10.check({ towerFloor: BASE + 10 }), true, 'deep10 achievement at base+10');
 });
 
 // ---- helpers ----
