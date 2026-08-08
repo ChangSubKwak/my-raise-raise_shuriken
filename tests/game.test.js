@@ -2770,7 +2770,12 @@ group('tower deep floors (Q-Leap 126)', () => {
   // caps hold at extreme depth
   const dDeep = F.getDeepFloorDef(BASE + 50);
   ok(dDeep.spawnMul <= 2.5 || !dDeep.spawnMul, 'spawnMul capped at 2.5');
-  ok(!dDeep.goldMul || dDeep.goldMul >= 0.25, 'goldMul floored at 0.25');
+  // audit fix: assert the gold floor on a floor that actually CARRIES goldMul
+  // (k=8 → 무저 pattern, raw 0.4−0.16=0.24 → floored). BASE+50 is 적멸 (no goldMul).
+  eq(F.getDeepFloorDef(BASE + 8).goldMul, 0.25, 'goldMul floored at 0.25 (first hit at deep 8)');
+  ok(!dDeep.goldMul, '적멸 pattern carries no goldMul (floor test must target 무저)');
+  // memoized: repeated lookups return the same object (hot-path GC relief)
+  ok(F.getDeepFloorDef(BASE + 1) === F.getDeepFloorDef(BASE + 1), 'deep defs are memoized per floor');
   // rewards scale but stay one-shot-sized
   ok(d2.reward.gem > d1.reward.gem && d2.reward.enlightenment > d1.reward.enlightenment, 'deeper floors reward more (one-shot each)');
 

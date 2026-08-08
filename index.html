@@ -2388,7 +2388,7 @@ const ACHIEVEMENTS = [
   { id: 'a_exped_1',      name: '원정의 시작',     icon: '🗺', desc: '표창 원정 첫 파견',      check: (s) => ((s.stats || {}).expeditions || 0) >= 1 },
   { id: 'a_exped_25',     name: '원정대장',        icon: '🏔', desc: '표창 원정 25회 파견',    check: (s) => ((s.stats || {}).expeditions || 0) >= 25, gem: 8 },
   { id: 'a_tower_1',      name: '탑에 오르다',     icon: '🗼', desc: '시련의 탑 1층 돌파',     check: (s) => (s.towerFloor || 0) >= 1 },
-  { id: 'a_tower_all',    name: '시련을 넘어선 자', icon: '⛩', desc: '시련의 탑 완주 (6층)',   check: (s) => (s.towerFloor || 0) >= TOWER_FLOORS.length, gem: 20 },
+  { id: 'a_tower_all',    name: '시련을 넘어선 자', icon: '⛩', desc: '시련의 탑 기본 6층 돌파', check: (s) => (s.towerFloor || 0) >= TOWER_FLOORS.length, gem: 20 },
   { id: 'a_tower_deep3',  name: '심연을 걷는 자',   icon: '🌀', desc: '무한 심층 3층 돌파 (탑 9층)', check: (s) => (s.towerFloor || 0) >= TOWER_FLOORS.length + 3, gem: 15 },
   { id: 'a_tower_deep10', name: '적멸의 끝',        icon: '☄', desc: '무한 심층 10층 돌파 (탑 16층)', check: (s) => (s.towerFloor || 0) >= TOWER_FLOORS.length + 10, gem: 40 },
 ];
@@ -3402,10 +3402,14 @@ const TOWER_DEEP_PATTERNS = [
   { name: '적멸', icon: '☄', mods: ['banAuto', 'banRitual', 'spawnMul'] },
 ];
 const TOWER_MAX_FLOOR = 999; // 검증용 상한 (실질 도달 불가 — goalLv가 먼저 점근선)
+// 층 def는 순수 함수지만 활성 심층 동안 매 프레임 경로(HUD 배너·자동화 게이트·생성 간격)에서
+// 조회되므로 memoize — 호출부는 def를 절대 변형하지 않는다 (감사로 확인된 계약).
+const _deepFloorCache = {};
 function getDeepFloorDef(n) {
   if (typeof n !== 'number' || !isFinite(n) || Math.floor(n) !== n) return null;
   const k = n - TOWER_FLOORS.length; // 심층 인덱스 (7층 → 1)
   if (k < 1 || n > TOWER_MAX_FLOOR) return null;
+  if (_deepFloorCache[n]) return _deepFloorCache[n];
   const pat = TOWER_DEEP_PATTERNS[(k - 1) % TOWER_DEEP_PATTERNS.length];
   const spawnMul = Math.min(2.5, 1.5 + k * 0.1);
   const goldMul = Math.max(0.25, Math.round((0.4 - k * 0.02) * 100) / 100);
@@ -3423,6 +3427,7 @@ function getDeepFloorDef(n) {
     if (m === 'spawnLv1')  { def.spawnLv1 = true; parts.push('생성 Lv 1 고정'); }
   }
   def.desc = parts.join(' + ');
+  _deepFloorCache[n] = def;
   return def;
 }
 function isTowerUnlocked() { return (state.prestigeCount || 0) >= TOWER_UNLOCK_PRESTIGE; }
@@ -6191,7 +6196,8 @@ function renderPrestige() {
           + `<button id="tower-arm" style="margin-left:6px;padding:3px 9px;border-radius:7px;border:1px solid ${state.towerArmed ? '#d0a95c' : '#5a6a9a'};background:linear-gradient(180deg,${state.towerArmed ? '#6e5c2e,#483c1a' : '#3f4a6e,#272e48'});color:${state.towerArmed ? '#ffe9a8' : '#d8e0ff'};font-family:inherit;font-weight:800;font-size:11px;cursor:pointer;">${state.towerArmed ? `✅ ${nf.floor}층 예약됨` : `${nf.floor}층 도전 예약`}</button>`
           + `<br><span style="color:#aa99cc;">${deepTag}${nf.icon} 「${nf.name}」 ${nf.desc} · 목표 Lv ${nf.goalLv} · 💎${nf.reward.gem}${nf.reward.enlightenment ? `+悟${nf.reward.enlightenment}` : ''} — 다음 윤회에 시작 · <b>계승 없이 입장</b></span></div>`;
       } else {
-        towerHtml = `<div style="margin-top:7px;font-size:11px;color:#ffd28a;">🗼 시련의 탑 완주! (${TOWER_FLOORS.length}/${TOWER_FLOORS.length})</div>`;
+        // TOWER_MAX_FLOOR 도달 시에만 진입 (실질 도달 불가) — 그래도 표기는 정확히
+        towerHtml = `<div style="margin-top:7px;font-size:11px;color:#ffd28a;">🗼 시련의 탑 완주! (${state.towerFloor || 0}층 · 🌀 심층 ${Math.max(0, (state.towerFloor || 0) - TOWER_FLOORS.length)})</div>`;
       }
     } else {
       towerHtml = `<div style="margin-top:7px;font-size:11px;color:#8a80a8;">🗼 시련의 탑 — 윤회 ${TOWER_UNLOCK_PRESTIGE}회 달성 시 해금</div>`;
