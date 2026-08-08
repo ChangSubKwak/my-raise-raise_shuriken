@@ -3389,7 +3389,10 @@ function countStars() {
   for (const c of state.grid) if (c && c.star) n++;
   return n;
 }
-function getSpawnInterval() {
+// 제련 前 생성 간격 (0.6s 하한 적용까지). 감사 128.1: 제련 배수를 하한 안쪽에 넣으면
+// 엔드게임(무하한 spawnRate 강화로 하한 도달)에서 정밀의 ×2.2 페널티가 하한에 흡수되어
+// "+1 Lv 공짜"(가치율 ×2)가 되고 반지배 설계가 뒤집힌다 — 하한을 먼저 밟은 뒤 제련을 곱한다.
+function getSpawnIntervalBase() {
   const base = 16.0; // base spawn interval (sec); raised from 12 to slow the generation gauge
   const burnMul = isBurning() ? (1 / 3) : 1; // 3× faster when burning
   const skillMul = Math.pow(0.96, getSkillLv('swiftHands')); // −4%/Lv
@@ -3401,7 +3404,10 @@ function getSpawnInterval() {
   const frenzyMul = (state.frenzyTimer || 0) > 0 ? 0.5 : 1; // Q-Leap 77: 폭주 ×2 spawn
   const weekdayMul = weekdayBonus().spawnMul || 1; // Q-Leap 87
   const eliteMul = hasSet('elite') ? 0.9 : 1; // Q-Leap 105: 정예 진형 +10% 가속
-  return Math.max(0.6, base * Math.pow(0.95, state.upgrades.spawnRate) * burnMul * skillMul * shopBoost * trialBoost * starBoost * chalBoost * prestigeSpeed * frenzyMul * weekdayMul * eliteMul * getStrategySpawnMul() * getTowerSpawnMul() * getForgeSpawnMul()); // floor raised 0.4→0.6 to cap max spawn speed
+  return Math.max(0.6, base * Math.pow(0.95, state.upgrades.spawnRate) * burnMul * skillMul * shopBoost * trialBoost * starBoost * chalBoost * prestigeSpeed * frenzyMul * weekdayMul * eliteMul * getStrategySpawnMul() * getTowerSpawnMul()); // floor raised 0.4→0.6 to cap max spawn speed
+}
+function getSpawnInterval() {
+  return Math.max(0.6, getSpawnIntervalBase() * getForgeSpawnMul()); // Q-Leap 128: 정밀은 하한 위에서도 온전히 ×2.2를 낸다
 }
 
 // Q-Leap 77: Frenzy constants
@@ -3474,7 +3480,14 @@ function forgeEffective() {
   if (!isForgeUnlocked() || isTowerSpawnLv1()) return { spawnMul: 1, lvDelta: 0 };
   const m = getForgeMode();
   if (!m.lvDelta) return { spawnMul: 1, lvDelta: 0 };
-  if (m.id === 'swift' && getSpawnStartLevel() <= 1) return { spawnMul: 1, lvDelta: 0 };
+  if (m.id === 'swift') {
+    // 내릴 레벨이 있어야 할인 — 부스트 창(+2)은 실효 레벨로 인정 (감사 128.1: 게이트 정합)
+    const effLv = getSpawnStartLevel() + ((state.postPrestigeSpawns || 0) > 0 ? 2 : 0);
+    if (effLv <= 1) return { spawnMul: 1, lvDelta: 0 };
+    // 감사 128.1: 간격이 이미 0.6s 하한이면 속성은 속도를 전혀 못 얻는다 — −1 Lv만 내는
+    // 순손실 함정이므로 무효화 (버튼 🚫 표시 경로도 이 delta 0을 읽는다)
+    if (getSpawnIntervalBase() <= 0.6 + 1e-9) return { spawnMul: 1, lvDelta: 0 };
+  }
   return { spawnMul: m.spawnMul, lvDelta: m.lvDelta };
 }
 function getForgeSpawnMul()   { return forgeEffective().spawnMul; }
@@ -4144,6 +4157,10 @@ function spawnShuriken() {
   if ((state.postPrestigeSpawns || 0) > 0) state.postPrestigeSpawns -= 1; // Q-Leap 91: consume one boost
   state.grid[idx] = { id, level: startLv, fireTimer: 0 };
   freshSpawnIds.add(id);
+  // 감사 128.1: 생성이 역대 최고를 넘을 수 있다 (masterSmith+부스트+정밀이 낮은 bestLevel 추월).
+  // 기록 경로를 안 태우면 리로드 시 validate가 조용히 bestLevel만 올려 그 레벨의 1회성
+  // 보상(마일스톤/짝수 💎/도감)이 영구 소실된다 — 비합성 레벨 도달의 단일 진입점으로 처리.
+  if (startLv > state.bestLevel) noteLevelReached(startLv);
   state.stats.totalSpawned = (state.stats.totalSpawned || 0) + 1;
   addQuestProgress('spawn', 1);
   sfx('spawn');

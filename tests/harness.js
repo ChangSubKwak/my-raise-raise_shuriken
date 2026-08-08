@@ -113,7 +113,7 @@ function loadGame() {
     getTowerSpawnMul, getTowerGoldMul, isTowerAutoBanned, isTowerRitualBanned, isTowerSpawnLv1,
     checkTowerProgress, abandonTower,
     getActiveBuffs, processOfflineReward,
-    isForgeUnlocked, getForgeMode, getForgeSpawnMul, getForgeLevelDelta,
+    isForgeUnlocked, getForgeMode, getForgeSpawnMul, getForgeLevelDelta, getSpawnIntervalBase,
     isEngraveUnlocked, engraveCount, getEngraveCost, getEngraving,
     engraveWealthMul, engraveForgeMul, engraveFortuneBonus, applyEngraving, removeEngraving,
   },

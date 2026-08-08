@@ -3066,6 +3066,35 @@ group('forge mode (Q-Leap 128)', () => {
   ok(/id="forge-btn"/.test(RAW_HTML), 'forge button present');
   ok(/forge-btn'\)\.addEventListener/.test(RAW_HTML), 'forge button handler wired');
   ok(/getForgeSpawnMul\(\)\);/.test(RAW_HTML), 'forge mul wired into getSpawnInterval');
+
+  // ── v3.73.1 audit fixes: the 0.6s floor must not eat the forge tax ──
+  const floored = () => Object.assign(defaultUpgrades(), { spawnRate: 200, spawnLevel: 3 });
+  withState({ bestLevel: 30, forgeMode: 'standard', upgrades: floored() });
+  eq(F.getSpawnIntervalBase(), 0.6, 'endgame spawnRate pins the base interval at the floor');
+  const stdFloor = F.getSpawnInterval();
+  eq(stdFloor, 0.6, 'standard at the floor');
+  withState({ bestLevel: 30, forgeMode: 'fine', upgrades: floored() });
+  approx(F.getSpawnInterval(), 0.6 * fine.spawnMul, 'fine pays the FULL ×2.2 even at the floor (no free +1 Lv)', 1e-9);
+  approx(Math.pow(2, 1) * stdFloor / F.getSpawnInterval(), 2 / 2.2, 'non-dominance ratio holds at the floor', 1e-9);
+  // swift at the floor: zero speed gain possible → inert (no silent −1 Lv pure loss)
+  withState({ bestLevel: 30, forgeMode: 'swift', upgrades: floored() });
+  eq(F.getForgeSpawnMul(), 1, 'swift inert when the base interval is floor-pinned');
+  eq(F.getForgeLevelDelta(), 0, 'swift pays no level penalty while inert');
+  // swift honors the post-prestige boost window (effective level, not raw start level)
+  withState({ bestLevel: 10, forgeMode: 'swift', postPrestigeSpawns: 3 });
+  eq(F.getForgeLevelDelta(), -1, 'swift active during boost window at raw start Lv 1');
+  eq(F.getNextSpawnLevel(), 2, 'boosted swift spawn: 1+2−1 = 2');
+  // spawn that exceeds all-time best routes through the record path (no silent validate-repair loss)
+  const sR = withState({
+    bestLevel: 8, runBestLevel: 3, forgeMode: 'fine', postPrestigeSpawns: 1,
+    skills: { goldMastery: 0, swiftHands: 0, fate: 0, masterSmith: 5, blessTime: 0, codexBoost: 0, goldenLuck: 0, starLuck: 0, inheritance: 0 },
+    grid: [null, null, null, null, null, null],
+  });
+  eq(F.getNextSpawnLevel(), 9, 'fine+boost+masterSmith can exceed a Lv8 all-time best');
+  F.spawnShuriken();
+  eq(sR.bestLevel, 9, 'spawn record updates bestLevel through noteLevelReached');
+  ok(!!sR.codex[9], 'record spawn registers the codex entry (reward not lost to validate-repair)');
+  eq(sR.runBestLevel, 9, 'runBestLevel follows the record spawn');
 });
 
 group('active buff strip (T1a curation)', () => {
