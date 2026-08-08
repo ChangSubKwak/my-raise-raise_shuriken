@@ -963,6 +963,62 @@ group('pacing interventions A+B (v3.78, user-approved)', () => {
   eq(G.getState().runPlaySec, 600, 'legacy save migrates to a full substance factor');
 });
 
+group('tier gates (Q-Leap 131, PACING C)', () => {
+  const GATES = C.TIER_GATES;
+  eq(GATES.length, 3, 'three midgame gates');
+  eq(GATES.map(g => g.lv).join(','), '15,25,35', 'gates at 15/25/35');
+
+  // crossing queues the gate; jump across two queues both (jump-safe)
+  const s1 = withState({ bestLevel: 14 });
+  F.checkTierGates(14, 15);
+  eq(s1.gatePending.join(','), '15', 'crossing 15 queues gate 15');
+  const s2 = withState({ bestLevel: 14 });
+  F.checkTierGates(14, 26);
+  eq(s2.gatePending.join(','), '15,25', 'jump 14→26 queues both crossed gates');
+  // no requeue when claimed or already pending
+  const s3 = withState({ gatesClaimed: { 15: 'gem' }, gatePending: [25] });
+  F.checkTierGates(10, 40);
+  eq(s3.gatePending.join(','), '25,35', 'claimed gate not requeued; pending not duplicated');
+
+  // claims: three choices grant three different resources, one-shot
+  const s4 = withState({ gatePending: [15], gem: 0 });
+  eq(F.claimGate(15, 'gem'), true, 'gem claim works');
+  eq(s4.gem >= GATES[0].gem, true, 'gem granted');
+  eq(s4.gatesClaimed[15], 'gem', 'choice recorded');
+  eq(s4.gatePending.length, 0, 'pending cleared');
+  eq(F.claimGate(15, 'gem'), false, 'one-shot — second claim refused');
+  const s5 = withState({ gatePending: [25], enlightenment: 0 });
+  F.claimGate(25, 'enlight');
+  eq(s5.enlightenment, GATES[1].enlight, 'enlightenment granted');
+  const s6 = withState({ gatePending: [35], grid: [null, null, null, null, null, null] });
+  F.claimGate(35, 'variant');
+  const dark = s6.grid.find(c => c && c.dark);
+  ok(dark && dark.level === 31, 'dark piece lands at gate−4 level');
+  // variant needs an empty slot
+  const s7 = withState({ gatePending: [15], grid: gridFrom([1, 1, 1, 1, 1, 1]) });
+  eq(F.claimGate(15, 'variant'), false, 'variant claim refused on a full grid');
+  eq(s7.gatePending.join(','), '15', 'gate stays pending after refusal');
+
+  // validation: bad values repaired, pending minus claimed
+  const s8 = withState({ gatesClaimed: { 15: 'gem', 99: 'gem', 25: 'hax' }, gatePending: [15, 25, 99, 'x'] });
+  F.validateAndRepairState();
+  eq(Object.keys(s8.gatesClaimed).join(','), '15', 'invalid claim entries dropped');
+  eq(s8.gatePending.join(','), '25', 'pending keeps only valid unclaimed gates');
+
+  // record-path integration: a merge crossing 15 queues the gate
+  const s9 = withState({ bestLevel: 14, runBestLevel: 14, grid: gridFrom([14, 14, null, null, null, null]) });
+  F.tryMerge(0, 1);
+  ok(s9.gatePending.includes(15), 'tryMerge record path queues crossed gates');
+  // structural: all three record paths wired
+  eq((RAW_HTML.match(/checkTierGates\(prevBest, newLv\)/g) || []).length, 3, 'gate check wired into all 3 record paths');
+  // achievement
+  ok(C.ACHIEVEMENTS.some(a => a.id === 'a_gate_all'), 'gate achievement registered');
+  // modal render smoke
+  let threw = false;
+  try { withState({ gatePending: [15] }); F.showGateModal(); } catch (e) { threw = true; }
+  eq(threw, false, 'gate modal renders under stubs');
+});
+
 group('prestige advice (Q-Leap 122)', () => {
   withState({ bestLevel: 5, prestigeCount: 0 });
   eq(F.getPrestigeAdvice().recommend, false, 'below Lv8 → not recommended');

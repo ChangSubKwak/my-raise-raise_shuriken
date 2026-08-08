@@ -340,12 +340,12 @@
   }
   #storage-modal.show { display: flex; }
   /* Q-Leap 127: 성소 각인 */
-  #engrave-modal {
+  #engrave-modal, #gate-modal {
     position: fixed; inset: 0; z-index: 253;
     display: none; align-items: center; justify-content: center;
     background: rgba(0,0,0,0.85);
   }
-  #engrave-modal.show { display: flex; }
+  #engrave-modal.show, #gate-modal.show { display: flex; }
   .engrave-box {
     background: linear-gradient(180deg, #221a2e 0%, #0a0612 100%);
     border: 2px solid #aa88ff; border-radius: 18px;
@@ -1692,6 +1692,15 @@
   </div>
 </div>
 
+<div id="gate-modal">
+  <div class="engrave-box" style="border-color:#ffd28a;box-shadow:0 0 30px rgba(255,210,138,0.25);">
+    <div class="engrave-title" id="gate-title" style="color:#ffe9c8;">⛩ 관문</div>
+    <div class="engrave-sub" id="gate-sub">—</div>
+    <div id="gate-options"></div>
+    <button class="codex-close" id="gate-later">나중에 선택 (보존됩니다)</button>
+  </div>
+</div>
+
 <div id="engrave-modal">
   <div class="engrave-box">
     <div class="engrave-title">🧿 성소 각인</div>
@@ -2205,6 +2214,9 @@ function defaultState() {
     postPrestigeSpawns: 0,
     // v3.78 (PACING B): 이번 런의 실플레이 시간(초) — 깨달음 알찬 런 계수의 입력
     runPlaySec: 0,
+    // Q-Leap 131 (PACING C): 미드게임 관문 — 선택 기록(영구)과 미선택 대기열(저장됨)
+    gatesClaimed: {},
+    gatePending: [],
     // Q-Leap 59: 자동 매도 — auto-sell shuriken at or below threshold
     autoSellEnabled: false,
     autoSellThreshold: 1,     // Lv ≤ this → auto-sell (golden/star/dark/locked excluded)
@@ -2402,6 +2414,7 @@ const ACHIEVEMENTS = [
   { id: 'a_tower_1',      name: '탑에 오르다',     icon: '🗼', desc: '시련의 탑 1층 돌파',     check: (s) => (s.towerFloor || 0) >= 1 },
   { id: 'a_tower_all',    name: '시련을 넘어선 자', icon: '⛩', desc: '시련의 탑 기본 6층 돌파', check: (s) => (s.towerFloor || 0) >= TOWER_FLOORS.length, gem: 20 },
   { id: 'a_tower_deep3',  name: '심연을 걷는 자',   icon: '🌀', desc: '무한 심층 3층 돌파 (탑 9층)', check: (s) => (s.towerFloor || 0) >= TOWER_FLOORS.length + 3, gem: 15 },
+  { id: 'a_gate_all',     name: '세 관문을 지난 자', icon: '⛩', desc: '미드게임 관문 3개 모두 통과', check: (s) => Object.keys(s.gatesClaimed || {}).length >= 3, gem: 10 },
   { id: 'a_engrave_1',    name: '첫 각인',          icon: '🧿', desc: '성소 각인 1칸 새기기',        check: (s) => Object.keys(s.engravings || {}).length >= 1 },
   { id: 'a_engrave_3',    name: '성소의 완성',      icon: '🛕', desc: '성소 각인 3칸 모두 새기기',   check: (s) => Object.keys(s.engravings || {}).length >= 3, gem: 10 },
   { id: 'a_tower_deep10', name: '적멸의 끝',        icon: '☄', desc: '무한 심층 10층 돌파 (탑 16층)', check: (s) => (s.towerFloor || 0) >= TOWER_FLOORS.length + 10, gem: 40 },
@@ -2872,6 +2885,7 @@ function doRitualMerge() {
     for (let L = prevBest + 1; L <= newLv; L++) triggerMilestone(L); // every milestone level crossed (jump-safe; ritual can leap multiple Lv)
     for (let L = prevBest + 1; L <= newLv; L++) registerCodex(L); // 도감도 점프가 건너뛴 모든 레벨 (jump-safe; parity with tryMerge)
     announceTranscendIfNeeded(newLv, prevBest); // Q-Leap 116: ritual path now grants transcend milestones too
+    checkTierGates(prevBest, newLv); // Q-Leap 131: 관문 교차 (점프 안전)
   }
   if (newLv > state.runBestLevel) state.runBestLevel = newLv;
   autoLockPass(); // Q-Leap 71: auto-lock high-Lv pieces (parity with tryMerge — was missing, ritual-created pieces went unlocked)
@@ -3149,6 +3163,19 @@ function validateAndRepairState() {
   // 이미 돌파한 층이 active로 남은 세이브(멀티탭 last-writer-wins 경합) → 중복 보상 차단
   if (state.towerActive > 0 && state.towerActive <= (state.towerFloor || 0)) { state.towerActive = 0; repairs++; }
   state.towerArmed = !!state.towerArmed;
+  // tier gates (Q-Leap 131) — 잘못된 선택값/레벨 제거, 대기열은 유효 관문∖기수령만
+  if (!state.gatesClaimed || typeof state.gatesClaimed !== 'object' || Array.isArray(state.gatesClaimed)) { state.gatesClaimed = {}; }
+  else {
+    const cleanG = {};
+    for (const k of Object.keys(state.gatesClaimed)) {
+      const lv = Math.floor(+k);
+      if (TIER_GATES.some(g => g.lv === lv) && ['gem', 'enlight', 'variant'].includes(state.gatesClaimed[k])) cleanG[lv] = state.gatesClaimed[k];
+      else repairs++;
+    }
+    state.gatesClaimed = cleanG;
+  }
+  if (!Array.isArray(state.gatePending)) { state.gatePending = []; repairs++; }
+  else state.gatePending = state.gatePending.filter(lv => TIER_GATES.some(g => g.lv === lv) && !state.gatesClaimed[lv]);
   // engravings (Q-Leap 127) — { idx: runeId }; 잘못된 idx/룬 제거, 최대 ENGRAVE_MAX 유지.
   if (!state.engravings || typeof state.engravings !== 'object' || Array.isArray(state.engravings)) {
     if (state.engravings && (typeof state.engravings !== 'object' || Array.isArray(state.engravings))) repairs++;
@@ -3974,6 +4001,7 @@ function noteLevelReached(newLv) {
     for (let L = prevBest + 1; L <= newLv; L++) triggerMilestone(L);
     for (let L = prevBest + 1; L <= newLv; L++) registerCodex(L);
     announceTranscendIfNeeded(newLv, prevBest);
+    checkTierGates(prevBest, newLv); // Q-Leap 131: 관문 교차 (점프 안전)
   }
   if (newLv > state.runBestLevel) state.runBestLevel = newLv;
   registerCodex(newLv);
@@ -4318,6 +4346,7 @@ function tryMerge(fromIdx, toIdx, isAuto) {
       // 도감도 점프가 건너뛴 모든 레벨 등록 (깨달음 grant + 완성 카운트 — jump-safe)
       for (let L = prevBest + 1; L <= newLv; L++) registerCodex(L);
       announceTranscendIfNeeded(newLv, prevBest); // Q-Leap 98/102/116
+      checkTierGates(prevBest, newLv); // Q-Leap 131: 관문 교차 (점프 안전)
     }
     if (newLv > state.runBestLevel) state.runBestLevel = newLv;
     // Q-Leap 71: auto-lock high-Lv pieces if enabled
@@ -7617,6 +7646,12 @@ document.getElementById('engrave-btn').addEventListener('click', () => {
   setEngraveMode(!engraveMode);
 });
 document.getElementById('engrave-close').addEventListener('click', closeEngraveModal);
+// Q-Leap 131: 관문 모달 — '나중에'는 닫기만 (대기열은 저장되어 다음 부팅/교차 때 재등장)
+document.getElementById('gate-later').addEventListener('click', () => {
+  document.getElementById('gate-modal').classList.remove('show');
+  toast('⛩ 관문 선택 보류 — 다음 접속 때 다시 물어봅니다');
+  save();
+});
 document.getElementById('engrave-modal').addEventListener('click', (e) => {
   if (e.target.id === 'engrave-modal') closeEngraveModal();
 });
@@ -7706,6 +7741,91 @@ function renderHallOfFame() {
     </div>`;
   }
   content.innerHTML = html;
+}
+// ── Q-Leap 131: 미드게임 관문 (PACING C, 사용자 승인) ────────────────────────
+// Lv 15/25/35 최초 도달(전 생애 1회)에 세 갈래 선택 보상 — 💎 다발 / 悟 / 변종 표창.
+// "지금 어느 자원이 필요한가"라는 결정이지 배수 스탯이 아니다 (반인플레이션).
+// 점프 안전: 세 기록 경로(tryMerge/doRitualMerge/noteLevelReached)의 교차 검사로
+// (prev, new]에 걸린 관문 전부를 대기열에 적재, 모달로 순차 선택. 대기열은 저장된다
+// (선택을 못 하고 종료해도 유실 없음). 상시 UI 없음 — 점진 공개 원칙 준수 (모달 전용).
+const TIER_GATES = [
+  { lv: 15, name: '수련의 관문', icon: '⛩', gem: 25,  enlight: 5,  variant: 'golden', vName: '황금' },
+  { lv: 25, name: '각성의 관문', icon: '🌗', gem: 60,  enlight: 12, variant: 'star',   vName: '별' },
+  { lv: 35, name: '초극의 관문', icon: '🌌', gem: 150, enlight: 25, variant: 'dark',   vName: '검은' },
+];
+function getGateDef(lv) { return TIER_GATES.find(g => g.lv === lv) || null; }
+function checkTierGates(prevBest, newBest) {
+  let queued = false;
+  for (const g of TIER_GATES) {
+    if (prevBest < g.lv && newBest >= g.lv
+        && !(state.gatesClaimed || {})[g.lv]
+        && !(state.gatePending || []).includes(g.lv)) {
+      state.gatePending = state.gatePending || [];
+      state.gatePending.push(g.lv);
+      queued = true;
+    }
+  }
+  if (queued) setTimeout(showGateModal, 1500); // 기록 연출(720ms) 뒤에 등장
+}
+function claimGate(lv, choice) {
+  const g = getGateDef(lv);
+  if (!g || (state.gatesClaimed || {})[lv]) return false;
+  if (choice === 'gem') {
+    state.gem = (state.gem || 0) + g.gem;
+    toast(`${g.icon} ${g.name} — 💎 +${g.gem}`);
+  } else if (choice === 'enlight') {
+    state.enlightenment = (state.enlightenment || 0) + g.enlight;
+    toast(`${g.icon} ${g.name} — 깨달음(悟) +${g.enlight}`);
+  } else if (choice === 'variant') {
+    const empties = emptySlots();
+    if (empties.length === 0) { toast('그리드 가득 — 공간을 비우고 선택하세요'); return false; }
+    const piece = { id: state.nextShurikenId++, level: Math.max(2, g.lv - 4), fireTimer: 0 };
+    piece[g.variant] = true;
+    state.grid[empties[0]] = piece;
+    if (g.variant === 'golden') state.stats.goldenSpawned = (state.stats.goldenSpawned || 0) + 1;
+    if (g.variant === 'star')   state.stats.starSpawned   = (state.stats.starSpawned || 0) + 1;
+    if (g.variant === 'dark')   state.stats.darkSpawned   = (state.stats.darkSpawned || 0) + 1;
+    toast(`${g.icon} ${g.name} — ${g.vName} 표창 Lv ${piece.level} 강림`);
+  } else return false;
+  state.gatesClaimed = state.gatesClaimed || {};
+  state.gatesClaimed[lv] = choice;
+  state.gatePending = (state.gatePending || []).filter(x => x !== lv);
+  state.stats.gatesClaimed = (state.stats.gatesClaimed || 0) + 1;
+  addEvent('milestone', `${g.name} 통과 — ${choice === 'gem' ? '💎' : choice === 'enlight' ? '悟' : g.vName + ' 표창'} 선택`);
+  sfx('mergeMystic');
+  flashJumpScreen(4);
+  checkAchievements();
+  refreshUI();
+  save();
+  if ((state.gatePending || []).length) setTimeout(showGateModal, 700); // 점프로 겹친 다음 관문
+  else document.getElementById('gate-modal').classList.remove('show');
+  return true;
+}
+function showGateModal() {
+  const pending = state.gatePending || [];
+  if (!pending.length) return;
+  const g = getGateDef(pending[0]);
+  if (!g) { state.gatePending = pending.slice(1); return; }
+  const modal = document.getElementById('gate-modal');
+  document.getElementById('gate-title').textContent = `${g.icon} ${g.name}`;
+  document.getElementById('gate-sub').textContent = `Lv ${g.lv} 최초 도달 — 하나를 선택하세요 (전 생애 1회)`;
+  const list = document.getElementById('gate-options');
+  list.innerHTML = '';
+  const mk = (choice, icon, name, desc, disabled) => {
+    const b = document.createElement('button');
+    b.className = 'engrave-rune-btn';
+    b.disabled = !!disabled;
+    b.innerHTML = `<span style="font-size:16px;">${icon}</span><span><div class="er-name">${name}</div><div class="er-desc">${desc}</div></span>`;
+    b.onclick = () => { getAudio(); claimGate(g.lv, choice); };
+    list.appendChild(b);
+  };
+  mk('gem', '💎', `보석 ${g.gem}`, '즉시 쓸 수 있는 유연한 자원');
+  mk('enlight', '🌌', `깨달음 ${g.enlight}`, '스킬트리·각인에 투자 (윤회 보존)');
+  const full = emptySlots().length === 0;
+  mk('variant', g.variant === 'golden' ? '✦' : g.variant === 'star' ? '★' : '🌑',
+     `${g.vName} 표창 Lv ${Math.max(2, g.lv - 4)}`,
+     full ? '그리드 가득 — 공간을 비우면 선택 가능' : '합성 전선의 재료 (변종 계승 시도)', full);
+  modal.classList.add('show');
 }
 // 동적 랭크 칭호 — v3.77 통폐합 때 #hof-sub와 함께 죽었던 기능 복원 (감사 v3.77.2):
 // 이제 renderTrophy의 전당 탭 헤더(progress)에 표시된다.
@@ -7844,6 +7964,7 @@ const HELP_SECTIONS = {
     { title: '🌌 깨달음 스킬', body: '9종 트리 — 골드/spawn/행운/계승/축복지속/도감/황금운/별운 등. 윤회 시 누적.' },
     { title: '⚖ 전략 모드', body: 'Lv 8+ 윤회 패널의 <span class="hk">전략 버튼</span>으로 런 스타일 선택: <span class="hk">부유</span>(골드+30%·생성18%↓) / <span class="hk">신속</span>(생성18%↑·골드−15%) / <span class="hk">변종</span>(변종×2·골드−12%) / 균형(없음). 이득마다 상응하는 손실 — 지배적 선택이 없는 트레이드오프.' },
     { title: '🗼 시련의 탑', body: '윤회 2회 해금. 윤회 패널에서 <span class="hk">다음 층 도전을 예약</span>하면 다음 윤회 런이 그 층의 제약과 함께 시작 — 단 <span class="hk">계승 없이 맨손 입장</span>. 목표 Lv 도달 시 돌파 — <span class="hk">층당 1회성 💎+깨달음</span> 보상. 6층: 생성 느림/자동·일괄 합치기 금지/골드 감소/의식 금지/생성 Lv1 고정/복합. 포기하면 다음 윤회에 재도전. 전략 모드와 중첩 가능 — 자발적 핸디캡의 명예 사다리. <span class="hk">6층 완주 후엔 무한 심층</span>: 심연/나락/무저/공허/적멸 5패턴이 순환하며 깊어질수록 제약이 강해지고 목표 Lv +2/층 — 끝없는 명예 기록.' },
+    { title: '⛩ 미드게임 관문', body: 'Lv <span class="hk">15 / 25 / 35</span> 최초 도달 시 관문이 열립니다 — <span class="hk">보석 다발 / 깨달음(悟) / 변종 표창</span> 중 하나를 선택 (전 생애 1회). 지금 어느 자원이 필요한지 고르는 결정이며, 선택을 미루면 보존됩니다. 점프 합성으로 여러 관문을 한 번에 넘으면 차례로 묻습니다.' },
     { title: '⚖ 제련 모드', body: '최고 Lv 6 해금. 생성 게이지 옆 <span class="hk">제련 버튼</span>으로 순환: <span class="hk">표준</span> / <span class="hk">🔥 정밀</span>(생성 120% 느림 · 시작 Lv +1 — 슬롯·손 절약) / <span class="hk">🌪 속성</span>(생성 45% 빠름 · 시작 Lv −1 — 합성 횟수↑, 콤보·폭주·미션에 유리). 두 특화 모두 원시 효율은 표준의 ~91% — 상황이 선택을 만든다. 시작 Lv 1이거나 고행의 층에선 무효(🚫). 전략 모드가 런의 방침이라면 제련은 <span class="hk">언제든 바꾸는 전술 다이얼</span>.' },
     { title: '🧿 성소 각인', body: '윤회 1회 해금. 깨달음(悟) 패널의 <span class="hk">🧿 각인 버튼</span> → 그리드 칸을 탭해 룬을 새김 (최대 3칸, 悟 15/30/50). <span class="hk">💰 부</span>(그 칸 패시브 ×1.5) / <span class="hk">⚒ 정련</span>(그 칸에서 완성된 합성·의식 골드 ×1.35) / <span class="hk">🍀 연</span>(그 칸으로의 손 합성 행운 +4%p). 효과는 칸 조건부 — 합성 동선을 각인 칸으로 유도하는 공간 전략. 팁: <span class="hk">의식 결과는 그룹의 가장 낮은 번호 칸에 생성</span>되므로 정련 각인으로 노릴 수 있음. 연의 각인은 손 합성에만 발동 (자동 합치기 제외). 윤회에도 보존, 제거는 무료(환불 없음). 스킬트리와 悟를 두고 경쟁하는 선택.' },
     { title: '🎵 정취 (생성 음악)', body: '진행이 소리가 됩니다 — <span class="hk">최고 Lv가 음높이</span>(5Lv마다 반음↑), 콤보·폭주가 선율의 밀도를, 골드러시가 하모니를 정하는 <span class="hk">상태 반응형 배경 음악</span>. 하단 🎵 버튼으로 켜고 끄기 (음소거와 별개, 효과·보상 무관한 순수 감상 계층).' },
@@ -8266,6 +8387,8 @@ function boot() {
   if (!loaded) setTimeout(showTutorial, 350);
   // Daily attendance — checked after offline reward so modals queue cleanly
   setTimeout(processAttendance, loaded ? 400 : 1200);
+  // Q-Leap 131: 보류된 관문 선택이 있으면 부팅 흐름 뒤에 다시 묻는다
+  if (loaded && (state.gatePending || []).length) setTimeout(showGateModal, 2500);
   setInterval(save, 10000);
   setInterval(repaintGridSprites, 100);
   // Q-Leap 41: check daily-quest rollover every minute
