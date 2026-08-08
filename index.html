@@ -4,6 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>표창키우기 — 합체 (v2)</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>✴️</text></svg>">
+
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; user-select: none; }
   html, body { width: 100%; height: 100%; overflow: hidden; background: #0a0a12; font-family: -apple-system, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif; color: #e8e8f0; }
@@ -1659,7 +1661,7 @@
       <button class="upgrade-btn prestige" id="prestige-btn" disabled>잠김</button>
     </div>
     <div class="section-title">깨달음 (悟) <span id="enlight-count" style="color:#cc88ff;font-weight:400;font-size:10px;">0 보유</span>
-      <button id="engrave-btn" style="float:right;padding:2px 9px;border-radius:8px;border:1px solid #6a5a9a;background:linear-gradient(180deg,#3a2f56,#241c38);color:#d8c8ff;font-family:inherit;font-weight:800;font-size:10px;cursor:pointer;">🪬 각인</button>
+      <button id="engrave-btn" style="float:right;padding:2px 9px;border-radius:8px;border:1px solid #6a5a9a;background:linear-gradient(180deg,#3a2f56,#241c38);color:#d8c8ff;font-family:inherit;font-weight:800;font-size:10px;cursor:pointer;">🧿 각인</button>
     </div>
     <div id="skill-tree"></div>
     <div class="footer-row">
@@ -1676,7 +1678,7 @@
   <div class="tut-backdrop"></div>
   <div class="tut-card">
     <div class="tut-step" id="tut-step">1 / 4</div>
-    <div class="tut-emoji" id="tut-emoji">🪙</div>
+    <div class="tut-emoji" id="tut-emoji">💰</div>
     <div class="tut-title" id="tut-title">표창키우기에 오신 것을 환영합니다</div>
     <div class="tut-body" id="tut-body">설명…</div>
     <div class="tut-actions">
@@ -1728,7 +1730,7 @@
 
 <div id="engrave-modal">
   <div class="engrave-box">
-    <div class="engrave-title">🪬 성소 각인</div>
+    <div class="engrave-title">🧿 성소 각인</div>
     <div class="engrave-sub" id="engrave-modal-sub">칸에 새길 룬을 선택하세요</div>
     <div id="engrave-rune-list"></div>
     <button class="codex-close" id="engrave-close">닫기</button>
@@ -2448,7 +2450,7 @@ const ACHIEVEMENTS = [
   { id: 'a_tower_1',      name: '탑에 오르다',     icon: '🗼', desc: '시련의 탑 1층 돌파',     check: (s) => (s.towerFloor || 0) >= 1 },
   { id: 'a_tower_all',    name: '시련을 넘어선 자', icon: '⛩', desc: '시련의 탑 기본 6층 돌파', check: (s) => (s.towerFloor || 0) >= TOWER_FLOORS.length, gem: 20 },
   { id: 'a_tower_deep3',  name: '심연을 걷는 자',   icon: '🌀', desc: '무한 심층 3층 돌파 (탑 9층)', check: (s) => (s.towerFloor || 0) >= TOWER_FLOORS.length + 3, gem: 15 },
-  { id: 'a_engrave_1',    name: '첫 각인',          icon: '🪬', desc: '성소 각인 1칸 새기기',        check: (s) => Object.keys(s.engravings || {}).length >= 1 },
+  { id: 'a_engrave_1',    name: '첫 각인',          icon: '🧿', desc: '성소 각인 1칸 새기기',        check: (s) => Object.keys(s.engravings || {}).length >= 1 },
   { id: 'a_engrave_3',    name: '성소의 완성',      icon: '🛕', desc: '성소 각인 3칸 모두 새기기',   check: (s) => Object.keys(s.engravings || {}).length >= 3, gem: 10 },
   { id: 'a_tower_deep10', name: '적멸의 끝',        icon: '☄', desc: '무한 심층 10층 돌파 (탑 16층)', check: (s) => (s.towerFloor || 0) >= TOWER_FLOORS.length + 10, gem: 40 },
 ];
@@ -3589,14 +3591,14 @@ function applyEngraving(idx, runeId) {
   state.engravings = state.engravings || {};
   const cur = state.engravings[idx];
   if (cur === runeId) return false;
-  if (!cur && engraveCount() >= ENGRAVE_MAX) { toast(`🪬 각인은 최대 ${ENGRAVE_MAX}칸`); return false; }
+  if (!cur && engraveCount() >= ENGRAVE_MAX) { toast(`🧿 각인은 최대 ${ENGRAVE_MAX}칸`); return false; }
   const cost = cur ? ENGRAVE_SWAP_COST : getEngraveCost();
   if ((state.enlightenment || 0) < cost) { toast(`깨달음(悟) 부족 — ${cost} 필요`); return false; }
   state.enlightenment -= cost;
   state.engravings[idx] = runeId;
   state.stats.engravesUsed = (state.stats.engravesUsed || 0) + 1;
   const r = ENGRAVE_RUNES.find(x => x.id === runeId);
-  toast(`🪬 ${r.icon} 「${r.name}」 ${cur ? '교체' : '각인'} (悟 −${cost})`);
+  toast(`🧿 ${r.icon} 「${r.name}」 ${cur ? '교체' : '각인'} (悟 −${cost})`);
   addEvent('engrave', `${r.name} — ${idx + 1}번 칸`);
   sfx('mergeMystic');
   checkAchievements();
@@ -3607,7 +3609,7 @@ function applyEngraving(idx, runeId) {
 function removeEngraving(idx) {
   if (!state.engravings || !(idx in state.engravings)) return false;
   delete state.engravings[idx];
-  toast('🪬 각인 제거 (환불 없음)');
+  toast('🧿 각인 제거 (환불 없음)');
   refreshUI();
   save();
   return true;
@@ -3615,7 +3617,7 @@ function removeEngraving(idx) {
 function getGoldMulBreakdown() {
   const sets = getActiveSets();
   return [
-    { key: 'upgrade',   label: '🪙 골드 강화', mul: 1 + state.upgrades.goldMul * 0.1 },
+    { key: 'upgrade',   label: '💰 골드 강화', mul: 1 + state.upgrades.goldMul * 0.1 },
     { key: 'prestige',  label: '☯ 윤회',       mul: 1 + (state.prestigeCount || 0) * 0.5 },
     { key: 'skill',     label: '🌌 깨달음',    mul: 1 + getSkillLv('goldMastery') * 0.15 },
     { key: 'weekday',   label: '📅 요일',      mul: weekdayBonus().goldMul || 1 },           // Q-Leap 87
@@ -6309,7 +6311,7 @@ function renderSkillTree() {
   // Q-Leap 127: 각인 버튼 상태 (해금 전 잠금 표시 / 해금 후 사용량)
   const engBtn = document.getElementById('engrave-btn');
   if (engBtn) {
-    engBtn.textContent = isEngraveUnlocked() ? `🪬 각인 ${engraveCount()}/${ENGRAVE_MAX}` : '🪬 각인 🔒';
+    engBtn.textContent = isEngraveUnlocked() ? `🧿 각인 ${engraveCount()}/${ENGRAVE_MAX}` : '🧿 각인 🔒';
     engBtn.style.opacity = isEngraveUnlocked() ? '1' : '0.55';
   }
   el.innerHTML = '';
@@ -7056,7 +7058,7 @@ function renderTrophy() {
       ['🗼 시련의 탑',       (state.towerFloor || 0) > TOWER_FLOORS.length
         ? `완주 + 🌀 심층 ${(state.towerFloor || 0) - TOWER_FLOORS.length}`
         : `${state.towerFloor || 0} / ${TOWER_FLOORS.length}층`],
-      ['🪬 성소 각인',       `${engraveCount()} / ${ENGRAVE_MAX}칸`],
+      ['🧿 성소 각인',       `${engraveCount()} / ${ENGRAVE_MAX}칸`],
       ['⚗ 변종 융합',        s.fusionsUsed || 0],
       ['🔱 표창 분할',       s.splitsUsed || 0],
       ['✦ 황금 코팅',        s.coatingsUsed || 0],
@@ -7426,7 +7428,7 @@ function setEngraveMode(on) {
     b.style.borderColor = on ? '#d0a95c' : '#6a5a9a';
     b.style.color = on ? '#ffe9a8' : '#d8c8ff';
   }
-  if (on) toast('🪬 각인 모드 — 그리드 칸을 탭하세요 (다시 누르면 종료)');
+  if (on) toast('🧿 각인 모드 — 그리드 칸을 탭하세요 (다시 누르면 종료)');
   renderGrid();
 }
 function closeEngraveModal() { document.getElementById('engrave-modal').classList.remove('show'); }
@@ -7466,7 +7468,7 @@ function openEngravePicker(idx) {
 }
 document.getElementById('engrave-btn').addEventListener('click', () => {
   getAudio();
-  if (!isEngraveUnlocked()) { toast(`🪬 성소 각인 — 윤회 ${ENGRAVE_UNLOCK_PRESTIGE}회 달성 시 해금`); return; }
+  if (!isEngraveUnlocked()) { toast(`🧿 성소 각인 — 윤회 ${ENGRAVE_UNLOCK_PRESTIGE}회 달성 시 해금`); return; }
   setEngraveMode(!engraveMode);
 });
 document.getElementById('engrave-close').addEventListener('click', closeEngraveModal);
@@ -7707,7 +7709,7 @@ const HELP_SECTIONS = {
     { title: '🌌 깨달음 스킬', body: '9종 트리 — 골드/spawn/행운/계승/축복지속/도감/황금운/별운 등. 윤회 시 누적.' },
     { title: '⚖ 전략 모드', body: 'Lv 8+ 윤회 패널의 <span class="hk">전략 버튼</span>으로 런 스타일 선택: <span class="hk">부유</span>(골드+30%·생성18%↓) / <span class="hk">신속</span>(생성18%↑·골드−15%) / <span class="hk">변종</span>(변종×2·골드−12%) / 균형(없음). 이득마다 상응하는 손실 — 지배적 선택이 없는 트레이드오프.' },
     { title: '🗼 시련의 탑', body: '윤회 2회 해금. 윤회 패널에서 <span class="hk">다음 층 도전을 예약</span>하면 다음 윤회 런이 그 층의 제약과 함께 시작 — 단 <span class="hk">계승 없이 맨손 입장</span>. 목표 Lv 도달 시 돌파 — <span class="hk">층당 1회성 💎+깨달음</span> 보상. 6층: 생성 느림/자동·일괄 합치기 금지/골드 감소/의식 금지/생성 Lv1 고정/복합. 포기하면 다음 윤회에 재도전. 전략 모드와 중첩 가능 — 자발적 핸디캡의 명예 사다리. <span class="hk">6층 완주 후엔 무한 심층</span>: 심연/나락/무저/공허/적멸 5패턴이 순환하며 깊어질수록 제약이 강해지고 목표 Lv +2/층 — 끝없는 명예 기록.' },
-    { title: '🪬 성소 각인', body: '윤회 1회 해금. 깨달음(悟) 패널의 <span class="hk">🪬 각인 버튼</span> → 그리드 칸을 탭해 룬을 새김 (최대 3칸, 悟 15/30/50). <span class="hk">💰 부</span>(그 칸 패시브 ×1.5) / <span class="hk">⚒ 정련</span>(그 칸에서 완성된 합성·의식 골드 ×1.35) / <span class="hk">🍀 연</span>(그 칸으로의 손 합성 행운 +4%p). 효과는 칸 조건부 — 합성 동선을 각인 칸으로 유도하는 공간 전략. 팁: <span class="hk">의식 결과는 그룹의 가장 낮은 번호 칸에 생성</span>되므로 정련 각인으로 노릴 수 있음. 연의 각인은 손 합성에만 발동 (자동 합치기 제외). 윤회에도 보존, 제거는 무료(환불 없음). 스킬트리와 悟를 두고 경쟁하는 선택.' },
+    { title: '🧿 성소 각인', body: '윤회 1회 해금. 깨달음(悟) 패널의 <span class="hk">🧿 각인 버튼</span> → 그리드 칸을 탭해 룬을 새김 (최대 3칸, 悟 15/30/50). <span class="hk">💰 부</span>(그 칸 패시브 ×1.5) / <span class="hk">⚒ 정련</span>(그 칸에서 완성된 합성·의식 골드 ×1.35) / <span class="hk">🍀 연</span>(그 칸으로의 손 합성 행운 +4%p). 효과는 칸 조건부 — 합성 동선을 각인 칸으로 유도하는 공간 전략. 팁: <span class="hk">의식 결과는 그룹의 가장 낮은 번호 칸에 생성</span>되므로 정련 각인으로 노릴 수 있음. 연의 각인은 손 합성에만 발동 (자동 합치기 제외). 윤회에도 보존, 제거는 무료(환불 없음). 스킬트리와 悟를 두고 경쟁하는 선택.' },
     { title: '🏛 명예의 전당', body: '평생 기록 + 🎯다음 목표 + 💰골드 배수 분해 + 📈성장 스파크라인을 한눈에.' },
   ],
   convenience: [
@@ -7925,7 +7927,7 @@ document.getElementById('reset-btn').onclick = () => {
 // ---------- Boot ----------
 // First-play tutorial — shown only when no save existed at boot.
 const TUTORIAL_STEPS = [
-  { emoji: '🪙', title: '표창키우기에 오신 것을 환영합니다',
+  { emoji: '💰', title: '표창키우기에 오신 것을 환영합니다',
     body: '시간이 흐르며 표창이 자동으로 생성됩니다. 처음 진행 속도는 12초/표창입니다.' },
   { emoji: '👆', title: '탭하여 합치기',
     body: '같은 레벨의 표창을 탭→탭 하면 합쳐져 한 단계 올라갑니다. 골드도 함께 획득합니다.' },
@@ -8080,7 +8082,7 @@ function processOfflineReward() {
   const extras = [];
   if (goldEarned >= 1) extras.push('💰 ' + fmt(goldEarned));
   if (frenzyAdded > 0) extras.push(`⚡ 폭주 +${frenzyAdded}`);
-  if (spawnAdded)      extras.push('🪄 표창 준비');
+  if (spawnAdded)      extras.push('✨ 표창 준비');
   document.getElementById('offline-gold').textContent = extras.join(' · ') || '—';
   document.getElementById('offline-cap-note').textContent =
     capped ? '⚠ 최대 4시간 + 50% 효율 적용' : '50% 효율 + 폭주 충전 +1/30s';

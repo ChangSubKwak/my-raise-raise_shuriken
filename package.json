@@ -1,12 +1,13 @@
 {
   "name": "raise-shuriken",
-  "version": "3.72.2",
+  "version": "3.72.3",
   "private": true,
   "description": "표창키우기 — 합체 (Shuriken Merge). Single-file merge game.",
   "scripts": {
     "parse": "node -e \"const s=require('fs').readFileSync('index.html','utf8').match(/<script>([\\s\\S]*?)<\\/script>/)[1]; new Function(s); console.log('parse OK')\"",
     "test": "node tests/game.test.js",
     "scan": "node tests/scan-deadcode.js",
-    "check": "npm run parse && npm run test"
+    "check": "npm run parse && npm run test",
+    "verify:browser": "node tests/browser-verify.js"
   }
 }
