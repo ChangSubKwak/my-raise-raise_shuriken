@@ -2124,8 +2124,11 @@ function blessedDuration() {
 }
 function getEnlightenmentGain() {
   // 깨달음 = 이번 런 최고 Lv 비례 × 알찬 런 계수 (v3.78 PACING B — 10분 램프, 첫 윤회 면제)
+  // v3.79.1: 최소 1 보장은 온전한 런에만 — max(1,…) 무조건 하한이 "윤회당 悟 1"을 보장해
+  // 30분 스팸으로 悟 750(스킬트리 2배치)을 벌던 잔여 누수를 막는다. 부실 런은 0도 가능.
   const base = Math.max(1, Math.floor((state.runBestLevel || 1) / 3));
-  return Math.max(1, Math.floor(base * getRunSubstanceFactor()));
+  const factor = getRunSubstanceFactor();
+  return Math.max(factor >= 1 ? 1 : 0, Math.floor(base * factor));
 }
 
 // ---------- State ----------
@@ -6620,6 +6623,10 @@ function renderPrestige() {
 function doPrestige() {
   if ((state.bestLevel || 1) < 8) return false; // guard — matches UI gate
   const enlightGain = getEnlightenmentGain();
+  // v3.79.1 (감사): 윤회 도전(trial)은 직전 런이 알찼을 때만 시작 — trialReward가
+  // 윤회 수에 비례(5 + p/3)라, 스팸 루프가 悟 게이트를 우회해 도전 보상으로 수확하던
+  // 뒷문 (실측: 30분 스팸에 悟 21,170). 정상 페이스 런은 무영향, 첫 윤회 면제 유지.
+  const wasSubstantialRun = getRunSubstanceFactor() >= 1;
   state.enlightenment = (state.enlightenment || 0) + enlightGain;
   state.prestigeCount++;
   // Prestige count milestone (one-shot, gems only)
@@ -6697,7 +6704,7 @@ function doPrestige() {
     }
   }
   startStage();
-  startTrial();        // Q-Leap 43
+  if (wasSubstantialRun) startTrial(); // Q-Leap 43 · v3.79.1: 알찬 런 뒤에만 (스팸 뒷문 차단)
   checkAchievements();
   refreshUI();
   save();

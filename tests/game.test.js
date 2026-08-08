@@ -939,9 +939,13 @@ group('pacing interventions A+B (v3.78, user-approved)', () => {
   approx(F.getRunSubstanceFactor(), 0.5, '5min run → 50%', 1e-9);
   withState({ prestigeCount: 3, runPlaySec: 900 });
   eq(F.getRunSubstanceFactor(), 1, '15min run → full');
-  // 30초 스팸 런: runBest 30이라도 悟 1 (기존 10)
+  // 30초 스팸 런: runBest 30이라도 悟 0 (v3.79.1 — 무조건 하한 1도 스팸 수입원이었다)
   withState({ prestigeCount: 3, runBestLevel: 30, runPlaySec: 30 });
-  eq(F.getEnlightenmentGain(), 1, '30s spam run pays 1悟 (was 10 — the spam engine)');
+  eq(F.getEnlightenmentGain(), 0, '30s spam run pays 0悟 (unconditional floor removed)');
+  withState({ prestigeCount: 3, runBestLevel: 3, runPlaySec: 300 });
+  eq(F.getEnlightenmentGain(), 0, 'half-substance tiny run can round to 0 (no free floor)');
+  withState({ prestigeCount: 3, runBestLevel: 3, runPlaySec: 600 });
+  eq(F.getEnlightenmentGain(), 1, 'full-substance run keeps the ≥1 floor');
   withState({ prestigeCount: 3, runBestLevel: 30, runPlaySec: 600 });
   eq(F.getEnlightenmentGain(), 10, 'full 10min run pays full 10悟');
   // advice refuses to endorse short runs
@@ -1292,7 +1296,7 @@ group('prestige preserve/reset rules (Q-Leap 123 refactor + QA)', () => {
 
   // full prestige from a rich run
   s = withState({
-    bestLevel: 40, runBestLevel: 30, prestigeCount: 2, gold: 999999, enlightenment: 10,
+    bestLevel: 40, runBestLevel: 30, prestigeCount: 2, gold: 999999, enlightenment: 10, runPlaySec: 600,
     upgrades: { maxShuriken: 6, spawnRate: 9, spawnBatch: 3, firerate: 7, baseDmg: 8, goldMul: 5, spawnLevel: 4, luckChance: 2 },
     autoMergeUnlocked: true, skills: { inheritance: 0 },
     codex: { 1: true, 20: true, 40: true },

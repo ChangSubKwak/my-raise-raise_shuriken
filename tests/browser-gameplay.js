@@ -139,6 +139,7 @@ function ok(cond, msg) {
   await clearOverlays();
   await page.evaluate(() => {
     state.bestLevel = 12; state.runBestLevel = 12; state.gold = 123456;
+    state.runPlaySec = 600; // v3.79.1 알찬 런 규칙: 10분 런이어야 悟 지급
     renderPrestige();
   });
   await page.evaluate(() => document.getElementById('prestige-btn').click());
