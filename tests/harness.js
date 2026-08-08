@@ -117,6 +117,7 @@ function loadGame() {
     getAmbienceParams, startAmbience, stopAmbience, updateAmbience, getAudio,
     getRevealState, applyReveal,
     getUpgradeCost, isUpgradeMaxed, activateFrenzy,
+    getPrestigeGoldMul, getNextPrestigeGoldInc, getRunSubstanceFactor,
     isEngraveUnlocked, engraveCount, getEngraveCost, getEngraving,
     engraveWealthMul, engraveForgeMul, engraveFortuneBonus, applyEngraving, removeEngraving,
   },

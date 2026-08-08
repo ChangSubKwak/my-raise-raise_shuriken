@@ -909,19 +909,73 @@ group('enlightenment gain formula (QA)', () => {
   ok(ok2, 'enlightenment gain is monotonic non-decreasing');
 });
 
+group('pacing interventions A+B (v3.78, user-approved)', () => {
+  // A. 윤회 골드 체감: 1~20회 +50%p → 21~50회 +25%p → 51회+ +10%p
+  withState({ prestigeCount: 2 });
+  approx(F.getPrestigeGoldMul(), 2.0, 'p2: unchanged early curve (1+1.0)', 1e-9);
+  withState({ prestigeCount: 20 });
+  approx(F.getPrestigeGoldMul(), 11, 'p20: tier-1 cap (1+10)', 1e-9);
+  withState({ prestigeCount: 50 });
+  approx(F.getPrestigeGoldMul(), 18.5, 'p50: +tier-2 (11+7.5)', 1e-9);
+  withState({ prestigeCount: 273 });
+  approx(F.getPrestigeGoldMul(), 18.5 + 22.3, 'p273: deep spam collapses to +10%p steps', 1e-9);
+  eq(F.getNextPrestigeGoldInc(), 10, 'next-step readout at deep count = 10%p');
+  withState({ prestigeCount: 3 });
+  eq(F.getNextPrestigeGoldInc(), 50, 'next-step readout early = 50%p');
+  // breakdown wired to the new curve
+  withState({ prestigeCount: 30 });
+  approx(F.getGoldMulBreakdown().find(f => f.key === 'prestige').mul, 1 + 10 + 2.5, 'breakdown uses the decayed curve', 1e-9);
+  // monotonic non-decreasing
+  let prevM = 0, mono = true;
+  for (let p = 0; p <= 300; p++) { const m = F.getPrestigeGoldMul(p); if (m < prevM) mono = false; prevM = m; }
+  ok(mono, 'decayed curve stays monotonic');
+
+  // B. 알찬 런 계수: 10분 램프, 첫 윤회 면제, 스팸 런은 비례 축소
+  withState({ prestigeCount: 0, runPlaySec: 0 });
+  eq(F.getRunSubstanceFactor(), 1, 'first prestige exempt (skill tree opening unharmed)');
+  withState({ prestigeCount: 3, runPlaySec: 0 });
+  eq(F.getRunSubstanceFactor(), 0, '0s run → factor 0');
+  withState({ prestigeCount: 3, runPlaySec: 300 });
+  approx(F.getRunSubstanceFactor(), 0.5, '5min run → 50%', 1e-9);
+  withState({ prestigeCount: 3, runPlaySec: 900 });
+  eq(F.getRunSubstanceFactor(), 1, '15min run → full');
+  // 30초 스팸 런: runBest 30이라도 悟 1 (기존 10)
+  withState({ prestigeCount: 3, runBestLevel: 30, runPlaySec: 30 });
+  eq(F.getEnlightenmentGain(), 1, '30s spam run pays 1悟 (was 10 — the spam engine)');
+  withState({ prestigeCount: 3, runBestLevel: 30, runPlaySec: 600 });
+  eq(F.getEnlightenmentGain(), 10, 'full 10min run pays full 10悟');
+  // advice refuses to endorse short runs
+  const adv = (() => { withState({ bestLevel: 30, runBestLevel: 30, prestigeCount: 3, enlightenment: 0, runPlaySec: 60 }); return F.getPrestigeAdvice(); })();
+  ok(!adv.recommend && /짧습니다/.test(adv.reason), 'advice blocks short-run prestige with a countdown reason');
+  // update() accrues runPlaySec; doPrestige resets it
+  const sU = withState({ runPlaySec: 0 });
+  for (let i = 0; i < 30; i++) F.update(0.1);
+  ok(sU.runPlaySec >= 2, 'update accrues run playtime');
+  const sR = withState({ bestLevel: 12, runBestLevel: 12, prestigeCount: 1, runPlaySec: 999, enlightenment: 0 });
+  F.doPrestige();
+  eq(sR.runPlaySec, 0, 'prestige resets the run clock');
+  // migration: old save without the field gets full factor for the in-flight run
+  const sM = withState({ prestigeCount: 5 });
+  delete sM.runPlaySec;
+  F.save();
+  withState({});
+  F.load();
+  eq(G.getState().runPlaySec, 600, 'legacy save migrates to a full substance factor');
+});
+
 group('prestige advice (Q-Leap 122)', () => {
   withState({ bestLevel: 5, prestigeCount: 0 });
   eq(F.getPrestigeAdvice().recommend, false, 'below Lv8 → not recommended');
   withState({ bestLevel: 12, runBestLevel: 12, prestigeCount: 0, enlightenment: 0 });
   eq(F.getPrestigeAdvice().recommend, true, 'first prestige at Lv8+ → recommended');
   // subsequent: recommend only when gain is a big boost to current enlightenment
-  withState({ bestLevel: 30, runBestLevel: 30, prestigeCount: 3, enlightenment: 5 }); // gain=10 >= max(2,2.5)
+  withState({ bestLevel: 30, runBestLevel: 30, prestigeCount: 3, enlightenment: 5, runPlaySec: 600 }); // gain=10 >= max(2,2.5)
   eq(F.getPrestigeAdvice().recommend, true, 'large relative gain → recommended');
-  withState({ bestLevel: 30, runBestLevel: 9, prestigeCount: 3, enlightenment: 100 }); // gain=3 < min(50,10)=10
+  withState({ bestLevel: 30, runBestLevel: 9, prestigeCount: 3, enlightenment: 100, runPlaySec: 600 }); // gain=3 < min(50,10)=10
   eq(F.getPrestigeAdvice().recommend, false, 'small absolute gain → hold');
   // deep player: huge holdings but a solid run (gain 10, Lv30) → recommend (absolute-cap fix,
   // so the relative 50% threshold can't make advice perpetually "hold")
-  withState({ bestLevel: 60, runBestLevel: 30, prestigeCount: 20, enlightenment: 500 }); // gain=10 >= min(250,10)=10
+  withState({ bestLevel: 60, runBestLevel: 30, prestigeCount: 20, enlightenment: 500, runPlaySec: 600 }); // gain=10 >= min(250,10)=10
   eq(F.getPrestigeAdvice().recommend, true, 'deep player with a solid run → recommend (not perpetual hold)');
 });
 

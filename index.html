@@ -2114,8 +2114,9 @@ function blessedDuration() {
   return (30 + getSkillLv('blessTime') * 5) * (weekdayBonus().blessMul || 1);
 }
 function getEnlightenmentGain() {
-  // 깨달음 earned on prestige scales with bestLevel reached this run
-  return Math.max(1, Math.floor((state.runBestLevel || 1) / 3));
+  // 깨달음 = 이번 런 최고 Lv 비례 × 알찬 런 계수 (v3.78 PACING B — 10분 램프, 첫 윤회 면제)
+  const base = Math.max(1, Math.floor((state.runBestLevel || 1) / 3));
+  return Math.max(1, Math.floor(base * getRunSubstanceFactor()));
 }
 
 // ---------- State ----------
@@ -2202,6 +2203,8 @@ function defaultState() {
     luckyCharms: 0,
     // Q-Leap 91: 윤회 직후 신생 부스트 카운터
     postPrestigeSpawns: 0,
+    // v3.78 (PACING B): 이번 런의 실플레이 시간(초) — 깨달음 알찬 런 계수의 입력
+    runPlaySec: 0,
     // Q-Leap 59: 자동 매도 — auto-sell shuriken at or below threshold
     autoSellEnabled: false,
     autoSellThreshold: 1,     // Lv ≤ this → auto-sell (golden/star/dark/locked excluded)
@@ -3035,6 +3038,8 @@ function load() {
     // Q-Leap 89 & 91
     state.luckyCharms = Math.max(0, +s.luckyCharms || 0);
     state.postPrestigeSpawns = Math.max(0, +s.postPrestigeSpawns || 0);
+    // v3.78 PACING B 마이그레이션: 필드가 없는 구 세이브의 진행 중 런은 온전한 계수로 (불이익 없음)
+    state.runPlaySec = (s.runPlaySec === undefined) ? RUN_SUBSTANCE_SEC : Math.max(0, +s.runPlaySec || 0);
     // Run-transient chain state must NOT survive a reload. The defaultState comments mark these
     // "reset on load", and doPrestige zeroes the same fields for "a fresh run starts clean".
     // Unlike frenzy/goldRush (intentionally persisted above), a stale comboCount would inflate
@@ -3524,7 +3529,7 @@ function getGoldMulBreakdown() {
   const sets = getActiveSets();
   return [
     { key: 'upgrade',   label: '💰 골드 강화', mul: 1 + state.upgrades.goldMul * 0.1 },
-    { key: 'prestige',  label: '☯ 윤회',       mul: 1 + (state.prestigeCount || 0) * 0.5 },
+    { key: 'prestige',  label: '☯ 윤회',       mul: getPrestigeGoldMul() },                   // v3.78 체감 (PACING A)
     { key: 'skill',     label: '🌌 깨달음',    mul: 1 + getSkillLv('goldMastery') * 0.15 },
     { key: 'weekday',   label: '📅 요일',      mul: weekdayBonus().goldMul || 1 },           // Q-Leap 87
     { key: 'frenzy',    label: '⚡ 폭주',      mul: (state.frenzyTimer || 0) > 0 ? 1.2 : 1 }, // Q-Leap 90
@@ -3818,6 +3823,25 @@ function comboCashout(peak) {
 }
 // Q-Leap 122: 윤회 조언 — 지금 윤회가 가치 있는지 판단. 실제 보상은 getEnlightenmentGain
 // (floor(runBestLevel/3))이므로 그것을 기준으로 한다. (구 getPrestigeGain은 미사용이라 제거.)
+// v3.78 (PACING 개입 A, 사용자 승인): 윤회 골드 보너스 체감 — 무상한 +50% 선형이
+// "28초마다 윤회"를 최적 전략으로 만들던 복리 동력. 구간 체감으로 전환:
+// 1~20회 +50%p · 21~50회 +25%p · 51회+ +10%p. count 인자로 다음 증분도 조회 가능.
+function getPrestigeGoldMul(count) {
+  const p = (count !== undefined) ? count : (state.prestigeCount || 0);
+  return 1 + 0.5 * Math.min(p, 20) + 0.25 * Math.max(0, Math.min(p, 50) - 20) + 0.1 * Math.max(0, p - 50);
+}
+function getNextPrestigeGoldInc() { // 다음 윤회가 주는 골드 %p (50/25/10)
+  const p = state.prestigeCount || 0;
+  return Math.round((getPrestigeGoldMul(p + 1) - getPrestigeGoldMul(p)) * 100);
+}
+// v3.78 (PACING 개입 B, 사용자 승인): 알찬 런 조건 — 깨달음은 런 플레이 시간에 비례
+// (10분 램프, 첫 윤회는 면제). 계승으로 runBestLevel을 즉시 복구해 30초 만에 悟 10을
+// 뽑던 스팸 루프만 정밀 타격하고, 정상 페이스 런은 무영향.
+const RUN_SUBSTANCE_SEC = 600;
+function getRunSubstanceFactor() {
+  if ((state.prestigeCount || 0) === 0) return 1; // 스킬트리가 열리는 첫 윤회는 온전히
+  return Math.min(1, (state.runPlaySec || 0) / RUN_SUBSTANCE_SEC);
+}
 function getPrestigeAdvice() {
   if ((state.bestLevel || 1) < 8) {
     return { recommend: false, gain: 0, reason: `Lv 8 도달 시 윤회 해금 (현재 ${state.bestLevel || 1})` };
@@ -3826,13 +3850,19 @@ function getPrestigeAdvice() {
   if ((state.prestigeCount || 0) === 0) {
     return { recommend: true, gain, reason: '첫 윤회 — 깨달음 스킬트리가 열립니다' };
   }
+  // v3.78 PACING B: 알찬 런 계수가 차기 전엔 추천하지 않는다 — ✅ 힌트가 스팸을 부추기지 않게
+  const sub = getRunSubstanceFactor();
+  if (sub < 1) {
+    const remainMin = Math.ceil((RUN_SUBSTANCE_SEC - (state.runPlaySec || 0)) / 60);
+    return { recommend: false, gain, reason: `런이 아직 짧습니다 — 약 ${remainMin}분 뒤 온전한 깨달음 (현재 ${Math.round(sub * 100)}%)` };
+  }
   const cur = state.enlightenment || 0;
   // Recommend when the gain is a big relative boost (≥50% of holdings) OR meaningful in
   // absolute terms (≥10, i.e. a Lv30+ run). The absolute cap prevents the relative threshold
   // from becoming unreachable for deep players (perpetual "hold"), since prestige also grants
-  // the permanent +50% gold multiplier regardless of enlightenment.
+  // a permanent gold multiplier step regardless of enlightenment.
   if (gain >= Math.max(2, Math.min(cur * 0.5, 10))) {
-    return { recommend: true, gain, reason: `깨달음 +${gain} · 영구 골드 +50% — 윤회 추천` };
+    return { recommend: true, gain, reason: `깨달음 +${gain} · 영구 골드 +${getNextPrestigeGoldInc()}%p — 윤회 추천` };
   }
   return { recommend: false, gain, reason: `깨달음 +${gain} — 더 키운 뒤 윤회가 효율적` };
 }
@@ -4728,6 +4758,7 @@ function update(dt) {
   if (playTimeFractional >= 1) {
     const sec = Math.floor(playTimeFractional);
     state.stats.playTimeSec = (state.stats.playTimeSec || 0) + sec;
+    state.runPlaySec = (state.runPlaySec || 0) + sec; // v3.78 PACING B: 런 시간 (윤회 시 리셋)
     playTimeFractional -= sec;
   }
 
@@ -6473,7 +6504,7 @@ function renderPrestige() {
     } else {
       towerHtml = `<div style="margin-top:7px;font-size:11px;color:#8a80a8;">🗼 시련의 탑 — 윤회 ${TOWER_UNLOCK_PRESTIGE}회 달성 시 해금</div>`;
     }
-    info.innerHTML = `윤회 시 깨달음(悟) <b style="color:#cc88ff">+${enlightGain}</b> 획득<br>총 윤회 ${state.prestigeCount}회 · 영구 골드 +${state.prestigeCount * 50}%${adviceLine}${pmLine}`
+    info.innerHTML = `윤회 시 깨달음(悟) <b style="color:#cc88ff">+${enlightGain}</b> 획득<br>총 윤회 ${state.prestigeCount}회 · 영구 골드 +${Math.round((getPrestigeGoldMul() - 1) * 100)}% (다음 +${getNextPrestigeGoldInc()}%p)${adviceLine}${pmLine}`
       + `<div style="margin-top:7px;font-size:11px;">전략 모드 <button id="strat-cycle" style="margin-left:4px;padding:3px 9px;border-radius:7px;border:1px solid #6a5a9a;background:linear-gradient(180deg,#4a3f6e,#2e2748);color:#e8d8ff;font-family:inherit;font-weight:800;font-size:11px;cursor:pointer;">${sm.label}</button><br><span style="color:#aa99cc;">${sm.desc}</span></div>`
       + towerHtml;
     const armBtn = document.getElementById('tower-arm');
@@ -6510,7 +6541,7 @@ function renderPrestige() {
       // open the rich prestige modal instead of native confirm
       document.getElementById('pl-count').textContent = state.prestigeCount;
       document.getElementById('pl-bonus').textContent =
-        `골드 +50% · 깨달음(悟) +${getEnlightenmentGain()}`;
+        `골드 +${getNextPrestigeGoldInc()}%p · 깨달음(悟) +${getEnlightenmentGain()}`;
       document.getElementById('prestige-modal-sub').textContent =
         '진행을 끝맺고 다음 주기를 시작합니다. 깨달음으로 영구 스킬을 강화하세요.';
       // Q-Leap 63: populate run-summary with this run's accomplishments
@@ -6577,6 +6608,7 @@ function doPrestige() {
   state.enemiesInStage = 0;
   state.runBestLevel = 1;
   state.postPrestigeSpawns = 10; // Q-Leap 91
+  state.runPlaySec = 0; // v3.78 PACING B: 새 런의 알찬 런 계수는 0부터
   // preserve capital investments on prestige: grid size, spawn batch, luck chance, autoMerge unlock
   const keepMax = state.upgrades.maxShuriken;
   const keepBatch = state.upgrades.spawnBatch;
@@ -7771,7 +7803,7 @@ const HELP_SECTIONS = {
     { title: '기본 합성', body: '같은 Lv 표창 2개를 <span class="hk">탭→탭</span> 또는 <span class="hk">드래그</span>로 합치면 Lv+1. 자동으로 진행 — 시간이 흐르며 표창이 자동 생성됩니다.' },
     { title: '잠금 (Lock)', body: '표창 길게 누르면 🔒 잠금. 자동합치기/판매로부터 보호. 강력한 표창 보존용.' },
     { title: '판매 (Sell)', body: '💸 판매 모드 토글 후 표창 탭 시 골드 환전 (값 = 2^Lv × 0.5 × 골드 배수 (시세/변종 프리미엄 별도)).' },
-    { title: '윤회 (Prestige)', body: 'Lv 8+ 도달 시 윤회 가능. 깨달음(悟) 획득 → 스킬트리 강화. 누적 +50% 골드/회. 도감/grid 크기 보존.' },
+    { title: '윤회 (Prestige)', body: 'Lv 8+ 도달 시 윤회 가능. 깨달음(悟) 획득 → 스킬트리 강화 (悟는 <span class="hk">런 10분 램프</span> — 짧은 런은 비례 축소). 영구 골드는 체감 누적: 20회까지 +50%p, 50회까지 +25%p, 이후 +10%p/회. 도감/grid 크기 보존.' },
   ],
   variants: [
     { title: '✦ 황금 표창', body: '0.5% 자연 발생. <span class="hk">판매 5x</span> 또는 <span class="hk">합성 +1 점프</span>. 부모 1=50% / 2=100% 전이.' },
