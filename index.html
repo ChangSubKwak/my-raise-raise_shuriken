@@ -1423,6 +1423,17 @@
     box-shadow: 0 0 8px rgba(255,80,40,0.3);
   }
   #burn-btn:active { transform: scale(0.94); }
+  /* Q-Leap 128: 제련 모드 다이얼 */
+  #forge-btn {
+    flex: 0.85; padding: 8px 6px;
+    background: linear-gradient(180deg, #3a4a5e, #232e3c);
+    border: 1px solid #5a7a9a; border-radius: 8px; color: #cfe0f0;
+    font-family: inherit; font-size: 11px; font-weight: 700; cursor: pointer;
+  }
+  #forge-btn:active { transform: scale(0.94); }
+  #forge-btn.locked { opacity: 0.5; }
+  #forge-btn.fine  { background: linear-gradient(180deg, #6e4a2e, #48301a); border-color: #d0a95c; color: #ffe9a8; }
+  #forge-btn.swift { background: linear-gradient(180deg, #2e5e4a, #1a3c2e); border-color: #5cd0a9; color: #a8ffe0; }
   #burn-btn.active {
     animation: burnPulse 0.5s ease-in-out infinite alternate;
   }
@@ -1614,6 +1625,7 @@
         </div>
       </div>
       <button id="burn-btn" title="💎 10 — 30초 버닝 모드">🔥 버닝</button>
+      <button id="forge-btn" title="제련 모드 — 생성 속도·시작 Lv 트레이드오프 (Lv 6 해금)">⚖ 표준</button>
     </div>
   </div>
 
@@ -2233,6 +2245,7 @@ function defaultState() {
     // Q-Leap 75: 명상 모드 — toggles all auto-features simultaneously
     meditationMode: false,
     strategyMode: 'none', // Strategy Mode (전략): trade-off run modifier, prestige-tier
+    forgeMode: 'standard', // Q-Leap 128: 제련 모드 — spawn-side 전술 다이얼 (설정, 윤회 보존)
 
     // Q-Leap 77: 폭주 게이지 — fills 1 per merge up to 100, then user activates 30s ×2 spawn boost
     frenzyCharge: 0,
@@ -3127,6 +3140,7 @@ function load() {
     state.storage = Array.isArray(s.storage) ? s.storage.slice(0, 3) : [];
     state.meditationMode = !!s.meditationMode;
     state.strategyMode = (STRATEGY_MODES.some(m => m.id === s.strategyMode)) ? s.strategyMode : 'none';
+    state.forgeMode = (FORGE_MODES.some(m => m.id === s.forgeMode)) ? s.forgeMode : 'standard'; // Q-Leap 128
     // Q-Leap 77: Frenzy state persists
     state.frenzyCharge = Math.max(0, Math.min(FRENZY_MAX, +s.frenzyCharge || 0));
     state.frenzyTimer = Math.max(0, +s.frenzyTimer || 0);
@@ -3387,7 +3401,7 @@ function getSpawnInterval() {
   const frenzyMul = (state.frenzyTimer || 0) > 0 ? 0.5 : 1; // Q-Leap 77: 폭주 ×2 spawn
   const weekdayMul = weekdayBonus().spawnMul || 1; // Q-Leap 87
   const eliteMul = hasSet('elite') ? 0.9 : 1; // Q-Leap 105: 정예 진형 +10% 가속
-  return Math.max(0.6, base * Math.pow(0.95, state.upgrades.spawnRate) * burnMul * skillMul * shopBoost * trialBoost * starBoost * chalBoost * prestigeSpeed * frenzyMul * weekdayMul * eliteMul * getStrategySpawnMul() * getTowerSpawnMul()); // floor raised 0.4→0.6 to cap max spawn speed
+  return Math.max(0.6, base * Math.pow(0.95, state.upgrades.spawnRate) * burnMul * skillMul * shopBoost * trialBoost * starBoost * chalBoost * prestigeSpeed * frenzyMul * weekdayMul * eliteMul * getStrategySpawnMul() * getTowerSpawnMul() * getForgeSpawnMul()); // floor raised 0.4→0.6 to cap max spawn speed
 }
 
 // Q-Leap 77: Frenzy constants
@@ -3438,8 +3452,33 @@ function getSpawnStartLevel() {
 // while it's active (Q-Leap 91). Pure (no decrement); spawnShuriken decrements the counter itself.
 function getNextSpawnLevel() {
   if (isTowerSpawnLv1()) return 1; // 고행의 층은 post-prestige +2 부스트도 무시 — 진짜 '고정'
-  return getSpawnStartLevel() + ((state.postPrestigeSpawns || 0) > 0 ? 2 : 0);
+  return Math.max(1, getSpawnStartLevel() + ((state.postPrestigeSpawns || 0) > 0 ? 2 : 0) + getForgeLevelDelta()); // Q-Leap 128
 }
+
+// ── Q-Leap 128: 제련 모드 (Forge Mode) — spawn-side 전술 다이얼 ─────────────
+// CLAUDE.md가 권하는 "spawn-side mechanic": 생성은 여전히 순수 시간 게이트(비용 없음)지만,
+// "무엇을 제련할지"를 고른다. 전략 모드(런 단위 설정)와 달리 언제든 전환하는 전술 다이얼.
+// 두 특화 모두 원시 가치율이 표준의 ~91% (2/2.2, 0.5/0.55) — 지배 선택 없음:
+//   정밀 = 슬롯·탭 절약 (그리드 압박/방치에 유리) · 속성 = 합성 횟수↑ (콤보/폭주/미션에 유리)
+const FORGE_UNLOCK_LV = 6;
+const FORGE_MODES = [
+  { id: 'standard', icon: '⚖', name: '표준 제련', desc: '기본 속도 · 기본 Lv' },
+  { id: 'fine',     icon: '🔥', name: '정밀 제련', desc: '생성 120% 느림 · 시작 Lv +1 — 슬롯·손이 절약', spawnMul: 2.2, lvDelta: 1 },
+  { id: 'swift',    icon: '🌪', name: '속성 제련', desc: '생성 45% 빠름 · 시작 Lv −1 — 합성 횟수가 는다', spawnMul: 0.55, lvDelta: -1 },
+];
+function isForgeUnlocked() { return (state.bestLevel || 1) >= FORGE_UNLOCK_LV; }
+function getForgeMode() { return FORGE_MODES.find(m => m.id === (state.forgeMode || 'standard')) || FORGE_MODES[0]; }
+// 게이트: 미해금/고행의 층(생성 Lv1 고정)에선 완전 무효. 속성은 내릴 레벨이 있어야
+// 할인 — 시작 Lv 1에선 무효 (Lv 하한 공짜 가속 차단, 지배 선택 방지의 핵심).
+function forgeEffective() {
+  if (!isForgeUnlocked() || isTowerSpawnLv1()) return { spawnMul: 1, lvDelta: 0 };
+  const m = getForgeMode();
+  if (!m.lvDelta) return { spawnMul: 1, lvDelta: 0 };
+  if (m.id === 'swift' && getSpawnStartLevel() <= 1) return { spawnMul: 1, lvDelta: 0 };
+  return { spawnMul: m.spawnMul, lvDelta: m.lvDelta };
+}
+function getForgeSpawnMul()   { return forgeEffective().spawnMul; }
+function getForgeLevelDelta() { return forgeEffective().lvDelta; }
 // Q-Leap 118: 골드 배수 분해 — 누적된 10개 출처를 한 곳에서 정의 (단일 진실 공급원).
 // getGoldMul은 이 곱. 활성(>1) 요소는 명예의 전당에 표시되어 경제가 투명해진다.
 // Strategy Mode (전략) — a prestige-tier choice of mutually-exclusive TRADE-OFF run modifiers.
@@ -4949,6 +4988,17 @@ function updateHUD() {
   // handler — sync here so a saved-on state survives a page refresh.
   const medBtn = document.getElementById('meditation-btn');
   if (medBtn) medBtn.classList.toggle('on', !!state.meditationMode);
+  // Q-Leap 128: 제련 모드 다이얼 — 라벨/색으로 현재 모드 상시 표시 (고행의 층 등 무효 시 🚫)
+  const forgeBtn = document.getElementById('forge-btn');
+  if (forgeBtn) {
+    const fm = getForgeMode();
+    const inert = fm.lvDelta && getForgeLevelDelta() === 0; // 선택은 했는데 게이트로 무효인 상태
+    forgeBtn.className = isForgeUnlocked() ? (fm.id !== 'standard' ? fm.id : '') : 'locked';
+    forgeBtn.textContent = isForgeUnlocked() ? `${fm.icon} ${fm.name.slice(0, 2)}${inert ? ' 🚫' : ''}` : '🔒 제련';
+    forgeBtn.title = isForgeUnlocked()
+      ? `${fm.icon} ${fm.name} — ${fm.desc}${inert ? ' (지금은 무효: 생성 Lv 하한/고행의 층)' : ''} · 탭하여 전환`
+      : `제련 모드 — Lv ${FORGE_UNLOCK_LV} 도달 시 해금`;
+  }
   // Burning UI
   const burnBtn = document.getElementById('burn-btn');
   if (burnBtn) {
@@ -6604,6 +6654,19 @@ document.getElementById('burn-btn').addEventListener('click', () => {
   getAudio();
   activateBurning();
 });
+// Q-Leap 128: 제련 모드 순환 (표준 → 정밀 → 속성)
+document.getElementById('forge-btn').addEventListener('click', () => {
+  getAudio();
+  if (!isForgeUnlocked()) { toast(`⚖ 제련 모드 — 최고 Lv ${FORGE_UNLOCK_LV} 도달 시 해금`); return; }
+  const i = FORGE_MODES.findIndex(m => m.id === (state.forgeMode || 'standard'));
+  const next = FORGE_MODES[(i + 1) % FORGE_MODES.length];
+  state.forgeMode = next.id;
+  if (next.id !== 'standard') state.stats.forgeUsed = (state.stats.forgeUsed || 0) + 1;
+  toast(`${next.icon} ${next.name} — ${next.desc}`);
+  sfx('move');
+  updateHUD();
+  save();
+});
 document.getElementById('sort-btn').addEventListener('click', () => {
   getAudio();
   sortGridByLevel();
@@ -7069,6 +7132,7 @@ function renderTrophy() {
         ? `완주 + 🌀 심층 ${(state.towerFloor || 0) - TOWER_FLOORS.length}`
         : `${state.towerFloor || 0} / ${TOWER_FLOORS.length}층`],
       ['🧿 성소 각인',       `${engraveCount()} / ${ENGRAVE_MAX}칸`],
+      ['⚖ 제련 모드',        `${getForgeMode().icon} ${getForgeMode().name}`],
       ['⚗ 변종 융합',        s.fusionsUsed || 0],
       ['🔱 표창 분할',       s.splitsUsed || 0],
       ['✦ 황금 코팅',        s.coatingsUsed || 0],
@@ -7719,6 +7783,7 @@ const HELP_SECTIONS = {
     { title: '🌌 깨달음 스킬', body: '9종 트리 — 골드/spawn/행운/계승/축복지속/도감/황금운/별운 등. 윤회 시 누적.' },
     { title: '⚖ 전략 모드', body: 'Lv 8+ 윤회 패널의 <span class="hk">전략 버튼</span>으로 런 스타일 선택: <span class="hk">부유</span>(골드+30%·생성18%↓) / <span class="hk">신속</span>(생성18%↑·골드−15%) / <span class="hk">변종</span>(변종×2·골드−12%) / 균형(없음). 이득마다 상응하는 손실 — 지배적 선택이 없는 트레이드오프.' },
     { title: '🗼 시련의 탑', body: '윤회 2회 해금. 윤회 패널에서 <span class="hk">다음 층 도전을 예약</span>하면 다음 윤회 런이 그 층의 제약과 함께 시작 — 단 <span class="hk">계승 없이 맨손 입장</span>. 목표 Lv 도달 시 돌파 — <span class="hk">층당 1회성 💎+깨달음</span> 보상. 6층: 생성 느림/자동·일괄 합치기 금지/골드 감소/의식 금지/생성 Lv1 고정/복합. 포기하면 다음 윤회에 재도전. 전략 모드와 중첩 가능 — 자발적 핸디캡의 명예 사다리. <span class="hk">6층 완주 후엔 무한 심층</span>: 심연/나락/무저/공허/적멸 5패턴이 순환하며 깊어질수록 제약이 강해지고 목표 Lv +2/층 — 끝없는 명예 기록.' },
+    { title: '⚖ 제련 모드', body: '최고 Lv 6 해금. 생성 게이지 옆 <span class="hk">제련 버튼</span>으로 순환: <span class="hk">표준</span> / <span class="hk">🔥 정밀</span>(생성 120% 느림 · 시작 Lv +1 — 슬롯·손 절약) / <span class="hk">🌪 속성</span>(생성 45% 빠름 · 시작 Lv −1 — 합성 횟수↑, 콤보·폭주·미션에 유리). 두 특화 모두 원시 효율은 표준의 ~91% — 상황이 선택을 만든다. 시작 Lv 1이거나 고행의 층에선 무효(🚫). 전략 모드가 런의 방침이라면 제련은 <span class="hk">언제든 바꾸는 전술 다이얼</span>.' },
     { title: '🧿 성소 각인', body: '윤회 1회 해금. 깨달음(悟) 패널의 <span class="hk">🧿 각인 버튼</span> → 그리드 칸을 탭해 룬을 새김 (최대 3칸, 悟 15/30/50). <span class="hk">💰 부</span>(그 칸 패시브 ×1.5) / <span class="hk">⚒ 정련</span>(그 칸에서 완성된 합성·의식 골드 ×1.35) / <span class="hk">🍀 연</span>(그 칸으로의 손 합성 행운 +4%p). 효과는 칸 조건부 — 합성 동선을 각인 칸으로 유도하는 공간 전략. 팁: <span class="hk">의식 결과는 그룹의 가장 낮은 번호 칸에 생성</span>되므로 정련 각인으로 노릴 수 있음. 연의 각인은 손 합성에만 발동 (자동 합치기 제외). 윤회에도 보존, 제거는 무료(환불 없음). 스킬트리와 悟를 두고 경쟁하는 선택.' },
     { title: '🏛 명예의 전당', body: '평생 기록 + 🎯다음 목표 + 💰골드 배수 분해 + 📈성장 스파크라인을 한눈에.' },
   ],

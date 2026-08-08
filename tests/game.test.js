@@ -3007,6 +3007,67 @@ group('cross-system audit fixes (v3.72.4)', () => {
   ok(sM.gem >= 1, 'record via non-merge path still grants level rewards (Lv20 crossing)');
 });
 
+group('forge mode (Q-Leap 128)', () => {
+  const MODES = C.FORGE_MODES;
+  eq(MODES.length, 3, 'three forge modes');
+  eq(MODES[0].id, 'standard', 'standard first (default)');
+  // non-dominance: both specializations pay ~9% raw-rate tax vs standard
+  const fine = MODES.find(m => m.id === 'fine'), swift = MODES.find(m => m.id === 'swift');
+  approx(Math.pow(2, fine.lvDelta) / fine.spawnMul, 2 / 2.2, 'fine value-rate ≈ 0.909× standard', 1e-9);
+  approx(Math.pow(2, swift.lvDelta) / swift.spawnMul, 0.5 / 0.55, 'swift value-rate ≈ 0.909× standard', 1e-9);
+  ok(Math.pow(2, fine.lvDelta) / fine.spawnMul < 1 && Math.pow(2, swift.lvDelta) / swift.spawnMul < 1,
+    'no dominant pick — specialization is a tax, situational value is the payoff');
+
+  // unlock gate
+  withState({ bestLevel: C.FORGE_UNLOCK_LV - 1, forgeMode: 'fine' });
+  eq(F.isForgeUnlocked(), false, 'locked below unlock level');
+  eq(F.getForgeSpawnMul(), 1, 'locked → no spawn effect');
+  eq(F.getForgeLevelDelta(), 0, 'locked → no level effect');
+
+  // fine: slower + higher start level
+  const up = () => Object.assign(defaultUpgrades(), { spawnLevel: 3 });
+  withState({ bestLevel: 10, forgeMode: 'standard', upgrades: up() });
+  const baseInterval = F.getSpawnInterval();
+  const baseLv = F.getNextSpawnLevel();
+  withState({ bestLevel: 10, forgeMode: 'fine', upgrades: up() });
+  approx(F.getSpawnInterval(), Math.max(0.6, baseInterval * fine.spawnMul), 'fine slows spawn ×2.2', 1e-9);
+  eq(F.getNextSpawnLevel(), baseLv + 1, 'fine spawns +1 level');
+  // swift: faster + lower start level
+  withState({ bestLevel: 10, forgeMode: 'swift', upgrades: up() });
+  approx(F.getSpawnInterval(), Math.max(0.6, baseInterval * swift.spawnMul), 'swift speeds spawn ×0.55', 1e-9);
+  eq(F.getNextSpawnLevel(), baseLv - 1, 'swift spawns −1 level');
+
+  // swift gate at start level 1 — no free speed
+  withState({ bestLevel: 10, forgeMode: 'swift' }); // no spawnLevel upgrades → start Lv 1
+  eq(F.getForgeSpawnMul(), 1, 'swift inert at start Lv 1 (no free acceleration)');
+  eq(F.getNextSpawnLevel() >= 1, true, 'level never below 1');
+  // fine still works at start level 1
+  withState({ bestLevel: 10, forgeMode: 'fine' });
+  eq(F.getNextSpawnLevel(), 2, 'fine works from start Lv 1');
+
+  // tower 고행 (spawnLv1) neutralizes forge entirely
+  withState({ bestLevel: 30, prestigeCount: 3, forgeMode: 'fine', towerActive: 5, upgrades: up() });
+  eq(F.getNextSpawnLevel(), 1, 'spawnLv1 floor pins level regardless of forge');
+  eq(F.getForgeSpawnMul(), 1, 'spawnLv1 floor removes the forge interval penalty too');
+
+  // persistence + validation
+  const sSave = withState({ bestLevel: 10, forgeMode: 'swift' });
+  F.save();
+  const sLoad = withState({});
+  F.load();
+  eq(G.getState().forgeMode, 'swift', 'forge mode survives save/load');
+  const sBad = withState({ forgeMode: 'hax' });
+  F.save();
+  withState({});
+  F.load();
+  eq(G.getState().forgeMode, 'standard', 'invalid forge mode repaired to standard on load');
+
+  // structural: button + handler wired
+  ok(/id="forge-btn"/.test(RAW_HTML), 'forge button present');
+  ok(/forge-btn'\)\.addEventListener/.test(RAW_HTML), 'forge button handler wired');
+  ok(/getForgeSpawnMul\(\)\);/.test(RAW_HTML), 'forge mul wired into getSpawnInterval');
+});
+
 group('active buff strip (T1a curation)', () => {
   withState({});
   eq(F.getActiveBuffs().length, 0, 'no buffs on a clean state');
