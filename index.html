@@ -2,7 +2,13 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="description" content="표창키우기 — 합체. 같은 표창을 합쳐 키우는 단일 파일 방치형 머지 게임.">
+<meta name="theme-color" content="#0a0a12">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="표창키우기">
 <title>표창키우기 — 합체 (v2)</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>✴️</text></svg>">
 
@@ -1712,7 +1718,7 @@
 
 <div id="help-modal">
   <div class="help-box">
-    <div class="help-title">❓ 게임 가이드</div>
+    <div class="help-title">❓ 게임 가이드 <span id="help-version" style="font-size:10px;color:#667;letter-spacing:0;font-weight:400;"></span></div>
     <div class="help-tabs">
       <button class="help-tab active" data-tab="basics">기본</button>
       <button class="help-tab" data-tab="variants">표창 변종</button>
@@ -1907,6 +1913,8 @@
 
 <script>
 'use strict';
+// 릴리즈 버전 — package.json version과 동기 (테스트가 불일치를 잡는다). 커밋 시 함께 범프.
+const GAME_VERSION = '3.80.0';
 // =============================================================
 // 표창키우기 v2 — 합체 게임
 // Concept: 3×3+ grid, drop shuriken (Lv 1), merge same-level → Lv+1
@@ -8417,6 +8425,8 @@ function boot() {
   applyMute();
   // restore hint button visual state after load
   document.getElementById('hint-btn').classList.toggle('on', !!state.hintMode);
+  const verEl = document.getElementById('help-version');
+  if (verEl) verEl.textContent = 'v' + GAME_VERSION;
   if (loaded) processOfflineReward();
   // First-time player → show tutorial
   if (!loaded) setTimeout(showTutorial, 350);

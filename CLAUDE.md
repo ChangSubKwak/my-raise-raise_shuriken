@@ -17,6 +17,8 @@ python3 -m http.server 8000      # local server alternative
 
 Single self-contained file. No build, no dependencies. Same convention as v1.
 
+**Release checklist**: bump `package.json` version AND the `GAME_VERSION` const at the top of index.html's script together — a test fails on mismatch. The version shows in the help modal header.
+
 ## Mandatory after every JS edit
 
 ```bash

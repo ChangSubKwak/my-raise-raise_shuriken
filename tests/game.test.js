@@ -30,6 +30,13 @@ function withState(patch) {
   return s;
 }
 
+group('release version sync', () => {
+  const pkg = require('../package.json');
+  const m = RAW_HTML.match(/const GAME_VERSION = '([^']+)'/);
+  ok(!!m, 'GAME_VERSION constant present');
+  eq(m && m[1], pkg.version, 'GAME_VERSION matches package.json (bump BOTH on release)');
+});
+
 group('levelName / levelTier', () => {
   eq(F.levelName(1), '나무 표창', 'Lv1 name');
   eq(F.levelName(60), '무한(無限)', 'Lv60 name');
