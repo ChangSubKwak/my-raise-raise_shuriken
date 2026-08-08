@@ -1037,6 +1037,9 @@
      header stays compact and never overflows into adjacent UI. */
   #grid-header > * { flex: 0 0 auto; white-space: nowrap; }
   #grid-menu {
+    /* 감사 v3.76.1: 기본 숨김은 CSS로 — HTML 인라인 display:none은 .open 클래스를
+       영원히 이겨서 메뉴가 v3.09 이래 한 번도 열리지 않았다 (실브라우저 실증) */
+    display: none;
     width: 100%; max-width: 380px;
     flex-wrap: wrap; justify-content: center; gap: 6px;
     padding: 8px; border-radius: 10px;
@@ -1584,7 +1587,7 @@
         <button id="frenzy-btn" class="grid-action-btn" title="폭주 — 합성으로 충전, 가득 차면 발동 시 30s spawn ×2">⚡ 폭주 <span id="frenzy-count">0/100</span></button>
         <button id="menu-btn" class="grid-action-btn" title="메뉴 — 도감/미션/상점/명예/로그/도움말/보관/명상/전당">☰ 메뉴</button>
       </div>
-      <div id="grid-menu" style="display:none;">
+      <div id="grid-menu">
         <button id="codex-btn" class="grid-action-btn" title="표창 도감 — 처음 도달한 레벨이 영구 기록됩니다">📖 도감</button>
         <button id="quest-btn" class="grid-action-btn" title="오늘 — 일일 미션·주간·도전·합성·출석·룰렛·환산을 한곳에">📅 오늘</button>
         <button id="shop-btn" class="grid-action-btn" title="보석 상점 — 일회성 효과 구매">🛒 상점</button>
@@ -6238,8 +6241,9 @@ function getRevealState() {
     codex:     b >= 4,
     achv:      b >= 3,
     storage:   b >= 5,
-    prestige:  b >= 6,                    // 환생 섹션 — 해금(8) 2레벨 전 티저
-    skills:    p >= 1 || (state.enlightenment || 0) > 0,
+    prestige:  b >= 6 || p >= 1,          // 환생 섹션 — 해금(8) 2레벨 전 티저 (손상 세이브 방어: 윤회자는 항상)
+    // 감사 v3.76.1: 悟를 다 쓰면(잔액 0) 산 스킬째로 사라지던 비단조 — 보유 스킬도 조건에
+    skills:    p >= 1 || (state.enlightenment || 0) > 0 || Object.values(state.skills || {}).some(v => v > 0),
     hof:       p >= 1,                    // 전당 — 기록이 쌓인 뒤
     formation: b >= 8,                    // 진형 등급 스탯
   };
@@ -6252,7 +6256,7 @@ const REVEAL_TARGETS = [
   ['#daily-challenge-banner', 'daily'], ['#weekday-banner', 'daily'],
   ['#quest-btn', 'daily'], ['#shop-btn', 'shop'], ['#codex-btn', 'codex'],
   ['#storage-btn', 'storage'], ['#automation-btn', 'autoMerge'], ['#meditation-btn', 'autoMerge'],
-  ['#hof-btn', 'hof'],
+  ['#hof-btn', 'hof'], ['#trophy-btn', 'achv'],
   ['#codex-block', 'codex'], ['#achv-block', 'achv'],
   ['#prestige-block', 'prestige'], ['#skill-block', 'skills'],
   ['#formation-stat', 'formation'], ['#hint-sell-line', 'sellInfo'],
@@ -6270,9 +6274,10 @@ function applyReveal() {
     if (el) el.style.display = r[key] ? '' : 'none';
   }
   if (_revealCache) {
-    for (const key of Object.keys(REVEAL_ANNOUNCE)) {
-      if (r[key] && !_revealCache[key]) setTimeout(() => toast(REVEAL_ANNOUNCE[key]), 400);
-    }
+    // 감사 v3.76.1: toast는 단일 슬롯 — 점프 머지로 여러 단계를 한 번에 넘으면 마지막
+    // 안내만 남았다. 2.1초 간격으로 순차 발화해 전부 보이게.
+    const fresh = Object.keys(REVEAL_ANNOUNCE).filter(key => r[key] && !_revealCache[key]);
+    fresh.forEach((key, i) => setTimeout(() => toast(REVEAL_ANNOUNCE[key]), 400 + i * 2100));
   }
   _revealCache = r;
 }

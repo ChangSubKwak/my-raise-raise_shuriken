@@ -77,6 +77,28 @@ function ok(cond, msg) {
   const $id = (id) => page.evaluate((i) => { const el = document.getElementById(i); if (el) el.click(); return !!el; }, id);
   const shown = (id) => page.evaluate((i) => document.getElementById(i).classList.contains('show'), id);
 
+  // ================= ☰ menu opens with a TRUSTED click =================
+  // (JS el.click() fires handlers even on display:none — the v3.09~3.76 menu bug hid here.
+  //  page.click() goes through hit-testing, so a dead button fails loudly.)
+  console.log('☰ 메뉴 (신뢰 클릭)');
+  const prevReveal = await page.evaluate(() => {
+    const prev = { b: state.bestLevel, p: state.prestigeCount };
+    state.bestLevel = 12; state.prestigeCount = 1; refreshUI();
+    return prev;
+  });
+  await clearOverlays(); await page.waitForTimeout(150);
+  await page.click('#menu-btn');
+  await page.waitForTimeout(150);
+  const menuOpen = await page.evaluate(() => {
+    const m = document.getElementById('grid-menu');
+    return { display: getComputedStyle(m).display, items: [...m.querySelectorAll('button')].filter(el => el.offsetParent !== null).length };
+  });
+  ok(menuOpen.display !== 'none' && menuOpen.items >= 8, `menu opens via real click (${menuOpen.display}, ${menuOpen.items} items)`);
+  await page.click('#menu-btn');
+  await page.waitForTimeout(150);
+  ok(await page.evaluate(() => getComputedStyle(document.getElementById('grid-menu')).display === 'none'), 'menu closes again');
+  await page.evaluate((prev) => { state.bestLevel = prev.b; state.prestigeCount = prev.p; refreshUI(); }, prevReveal); // 하류 섹션 상태 복원
+
   // ================= T2: automation panel =================
   console.log('T2 자동화 패널');
   ok(await $id('automation-btn'), 'T2: ⚙ 자동화 버튼 존재+클릭');

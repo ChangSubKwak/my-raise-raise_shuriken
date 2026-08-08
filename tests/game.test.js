@@ -3194,6 +3194,20 @@ group('progressive disclosure (Q-Leap 130)', () => {
   try { F.applyReveal(); } catch (e) { threw = true; }
   eq(threw, false, 'applyReveal safe under stubs');
   ok(/function refreshUI\(\) \{\s*applyReveal\(\)/.test(RAW_HTML), 'refreshUI applies reveal first');
+
+  // ── v3.76.1 audit fixes ──
+  // skills reveal is monotonic even when 悟 is spent down to 0 (owned skills keep the block)
+  withState({ bestLevel: 10, prestigeCount: 0, enlightenment: 0,
+    skills: { goldMastery: 1, swiftHands: 0, fate: 0, masterSmith: 0, inheritance: 0, blessTime: 0, codexBoost: 0, goldenLuck: 0, starLuck: 0 } });
+  ok(F.getRevealState().skills, 'owned skill keeps the skill block visible at 悟 0 (no vanishing purchase)');
+  // corrupt-save guard: a prestiged save always sees the prestige section
+  withState({ bestLevel: 1, prestigeCount: 3 });
+  ok(F.getRevealState().prestige, 'prestige section survives a corrupt bestLevel when prestigeCount > 0');
+  // ☰ menu: inline display:none must NOT exist (it beat .open forever — broken since v3.09)
+  ok(!/id="grid-menu" style="display:none;"/.test(RAW_HTML), 'grid-menu has no inline display:none');
+  ok(/#grid-menu \{[\s\S]{0,300}display: none;/.test(RAW_HTML), 'grid-menu default-hidden via CSS (so .open can win)');
+  // reveal announces stagger instead of overwriting the single toast slot
+  ok(/400 \+ i \* 2100/.test(RAW_HTML), 'multiple reveal announces are staggered');
 });
 
 group('active buff strip (T1a curation)', () => {
