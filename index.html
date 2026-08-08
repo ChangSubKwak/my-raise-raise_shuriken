@@ -1571,7 +1571,7 @@
         <span style="color:#aaa;">보유 <span id="shuriken-count" style="color:#ffd966;">0</span>/<span id="shuriken-max">6</span></span>
         <span style="color:#aaa;">제작 <span id="batch-info" style="color:#a8e6ff;">×1</span></span>
         <span style="color:#aaa;" title="다음 spawn될 표창 레벨">다음 Lv <span id="next-spawn-lv" style="color:#88ddff;">1</span></span>
-        <span style="color:#aaa;" title="진형 등급 — 그리드 평균 레벨이 최고기록에 근접할수록 높음">진형 <span id="formation-grade" style="color:#88ddff;font-weight:900;">—</span></span>
+        <span id="formation-stat" style="color:#aaa;" title="진형 등급 — 그리드 평균 레벨이 최고기록에 근접할수록 높음">진형 <span id="formation-grade" style="color:#88ddff;font-weight:900;">—</span></span>
       </div>
       <div id="grid-header" style="display:flex;flex-wrap:wrap;justify-content:center;align-items:center;width:100%;max-width:380px;font-size:11px;font-weight:700;gap:6px;flex-shrink:0;">
         <button id="hint-btn" class="grid-action-btn" title="합칠 수 있는 모든 페어 항상 강조">💡 힌트</button>
@@ -1602,7 +1602,7 @@
       <div id="grid"></div>
       <div style="font-size:10px;color:#888;text-align:center;">
         같은 Lv 탭→탭 또는 <b>드래그</b>로 합체 · 길게누름 = 🔒 잠금<br>
-        <span style="color:#aaa;">💸 판매 모드 = 탭하여 골드 환전 · 잠금 = 자동합치기/판매 보호</span>
+        <span id="hint-sell-line" style="color:#aaa;">💸 판매 모드 = 탭하여 골드 환전 · 잠금 = 자동합치기/판매 보호</span>
       </div>
     </div>
     <div id="spawn-bar">
@@ -1657,10 +1657,15 @@
         <div id="overall-fill" style="height:100%;width:0%;background:linear-gradient(90deg,#aa6644,#ffaa33,#ffd966);transition:width 0.4s;"></div>
       </div>
     </div>
+    <div id="codex-block">
     <div class="section-title">도감 (圖鑑) <span id="codex-count" style="color:#aaa;font-weight:400;font-size:10px;">0</span></div>
     <div class="codex-grid" id="codex-grid"></div>
+    </div>
+    <div id="achv-block">
     <div class="section-title">명예 (Achievements) <span id="achv-count" style="color:#aaa;font-weight:400;font-size:10px;">0/0</span></div>
     <div class="achv-grid" id="achv-grid"></div>
+    </div>
+    <div id="prestige-block">
     <div class="section-title">환생</div>
     <div class="upgrade-card">
       <div class="upgrade-info">
@@ -1669,10 +1674,13 @@
       </div>
       <button class="upgrade-btn prestige" id="prestige-btn" disabled>잠김</button>
     </div>
+    </div>
+    <div id="skill-block">
     <div class="section-title">깨달음 (悟) <span id="enlight-count" style="color:#cc88ff;font-weight:400;font-size:10px;">0 보유</span>
       <button id="engrave-btn" style="float:right;padding:2px 9px;border-radius:8px;border:1px solid #6a5a9a;background:linear-gradient(180deg,#3a2f56,#241c38);color:#d8c8ff;font-family:inherit;font-weight:800;font-size:10px;cursor:pointer;">🧿 각인</button>
     </div>
     <div id="skill-tree"></div>
+    </div>
     <div class="footer-row">
       <button class="footer-btn" id="save-btn">저장</button>
       <button class="footer-btn" id="mute-btn">🔊</button>
@@ -4832,6 +4840,7 @@ function render() {
     upgradeRefreshTimer = 0;
     renderUpgrades();
     updateAmbience(); // Q-Leap 129: 패드 음높이/필터를 상태에 맞춰 글라이드 (1초 스로틀)
+    applyReveal();    // Q-Leap 130: 수동 액션 없이도 (자동합성 등) 해금 시점을 놓치지 않게
   }
 }
 
@@ -6207,7 +6216,68 @@ function spawnConvergenceTrails(x1, y1, x2, y2, color, durMs) {
 }
 
 // ---------- Panel UI ----------
+// ── Q-Leap 130: 점진 공개 (Progressive Disclosure) — 단순화의 핵심 ─────────────
+// 85개 시스템이 첫 화면부터 전부 노출되던 것이 복잡함의 근원. 시스템 UI는 그것이
+// "의미를 갖는 시점"부터 나타난다 — 삭제 없이 첫인상과 초반 인지 부하를 극적으로 줄인다.
+// 조건은 전부 단조 증가 지표(bestLevel/윤회/누적합성)라 한 번 보이면 사라지지 않는다
+// (bestLevel은 윤회에도 보존). 순수 함수 → 테스트 가능.
+function getRevealState() {
+  const b = state.bestLevel || 1;
+  const p = state.prestigeCount || 0;
+  const merges = (state.stats && state.stats.totalMerges) || 0;
+  return {
+    sellInfo:  b >= 3,                    // 판매/정보 모드 — 팔 것·살펴볼 것이 생길 때
+    gridTools: b >= 4,                    // ⚡모두/정렬/압축 — 그리드가 붐비기 시작할 때
+    ritual:    b >= 5,                    // 의식 — 같은 Lv 3+ 그룹이 현실화되는 시점
+    frenzy:    b >= 5 || merges >= 30,    // 폭주 — 합성 루프가 몸에 익은 뒤
+    autoMerge: b >= 5,                    // 자동합치기 해금 제안
+    instant:   b >= 3,                    // 💎 즉시 — 보석 경제 시작
+    forge:     isForgeUnlocked(),         // 제련 (Lv 6) — 🔒 노출 대신 등장으로
+    daily:     b >= 3,                    // 도전/요일 배너 + 오늘 허브 — 기본 루프 이후
+    shop:      b >= 3,
+    codex:     b >= 4,
+    achv:      b >= 3,
+    storage:   b >= 5,
+    prestige:  b >= 6,                    // 환생 섹션 — 해금(8) 2레벨 전 티저
+    skills:    p >= 1 || (state.enlightenment || 0) > 0,
+    hof:       p >= 1,                    // 전당 — 기록이 쌓인 뒤
+    formation: b >= 8,                    // 진형 등급 스탯
+  };
+}
+const REVEAL_TARGETS = [
+  ['#sell-btn', 'sellInfo'], ['#info-btn', 'sellInfo'],
+  ['#merge-all-btn', 'gridTools'], ['#sort-btn', 'gridTools'], ['#compact-btn', 'gridTools'],
+  ['#ritual-btn', 'ritual'], ['#frenzy-btn', 'frenzy'],
+  ['#instant-spawn-btn', 'instant'], ['.auto-merge-group', 'autoMerge'], ['#forge-btn', 'forge'],
+  ['#daily-challenge-banner', 'daily'], ['#weekday-banner', 'daily'],
+  ['#quest-btn', 'daily'], ['#shop-btn', 'shop'], ['#codex-btn', 'codex'],
+  ['#storage-btn', 'storage'], ['#automation-btn', 'autoMerge'], ['#meditation-btn', 'autoMerge'],
+  ['#hof-btn', 'hof'],
+  ['#codex-block', 'codex'], ['#achv-block', 'achv'],
+  ['#prestige-block', 'prestige'], ['#skill-block', 'skills'],
+  ['#formation-stat', 'formation'], ['#hint-sell-line', 'sellInfo'],
+];
+// 주요 시스템 첫 등장 안내 (세션 캐시 — 로드 직후 일괄 발화 방지 위해 첫 호출은 무음)
+const REVEAL_ANNOUNCE = { ritual: '✨ 의식 합성 해금 — 같은 Lv 3개를 이어 붙이면 큰 점프!',
+                          frenzy: '⚡ 폭주 게이지 해금 — 합성으로 채워 터뜨리세요',
+                          prestige: '☯ 환생의 길이 열립니다 — Lv 8에서 윤회 가능',
+                          autoMerge: '⚙ 자동화 해금 — 자동합치기를 살펴보세요' };
+let _revealCache = null;
+function applyReveal() {
+  const r = getRevealState();
+  for (const [sel, key] of REVEAL_TARGETS) {
+    const el = document.querySelector(sel);
+    if (el) el.style.display = r[key] ? '' : 'none';
+  }
+  if (_revealCache) {
+    for (const key of Object.keys(REVEAL_ANNOUNCE)) {
+      if (r[key] && !_revealCache[key]) setTimeout(() => toast(REVEAL_ANNOUNCE[key]), 400);
+    }
+  }
+  _revealCache = r;
+}
 function refreshUI() {
+  applyReveal(); // Q-Leap 130 — 렌더 전에 노출 상태부터 (배너 등 아래 렌더들이 display를 덮지 않도록 주의)
   renderGrid();
   renderUpgrades();
   document.getElementById('dps-info').textContent = `${fmt(getPassiveGoldRate())} 골드/sec`;
@@ -6342,10 +6412,14 @@ function isUpgradeMaxed(id) {
   if (id === 'luckChance')  return state.upgrades.luckChance  >= LUCK_CHANCE_MAX_LV;
   return false;
 }
+// Q-Leap 130: 강화도 점진 공개 — 첫 화면엔 핵심 3종만, 경제·고급 강화는 성장하며 등장.
+// (구매한 강화는 레벨 조건과 무관하게 계속 보인다 — 산 것이 사라져 보이면 안 되므로)
+const UPGRADE_REVEAL_LV = { maxShuriken: 1, spawnRate: 1, spawnBatch: 1, firerate: 3, baseDmg: 3, goldMul: 3, spawnLevel: 4, luckChance: 4 };
 function renderUpgrades() {
   const list = document.getElementById('upgrade-list');
   list.innerHTML = '';
   for (const u of UPGRADES) {
+    if ((state.bestLevel || 1) < (UPGRADE_REVEAL_LV[u.id] || 1) && !(state.upgrades[u.id] > 0)) continue;
     const lvl = state.upgrades[u.id];
     const max = isUpgradeMaxed(u.id);
     const cost = getUpgradeCost(u);
@@ -8041,8 +8115,8 @@ const TUTORIAL_STEPS = [
     body: '같은 레벨의 표창을 탭→탭 하면 합쳐져 한 단계 올라갑니다. 골드도 함께 획득합니다.' },
   { emoji: '✋', title: '드래그도 가능',
     body: '표창을 끌어다 다른 표창 위에 놓으면 합쳐집니다. 같은 Lv: 합체 / 다른 Lv: 자리바꿈.' },
-  { emoji: '⚡', title: '폭주와 자동화',
-    body: '합성으로 폭주 게이지를 채워 30초 가속·점프 확률 ×2를 터뜨리세요. 자동합치기 ON과 ⚡ 모두 버튼으로 빠르게 진행할 수 있습니다.' },
+  { emoji: '🌱', title: '성장하며 열리는 도구들',
+    body: '지금은 이게 전부지만, 레벨이 오르면 판매·의식·폭주·자동화 같은 도구가 하나씩 열립니다. 합치다 보면 게임이 스스로 깊어집니다.' },
 ];
 let _tutStep = 0;
 function showTutorial() {

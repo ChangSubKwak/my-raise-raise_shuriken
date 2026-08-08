@@ -3158,6 +3158,44 @@ group('ambience (Q-Leap 129)', () => {
   ok(/if \(state\.musicEnabled\) startAmbience\(\)/.test(RAW_HTML), 'ambience starts on first audio gesture');
 });
 
+group('progressive disclosure (Q-Leap 130)', () => {
+  // fresh player: almost everything hidden — the simplified first contact
+  withState({ bestLevel: 1 });
+  const r1 = F.getRevealState();
+  ok(!r1.sellInfo && !r1.gridTools && !r1.ritual && !r1.frenzy && !r1.autoMerge
+     && !r1.forge && !r1.daily && !r1.shop && !r1.codex && !r1.prestige && !r1.skills && !r1.hof,
+    'Lv 1: only the core loop is visible');
+  // reveals arrive in a sensible ladder
+  withState({ bestLevel: 3 });
+  const r3 = F.getRevealState();
+  ok(r3.sellInfo && r3.daily && r3.shop && r3.instant && r3.achv && !r3.ritual && !r3.prestige, 'Lv 3: economy + daily layer');
+  withState({ bestLevel: 5 });
+  const r5 = F.getRevealState();
+  ok(r5.ritual && r5.frenzy && r5.autoMerge && r5.storage && !r5.forge && !r5.prestige, 'Lv 5: merge-depth layer');
+  withState({ bestLevel: 6 });
+  ok(F.getRevealState().forge && F.getRevealState().prestige, 'Lv 6: forge + prestige teaser');
+  // frenzy also reveals by merge count (active play without level luck)
+  withState({ bestLevel: 2 });
+  G.getState().stats.totalMerges = 40;
+  ok(F.getRevealState().frenzy, 'frenzy reveals by merge count too');
+  // skills gate on prestige (bestLevel alone never shows them)
+  withState({ bestLevel: 60 });
+  ok(!F.getRevealState().skills && !F.getRevealState().hof, 'skills/HoF wait for first prestige');
+  withState({ bestLevel: 10, prestigeCount: 1 });
+  ok(F.getRevealState().skills && F.getRevealState().hof, 'skills/HoF after prestige');
+  // monotonic sources only: bestLevel survives prestige → nothing regresses
+  withState({ bestLevel: 12, prestigeCount: 2 });
+  const rAll = F.getRevealState();
+  const sP = G.getState(); F.doPrestige();
+  const rAfter = F.getRevealState();
+  ok(Object.keys(rAll).every(k => !rAll[k] || rAfter[k]), 'no reveal regresses across prestige');
+  // applyReveal runs without throwing (DOM stubs) and is wired into refreshUI
+  let threw = false;
+  try { F.applyReveal(); } catch (e) { threw = true; }
+  eq(threw, false, 'applyReveal safe under stubs');
+  ok(/function refreshUI\(\) \{\s*applyReveal\(\)/.test(RAW_HTML), 'refreshUI applies reveal first');
+});
+
 group('active buff strip (T1a curation)', () => {
   withState({});
   eq(F.getActiveBuffs().length, 0, 'no buffs on a clean state');
