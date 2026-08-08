@@ -2944,6 +2944,31 @@ group('cell engraving (Q-Leap 127)', () => {
   // structural guards: button + modal wired
   ok(/engrave-btn'\)\.addEventListener/.test(RAW_HTML), 'engrave button wired');
   ok(/id="engrave-modal"/.test(RAW_HTML), 'engrave modal present');
+
+  // ── v3.72.2 audit fixes ──
+  // fortune rune is HAND-merge only: the auto-merge engine passes isAuto and gets no bonus
+  const origRandom2 = Math.random;
+  const wkLuck2 = (F.weekdayBonus().luckPlus || 0);
+  Math.random = () => 0.05 + wkLuck2 + 0.02; // inside the +4%p fortune window
+  try {
+    const sAuto = withState({ bestLevel: 10, grid: gridFrom([5, 5, null, null, null, null]), engravings: { 0: 'fortune' } });
+    F.autoMergeStep(); // merges into idx 0 (lowest index of the level)
+    eq(sAuto.grid[0].level, 6, 'auto merge gets NO fortune bonus (hand-merge only, matches copy)');
+    const sHand = withState({ bestLevel: 10, grid: gridFrom([5, 5, null, null, null, null]), engravings: { 1: 'fortune' } });
+    F.tryMerge(0, 1);
+    eq(sHand.grid[1].level, 7, 'hand merge still gets the fortune bonus');
+  } finally { Math.random = origRandom2; }
+  // NaN / non-integer idx refused before any 悟 is spent
+  const sN = withState({ prestigeCount: 1, enlightenment: 100 });
+  eq(F.applyEngraving(NaN, 'wealth'), false, 'NaN idx refused');
+  eq(F.applyEngraving(1.5, 'wealth'), false, 'fractional idx refused');
+  eq(sN.enlightenment, 100, 'no 悟 spent on refused idx');
+  // UI-mode hygiene wired: engrave mode clears stale selection + rival modes; prestige resets it
+  ok(/function setEngraveMode[\s\S]{0,600}selectedIdx = -1/.test(RAW_HTML), 'entering engrave mode clears stale selection');
+  ok(/function setEngraveMode[\s\S]{0,600}sellMode = false/.test(RAW_HTML), 'engrave mode exits sell mode');
+  ok(/sell-btn'\)\.addEventListener[\s\S]{0,400}setEngraveMode\(false\)/.test(RAW_HTML), 'sell mode exits engrave mode');
+  ok(/info-btn'\)\.addEventListener[\s\S]{0,500}setEngraveMode\(false\)/.test(RAW_HTML), 'info mode exits engrave mode');
+  ok(/function doPrestige[\s\S]{0,6000}setEngraveMode\(false\)/.test(RAW_HTML), 'prestige resets engrave mode');
 });
 
 group('active buff strip (T1a curation)', () => {

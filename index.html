@@ -3584,7 +3584,7 @@ function engraveForgeMul(idx)     { const r = getEngraving(idx); return r && r.i
 function engraveFortuneBonus(idx) { const r = getEngraving(idx); return r && r.id === 'fortune' ? 0.04 : 0; }
 function applyEngraving(idx, runeId) {
   if (!isEngraveUnlocked()) return false;
-  if (typeof idx !== 'number' || idx < 0 || idx >= getGridSize()) return false;
+  if (!Number.isInteger(idx) || idx < 0 || idx >= getGridSize()) return false; // NaN/소수 차단 (悟 증발 방지)
   if (!ENGRAVE_RUNES.some(r => r.id === runeId)) return false;
   state.engravings = state.engravings || {};
   const cur = state.engravings[idx];
@@ -4141,7 +4141,8 @@ function instantSpawn() {
   save();
   return true;
 }
-function tryMerge(fromIdx, toIdx) {
+function tryMerge(fromIdx, toIdx, isAuto) {
+  // isAuto: 자동 합치기/⚡모두 경로 표시 — 연의 각인(손 합성 전용)만 여기에 게이트됨 (Q-Leap 127.1)
   if (fromIdx === toIdx) return 'none';
   const a = state.grid[fromIdx];
   const b = state.grid[toIdx];
@@ -4160,7 +4161,7 @@ function tryMerge(fromIdx, toIdx) {
     const luckBonus = (state.upgrades.luckChance || 0) * 0.01
                     + getSkillLv('fate') * 0.008 // fate skill: +0.8%/Lv
                     + (weekdayBonus().luckPlus || 0) // Q-Leap 87
-                    + engraveFortuneBonus(toIdx); // Q-Leap 127: 연의 각인 — tryMerge 전용 (의식-패리티 예외: 2-피스 메커닉)
+                    + (isAuto ? 0 : engraveFortuneBonus(toIdx)); // Q-Leap 127: 연의 각인 — 손 합성 전용 (의식-패리티 예외 + 자동 합성 게이트, 감사 127.1)
     const burnMul = isBurning() ? 2 : 1;
     const pJump5 = 0.001 * burnMul;
     const pJump3 = (0.010 + luckBonus * 0.2) * burnMul;
@@ -4502,7 +4503,7 @@ function findNextAutoMergePair() {
 function autoMergeStep() {
   const pair = findNextAutoMergePair();
   if (!pair) return false;
-  tryMerge(pair[0], pair[1]);
+  tryMerge(pair[0], pair[1], true); // isAuto — 연의 각인은 손 합성 전용
   renderGrid();
   return true;
 }
@@ -6530,6 +6531,9 @@ function doPrestige() {
   state.goldRushTimer = 0;
   state.burningTimer = 0;
   document.body.classList.remove('frenzy-active');
+  // Q-Leap 127.1: 각인 모드/모달은 런타임 UI — 윤회를 넘겨 남으면 점선·묵은 모달이 스테일
+  if (engraveMode) setEngraveMode(false);
+  closeEngraveModal();
   // Q-Leap 125: 시련의 탑 — 진행 중이던 시련은 런과 함께 끝난다 (미돌파 = 실패, 보상 없음).
   if ((state.towerActive || 0) > 0) {
     addEvent('tower', `시련 ${state.towerActive}층 중단 (윤회)`);
@@ -7331,6 +7335,7 @@ document.getElementById('info-btn').addEventListener('click', () => {
     sellMode = false;
     document.getElementById('sell-btn').classList.remove('on');
     document.body.classList.remove('sell-mode');
+    if (engraveMode) setEngraveMode(false); // 각인 모드도 해제 (감사 127.1 — 각인 분기가 탭을 선점하므로)
     renderGrid();
   }
   document.getElementById('info-btn').classList.toggle('on', infoMode);
@@ -7406,6 +7411,16 @@ document.getElementById('storage-close').addEventListener('click', () => {
 // ── Q-Leap 127: 성소 각인 UI — 모드 토글 + 룬 선택 모달 ──
 function setEngraveMode(on) {
   engraveMode = on;
+  if (on) {
+    // 상호배제 (감사 127.1): 판매/정보 모드·묵은 선택과 겹치면 탭 의미가 충돌
+    // (기존 sell↔info 상호 해제 패턴과 동일 계열 — 각인이 최우선 분기이므로 반드시 정리)
+    selectedIdx = -1;
+    sellMode = false;
+    infoMode = false;
+    document.getElementById('sell-btn').classList.remove('on');
+    document.body.classList.remove('sell-mode');
+    document.getElementById('info-btn').classList.remove('on');
+  }
   const b = document.getElementById('engrave-btn');
   if (b) {
     b.style.borderColor = on ? '#d0a95c' : '#6a5a9a';
@@ -7692,7 +7707,7 @@ const HELP_SECTIONS = {
     { title: '🌌 깨달음 스킬', body: '9종 트리 — 골드/spawn/행운/계승/축복지속/도감/황금운/별운 등. 윤회 시 누적.' },
     { title: '⚖ 전략 모드', body: 'Lv 8+ 윤회 패널의 <span class="hk">전략 버튼</span>으로 런 스타일 선택: <span class="hk">부유</span>(골드+30%·생성18%↓) / <span class="hk">신속</span>(생성18%↑·골드−15%) / <span class="hk">변종</span>(변종×2·골드−12%) / 균형(없음). 이득마다 상응하는 손실 — 지배적 선택이 없는 트레이드오프.' },
     { title: '🗼 시련의 탑', body: '윤회 2회 해금. 윤회 패널에서 <span class="hk">다음 층 도전을 예약</span>하면 다음 윤회 런이 그 층의 제약과 함께 시작 — 단 <span class="hk">계승 없이 맨손 입장</span>. 목표 Lv 도달 시 돌파 — <span class="hk">층당 1회성 💎+깨달음</span> 보상. 6층: 생성 느림/자동·일괄 합치기 금지/골드 감소/의식 금지/생성 Lv1 고정/복합. 포기하면 다음 윤회에 재도전. 전략 모드와 중첩 가능 — 자발적 핸디캡의 명예 사다리. <span class="hk">6층 완주 후엔 무한 심층</span>: 심연/나락/무저/공허/적멸 5패턴이 순환하며 깊어질수록 제약이 강해지고 목표 Lv +2/층 — 끝없는 명예 기록.' },
-    { title: '🪬 성소 각인', body: '윤회 1회 해금. 깨달음(悟) 패널의 <span class="hk">🪬 각인 버튼</span> → 그리드 칸을 탭해 룬을 새김 (최대 3칸, 悟 15/30/50). <span class="hk">💰 부</span>(그 칸 패시브 ×1.5) / <span class="hk">⚒ 정련</span>(그 칸에서 완성된 합성·의식 골드 ×1.35) / <span class="hk">🍀 연</span>(그 칸으로의 손 합성 행운 +4%p). 효과는 칸 조건부 — 합성 동선을 각인 칸으로 유도하는 공간 전략. 윤회에도 보존, 제거는 무료(환불 없음). 스킬트리와 悟를 두고 경쟁하는 선택.' },
+    { title: '🪬 성소 각인', body: '윤회 1회 해금. 깨달음(悟) 패널의 <span class="hk">🪬 각인 버튼</span> → 그리드 칸을 탭해 룬을 새김 (최대 3칸, 悟 15/30/50). <span class="hk">💰 부</span>(그 칸 패시브 ×1.5) / <span class="hk">⚒ 정련</span>(그 칸에서 완성된 합성·의식 골드 ×1.35) / <span class="hk">🍀 연</span>(그 칸으로의 손 합성 행운 +4%p). 효과는 칸 조건부 — 합성 동선을 각인 칸으로 유도하는 공간 전략. 팁: <span class="hk">의식 결과는 그룹의 가장 낮은 번호 칸에 생성</span>되므로 정련 각인으로 노릴 수 있음. 연의 각인은 손 합성에만 발동 (자동 합치기 제외). 윤회에도 보존, 제거는 무료(환불 없음). 스킬트리와 悟를 두고 경쟁하는 선택.' },
     { title: '🏛 명예의 전당', body: '평생 기록 + 🎯다음 목표 + 💰골드 배수 분해 + 📈성장 스파크라인을 한눈에.' },
   ],
   convenience: [
@@ -7739,7 +7754,10 @@ document.getElementById('hint-btn').addEventListener('click', () => {
 document.getElementById('sell-btn').addEventListener('click', () => {
   getAudio();
   sellMode = !sellMode;
-  if (sellMode) { infoMode = false; document.getElementById('info-btn').classList.remove('on'); } // mutual exclusion (sell wins on tap)
+  if (sellMode) {
+    infoMode = false; document.getElementById('info-btn').classList.remove('on'); // mutual exclusion (sell wins on tap)
+    if (engraveMode) setEngraveMode(false); // 각인 모드도 해제 (감사 127.1)
+  }
   document.getElementById('sell-btn').classList.toggle('on', sellMode);
   selectedIdx = -1;
   document.body.classList.toggle('sell-mode', sellMode);
