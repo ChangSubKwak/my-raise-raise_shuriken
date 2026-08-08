@@ -578,7 +578,7 @@ group('inheritance prestige preserves variant flags (audit-3)', () => {
   // golden/star/dark flags → a paid inheritance of a rare piece came back plain (lost ×5 sell,
   // passive-gold synergy, variant-inheritance bias).
   const s = withState({
-    bestLevel: 10, // prestige unlocked (>= 8)
+    bestLevel: 10, runBestLevel: 10, // prestige unlocked (>= 8)
     grid: gridFrom([{ level: 9, dark: true }, { level: 7, golden: true }, 3, null, null, null]),
     skills: Object.assign({}, G.defaultState().skills, { inheritance: 2 }),
     upgrades: defaultUpgrades(), enlightenment: 50, prestigeCount: 0,
@@ -861,13 +861,20 @@ group('weekly quest — baseline-delta progress + claim reward + double-claim gu
 
 group('trial system — startTrial setup + endTrial win/loss + inactive guard', () => {
   if (typeof F.startTrial !== 'function') { ok(true, 'startTrial not exposed — skip'); return; }
-  // setup: goal = max(5, runBestLevel+3), reward = 5 + floor(prestigeCount/3), timer 60
-  let s = withState({ runBestLevel: 10, prestigeCount: 6, enlightenment: 0 }); s.stats = {};
+  // setup: goal = max(5, 그리드 최고 Lv + 3) (v3.79.2 F1b — 계승 쌍 즉시클리어 차단),
+  // reward = 5 + floor(prestigeCount/3), timer 60
+  let s = withState({ runBestLevel: 10, prestigeCount: 6, enlightenment: 0, grid: gridFrom([10, 3, null, null, null, null]) }); s.stats = {};
   F.startTrial();
   let st = G.getState();
   ok(st.trialActive, 'startTrial activates trial');
   eq(st.trialTimer, 60, 'timer set to 60s');
-  eq(st.trialGoalLv, 13, 'goal = runBestLevel + 3');
+  eq(st.trialGoalLv, 13, 'goal = grid-max + 3 (계승 Lv10 쌍이면 목표도 13 — 즉시클리어 불가)');
+  withState({ runBestLevel: 10, prestigeCount: 6, grid: [null, null, null, null, null, null] });
+  F.startTrial();
+  eq(G.getState().trialGoalLv, 5, 'empty grid → minimum goal 5 (runBestLevel은 더 이상 목표 입력이 아님)');
+  s = withState({ runBestLevel: 10, prestigeCount: 6, enlightenment: 0, grid: gridFrom([10, 3, null, null, null, null]) }); s.stats = {};
+  F.startTrial();
+  st = G.getState();
   eq(st.trialReward, 7, 'reward = 5 + floor(prestigeCount/3)');
   eq(st.trialStartBestLv, 10, 'records starting run-best');
   // minimum goal floor + base reward
@@ -1021,6 +1028,24 @@ group('tier gates (Q-Leap 131, PACING C)', () => {
   let threw = false;
   try { withState({ gatePending: [15] }); F.showGateModal(); } catch (e) { threw = true; }
   eq(threw, false, 'gate modal renders under stubs');
+});
+
+group('pacing hardening v3.79.2 (audit F2/F3)', () => {
+  // F2: 윤회는 이번 런에서 Lv 8 재등반이 필요 — 2클릭 골드-배수 러시의 문 봉쇄
+  const sA = withState({ bestLevel: 40, runBestLevel: 3, prestigeCount: 5, runPlaySec: 9999 });
+  eq(F.doPrestige(), false, 'lifetime Lv40 but run Lv3 → prestige refused (rush door closed)');
+  eq(sA.prestigeCount, 5, 'count unchanged on refusal');
+  const sB = withState({ bestLevel: 40, runBestLevel: 8, prestigeCount: 5, runPlaySec: 600 });
+  ok(F.doPrestige(), 're-climbed to 8 this run → prestige allowed');
+  // advice mirrors the gate with a re-climb reason
+  withState({ bestLevel: 40, runBestLevel: 3, prestigeCount: 5 });
+  const adv2 = F.getPrestigeAdvice();
+  ok(!adv2.recommend && /재도달/.test(adv2.reason), 'advice explains the re-climb requirement');
+  // F3: 시련 중 관문 변종 반입 금지 (보류-수령 밀수 봉쇄) — 관문은 보존
+  const sC = withState({ gatePending: [35], towerActive: 3, grid: [null, null, null, null, null, null] });
+  eq(F.claimGate(35, 'variant'), false, 'variant claim blocked during an active tower floor');
+  eq(sC.gatePending.join(','), '35', 'gate preserved for after the floor');
+  ok(F.claimGate(35, 'gem'), 'non-smuggling choices remain available in-tower');
 });
 
 group('prestige advice (Q-Leap 122)', () => {
@@ -1666,7 +1691,7 @@ group('ritual merge auto-locks high-Lv result when auto-lock enabled (parity wit
 group('prestige resets run-transient activity state (fresh run starts clean)', () => {
   if (typeof F.doPrestige !== 'function') { ok(true, 'doPrestige not exposed — skip'); return; }
   const s = withState({
-    bestLevel: 10, prestigeCount: 0, enlightenment: 0,
+    bestLevel: 10, runBestLevel: 10, prestigeCount: 0, enlightenment: 0,
     comboCount: 7, comboTimer: 2.5, frenzyCharge: 99, frenzyTimer: 5,
     goldRushTimer: 12, burningTimer: 8,
     grid: place(9, { 0: 3 }), upgrades: defaultUpgrades(), skills: {},
@@ -2387,14 +2412,15 @@ group('prestige milestones grant 💎 at 5/10/25/50 (one-shot, no retroactive)',
   // pre-unlock all achievements + completion tiers so only the prestige milestone grants gems.
   const allAch = {}; for (const a of C.ACHIEVEMENTS) allAch[a.id] = 1;
   const doneTiers = {}; for (const n of [10, 25, 50, 75, C.ACHIEVEMENTS.length]) doneTiers[n] = 1;
-  const s = withState({ prestigeCount: 4, bestLevel: 10, gem: 0, grid: place(9, {}), upgrades: defaultUpgrades(), skills: {} });
+  const s = withState({ prestigeCount: 4, bestLevel: 10, runBestLevel: 10, gem: 0, grid: place(9, {}), upgrades: defaultUpgrades(), skills: {} });
   s.achievements = allAch;
   s.stats = { achCompletions: doneTiers };
   F.doPrestige();
   eq(s.prestigeCount, 5, 'prestige count reached 5');
   eq(s.gem, 50, 'prestige-5 milestone grants 50 💎');
   ok(s.stats.prestigeMilestones && s.stats.prestigeMilestones[5], 'milestone recorded (one-shot)');
-  // next prestige (5→6) is not a milestone
+  // next prestige (5→6) is not a milestone (v3.79.2 F2: 재등반 후에만 가능)
+  s.runBestLevel = 10;
   F.doPrestige();
   eq(s.prestigeCount, 6, 'prestige count 6');
   eq(s.gem, 50, 'no milestone gem at count 6');
@@ -2407,7 +2433,7 @@ group('strategy mode persists through save/load and prestige (it is a setting)',
   F.save(); F.load();
   eq(G.getState().strategyMode, 'gold', 'strategyMode survives a save/load round-trip');
   if (typeof F.doPrestige === 'function') {
-    const s2 = withState({ strategyMode: 'fast', bestLevel: 10, grid: place(9, {}), upgrades: defaultUpgrades(), skills: {} });
+    const s2 = withState({ strategyMode: 'fast', bestLevel: 10, runBestLevel: 10, grid: place(9, {}), upgrades: defaultUpgrades(), skills: {} });
     s2.stats = {};
     F.doPrestige();
     eq(G.getState().strategyMode, 'fast', 'strategyMode preserved through prestige (player setting, not run-transient)');
@@ -2531,7 +2557,7 @@ group('integration: post-prestige spawn boost applies +2 then decrements', () =>
   const realRandom = Math.random;
   Math.random = () => 0.99;
   try {
-    const s = withState({ bestLevel: 10, grid: place(9, {}), upgrades: defaultUpgrades(), skills: {} });
+    const s = withState({ bestLevel: 10, runBestLevel: 10, grid: place(9, {}), upgrades: defaultUpgrades(), skills: {} });
     s.stats = {};
     F.doPrestige(); // Q-Leap 91: sets postPrestigeSpawns = 10
     eq(s.postPrestigeSpawns, 10, 'prestige grants 10 boosted spawns');
@@ -2687,7 +2713,7 @@ group('expedition (Q-Leap 124)', () => {
   eq(s6.bestLevel, 9, 'bestLevel raised to cover the expedition piece (grid/storage parity)');
 
   // prestige wipes the off-grid expedition (storage parity — no smuggling across 윤회)
-  const s7 = withState({ bestLevel: 12, gold: 5000,
+  const s7 = withState({ bestLevel: 12, runBestLevel: 12, gold: 5000,
     expedition: { piece: { id: 1, level: 9, fireTimer: 0 }, tier: 1, startedAt: 1, endsAt: Date.now() + 1000 } });
   F.doPrestige();
   eq(s7.expedition, null, 'prestige clears active expedition');
@@ -2794,15 +2820,15 @@ group('trial tower (Q-Leap 125)', () => {
   eq(F.abandonTower(), false, 'abandon no-ops when inactive');
 
   // prestige flow: armed → consumed → next floor entered; active floor fails on prestige
-  const s5 = withState({ bestLevel: 12, prestigeCount: C.TOWER_UNLOCK_PRESTIGE, towerArmed: true, towerFloor: 0 });
+  const s5 = withState({ bestLevel: 12, runBestLevel: 12, prestigeCount: C.TOWER_UNLOCK_PRESTIGE, towerArmed: true, towerFloor: 0 });
   F.doPrestige();
   eq(s5.towerArmed, false, 'arm consumed by prestige');
   eq(s5.towerActive, 1, 'next floor entered on armed prestige');
-  const s6 = withState({ bestLevel: 12, prestigeCount: 3, towerActive: 2, towerArmed: false });
+  const s6 = withState({ bestLevel: 12, runBestLevel: 12, prestigeCount: 3, towerActive: 2, towerArmed: false });
   F.doPrestige();
   eq(s6.towerActive, 0, 'active floor ends (fails) on prestige');
   // armed below unlock (e.g. save tamper) → no entry
-  const s7 = withState({ bestLevel: 12, prestigeCount: 0, towerArmed: true, towerFloor: 0 });
+  const s7 = withState({ bestLevel: 12, runBestLevel: 12, prestigeCount: 0, towerArmed: true, towerFloor: 0 });
   F.doPrestige();
   eq(s7.towerActive, 0, 'no tower entry when still locked (post-prestige count 1 < gate)');
 
@@ -2823,14 +2849,14 @@ group('trial tower (Q-Leap 125)', () => {
 
   // ── v3.70.1 audit fixes ──
   // inheritance insta-clear exploit: tower entry must NOT carry inherited pieces
-  const s9 = withState({ bestLevel: 30, prestigeCount: 3, towerArmed: true, towerFloor: 0,
+  const s9 = withState({ bestLevel: 30, runBestLevel: 30, prestigeCount: 3, towerArmed: true, towerFloor: 0,
     skills: { goldMastery: 0, swiftHands: 0, fate: 0, masterSmith: 0, inheritance: 3, blessTime: 0, codexBoost: 0, goldenLuck: 0, starLuck: 0 },
     grid: gridFrom([28, 27, 26, null, null, null]) });
   F.doPrestige();
   eq(s9.towerActive, 1, 'armed prestige enters floor 1');
   ok(s9.grid.every(c => c === null), 'tower entry carries NO inherited pieces (insta-clear exploit closed)');
   // same skills WITHOUT arming → inheritance works normally
-  const s10 = withState({ bestLevel: 30, prestigeCount: 3, towerArmed: false,
+  const s10 = withState({ bestLevel: 30, runBestLevel: 30, prestigeCount: 3, towerArmed: false,
     skills: { goldMastery: 0, swiftHands: 0, fate: 0, masterSmith: 0, inheritance: 3, blessTime: 0, codexBoost: 0, goldenLuck: 0, starLuck: 0 },
     grid: gridFrom([28, 27, 26, null, null, null]) });
   F.doPrestige();
@@ -2912,7 +2938,7 @@ group('tower deep floors (Q-Leap 126)', () => {
   ok(F.getNextTowerFloor() && F.getNextTowerFloor().floor === BASE + 2, 'ladder continues to the next deep floor');
 
   // armed prestige enters a deep floor with no inheritance (same exploit guard as base)
-  const s2 = withState({ bestLevel: 30, prestigeCount: 5, towerArmed: true, towerFloor: BASE,
+  const s2 = withState({ bestLevel: 30, runBestLevel: 30, prestigeCount: 5, towerArmed: true, towerFloor: BASE,
     skills: { goldMastery: 0, swiftHands: 0, fate: 0, masterSmith: 0, inheritance: 3, blessTime: 0, codexBoost: 0, goldenLuck: 0, starLuck: 0 },
     grid: gridFrom([28, 27, 26, null, null, null]) });
   F.doPrestige();
@@ -3025,7 +3051,7 @@ group('cell engraving (Q-Leap 127)', () => {
   eq(F.engraveFortuneBonus(0), 0, 'no fortune bonus without rune');
 
   // persistence: engravings survive prestige (permanent purchase, like skills)
-  const sP = withState({ bestLevel: 12, prestigeCount: 2, enlightenment: 50, engravings: { 2: 'wealth' } });
+  const sP = withState({ bestLevel: 12, runBestLevel: 12, prestigeCount: 2, enlightenment: 50, engravings: { 2: 'wealth' } });
   F.doPrestige();
   eq((sP.engravings || {})[2], 'wealth', 'engraving survives prestige');
 
@@ -3298,7 +3324,7 @@ group('progressive disclosure (Q-Leap 130)', () => {
   withState({ bestLevel: 10, prestigeCount: 1 });
   ok(F.getRevealState().skills && F.getRevealState().hof, 'skills/HoF after prestige');
   // monotonic sources only: bestLevel survives prestige → nothing regresses
-  withState({ bestLevel: 12, prestigeCount: 2 });
+  withState({ bestLevel: 12, runBestLevel: 12, prestigeCount: 2 });
   const rAll = F.getRevealState();
   const sP = G.getState(); F.doPrestige();
   const rAfter = F.getRevealState();

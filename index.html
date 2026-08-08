@@ -1667,7 +1667,7 @@
     <div class="prestige-sub" id="prestige-modal-sub"></div>
     <div class="prestige-list">
       <div class="prestige-line"><span class="pl-k">현재 윤회 횟수</span><span class="pl-v" id="pl-count">0</span></div>
-      <div class="prestige-line"><span class="pl-k">영구 보너스 (이번 직후)</span><span class="pl-v" id="pl-bonus">+50%</span></div>
+      <div class="prestige-line"><span class="pl-k">영구 보너스 (이번 직후)</span><span class="pl-v" id="pl-bonus">—</span></div>
       <div class="prestige-line keep"><span class="pl-k">유지: 명예 · 도감 · 통계 · 깨달음 스킬 · 각인</span><span class="pl-v">∞</span></div>
       <div class="prestige-line keep"><span class="pl-k">유지: 최대 표창 · 제작 최대치 · 합성술</span><span class="pl-v">자본</span></div>
       <div class="prestige-line lose"><span class="pl-k">초기화: 골드 · 그리드 · 그 외 강화</span><span class="pl-v">0</span></div>
@@ -2694,7 +2694,9 @@ function startTrial() {
   state.trialTimer = TRIAL_DURATION;
   state.trialStartBestLv = state.runBestLevel || 1;
   // goal: reach (startBestLv + 3) within 60s. minimum goal = 5.
-  state.trialGoalLv = Math.max(5, (state.runBestLevel || 1) + 3);
+  // v3.79.2 (감사 F1b): 목표는 재구성된 그리드의 실제 최고 Lv 기준 — 계승 쌍 즉시클리어 차단
+  let gmax = 1; for (const c of state.grid) if (c && c.level > gmax) gmax = c.level;
+  state.trialGoalLv = Math.max(5, gmax + 3);
   state.trialReward = 5 + Math.floor(state.prestigeCount / 3); // scale with prestige depth
   toast(`⚔ 도전 시작! 60초 안에 Lv ${state.trialGoalLv} 달성 → 깨달음(悟) +${state.trialReward}`);
   sfx('merge');
@@ -3204,6 +3206,7 @@ function validateAndRepairState() {
   fixNum('gem', 0, 0);
   fixNum('bestLevel', 1, 1);
   fixNum('enlightenment', 0, 0);
+  fixNum('runPlaySec', 0, 0); // v3.79.2 (감사 F4): Infinity 세이브가 substance 게이트를 영구 무력화하지 않게
   fixNum('prestigeCount', 0, 0);
   if (typeof state.spawnProgress !== 'number' || !isFinite(state.spawnProgress)) { state.spawnProgress = 0; repairs++; }
   state.spawnProgress = Math.max(0, Math.min(1, state.spawnProgress));
@@ -3873,8 +3876,10 @@ function getRunSubstanceFactor() {
   return Math.min(1, (state.runPlaySec || 0) / RUN_SUBSTANCE_SEC);
 }
 function getPrestigeAdvice() {
-  if ((state.bestLevel || 1) < 8) {
-    return { recommend: false, gain: 0, reason: `Lv 8 도달 시 윤회 해금 (현재 ${state.bestLevel || 1})` };
+  if ((state.runBestLevel || 1) < 8) { // v3.79.2 F2: 이번 런 기준
+    return { recommend: false, gain: 0, reason: (state.bestLevel || 1) >= 8
+      ? `이번 런에서 Lv 8 재도달 시 윤회 가능 (현재 ${state.runBestLevel || 1})`
+      : `Lv 8 도달 시 윤회 해금 (현재 ${state.bestLevel || 1})` };
   }
   const gain = getEnlightenmentGain();
   if ((state.prestigeCount || 0) === 0) {
@@ -6498,75 +6503,91 @@ function renderSkillTree() {
     };
   });
 }
+// Q-Leap 125: 시련의 탑 섹션 (진행 중 → 포기 / 다음 층 → 예약 / 완주) — 잠금·해제 공용 (v3.79.2)
+function buildTowerSection() {
+  if (!isTowerUnlocked()) {
+    return `<div style="margin-top:7px;font-size:11px;color:#8a80a8;">🗼 시련의 탑 — 윤회 ${TOWER_UNLOCK_PRESTIGE}회 달성 시 해금</div>`;
+  }
+  const af = getActiveTowerFloor();
+  const nf = getNextTowerFloor();
+  if (af) {
+    return `<div style="margin-top:7px;font-size:11px;">🗼 <b style="color:#ffd28a">${af.floor}층 「${af.name}」 진행 중</b> — 목표 Lv ${af.goalLv} (현재 ${state.runBestLevel || 1})`
+      + `<button id="tower-abandon" style="margin-left:6px;padding:2px 8px;border-radius:7px;border:1px solid #9a5a5a;background:linear-gradient(180deg,#6e3f3f,#482727);color:#ffdddd;font-family:inherit;font-weight:800;font-size:10px;cursor:pointer;">포기</button></div>`;
+  }
+  if (nf) {
+    // Q-Leap 126: 6층 완주 후엔 무한 심층 라벨로 전환
+    const tf = state.towerFloor || 0;
+    const progLabel = tf > TOWER_FLOORS.length
+      ? `완주 · 🌀 심층 ${tf - TOWER_FLOORS.length}`
+      : `${tf}/${TOWER_FLOORS.length}층 돌파`;
+    const deepTag = nf.deep ? `<span style="color:#c89bff">🌀 심층 ${nf.deep} · </span>` : '';
+    return `<div style="margin-top:7px;font-size:11px;">🗼 시련의 탑 (${progLabel})`
+      + `<button id="tower-arm" style="margin-left:6px;padding:3px 9px;border-radius:7px;border:1px solid ${state.towerArmed ? '#d0a95c' : '#5a6a9a'};background:linear-gradient(180deg,${state.towerArmed ? '#6e5c2e,#483c1a' : '#3f4a6e,#272e48'});color:${state.towerArmed ? '#ffe9a8' : '#d8e0ff'};font-family:inherit;font-weight:800;font-size:11px;cursor:pointer;">${state.towerArmed ? `✅ ${nf.floor}층 예약됨` : `${nf.floor}층 도전 예약`}</button>`
+      + `<br><span style="color:#aa99cc;">${deepTag}${nf.icon} 「${nf.name}」 ${nf.desc} · 목표 Lv ${nf.goalLv} · 💎${nf.reward.gem}${nf.reward.enlightenment ? `+悟${nf.reward.enlightenment}` : ''} — 다음 윤회에 시작 · <b>계승 없이 입장</b></span></div>`;
+  }
+  // TOWER_MAX_FLOOR 도달 시에만 진입 (실질 도달 불가) — 그래도 표기는 정확히
+  return `<div style="margin-top:7px;font-size:11px;color:#ffd28a;">🗼 시련의 탑 완주! (${state.towerFloor || 0}층 · 🌀 심층 ${Math.max(0, (state.towerFloor || 0) - TOWER_FLOORS.length)})</div>`;
+}
+function bindPrestigeExtras() {
+  const armBtn = document.getElementById('tower-arm');
+  if (armBtn) armBtn.onclick = () => {
+    getAudio();
+    state.towerArmed = !state.towerArmed;
+    toast(state.towerArmed ? '🗼 다음 윤회에 시련 시작 — 윤회 버튼으로 진행' : '🗼 시련 예약 해제');
+    sfx('move');
+    renderPrestige(); save();
+  };
+  const abandonBtn = document.getElementById('tower-abandon');
+  if (abandonBtn) abandonBtn.onclick = () => {
+    getAudio();
+    abandonTower();
+    renderPrestige();
+  };
+  const stratBtn = document.getElementById('strat-cycle');
+  if (stratBtn) stratBtn.onclick = () => {
+    getAudio();
+    const i = STRATEGY_MODES.findIndex(m => m.id === (state.strategyMode || 'none'));
+    const nextMode = STRATEGY_MODES[(i + 1) % STRATEGY_MODES.length];
+    state.strategyMode = nextMode.id;
+    if (nextMode.id !== 'none') {
+      state.stats.strategyUsed = (state.stats.strategyUsed || 0) + 1;
+      checkAchievements();
+    }
+    toast(`전략: ${nextMode.label} — ${nextMode.desc}`);
+    sfx('move');
+    renderPrestige(); refreshUI(); save();
+  };
+}
 function renderPrestige() {
   const info = document.getElementById('prestige-info');
   const btn = document.getElementById('prestige-btn');
-  if (state.bestLevel < 8) {
-    info.textContent = `Lv 8 도달 시 윤회 가능 (현재 최고 Lv ${state.bestLevel})`;
+  {
+    const sm = getStrategyMode();
+    // v3.79.2 회귀 수정: 전략/탑 섹션은 잠금(재등반 중)과 무관하게 항상 렌더 —
+    // 재등반 게이트가 활성 층 '포기' 버튼과 전략 토글까지 숨기면 층에 갇힌다.
+    var _stratHtml = `<div style="margin-top:7px;font-size:11px;">전략 모드 <button id="strat-cycle" style="margin-left:4px;padding:3px 9px;border-radius:7px;border:1px solid #6a5a9a;background:linear-gradient(180deg,#4a3f6e,#2e2748);color:#e8d8ff;font-family:inherit;font-weight:800;font-size:11px;cursor:pointer;">${sm.label}</button><br><span style="color:#aa99cc;">${sm.desc}</span></div>`;
+  }
+  if ((state.runBestLevel || 1) < 8) { // v3.79.2 F2: 이번 런 재등반 요구
     btn.disabled = true; btn.textContent = '잠김';
+    const lockLine = (state.bestLevel || 1) >= 8
+      ? `이번 런에서 Lv 8 재도달 시 윤회 가능 (현재 ${state.runBestLevel || 1})`
+      : `Lv 8 도달 시 윤회 가능 (현재 최고 Lv ${state.bestLevel})`;
+    if ((state.bestLevel || 1) >= 8) {
+      info.innerHTML = lockLine + _stratHtml + buildTowerSection();
+      bindPrestigeExtras();
+    } else {
+      info.textContent = lockLine;
+    }
   } else {
     const enlightGain = getEnlightenmentGain();
     const advice = getPrestigeAdvice(); // Q-Leap 122
     const adviceLine = `<br><span style="color:${advice.recommend ? '#88ff99' : '#ffaa66'};font-size:11px;">${advice.recommend ? '✅ 윤회 추천' : '⏳ 보류 권장'} — ${advice.reason}</span>`;
-    const sm = getStrategyMode();
     const npm = getNextPrestigeMilestone(state.prestigeCount);
     const pmLine = npm ? `<br><span style="color:#cc88ff;font-size:11px;">다음 ☯ 마일스톤: 윤회 ${npm.n}회 (💎+${npm.gem})</span>` : '';
-    // Q-Leap 125: 시련의 탑 섹션 — 상태에 따라 (진행 중 → 포기 버튼 / 다음 층 → 무장 토글 / 완주)
-    let towerHtml = '';
-    if (isTowerUnlocked()) {
-      const af = getActiveTowerFloor();
-      const nf = getNextTowerFloor();
-      if (af) {
-        towerHtml = `<div style="margin-top:7px;font-size:11px;">🗼 <b style="color:#ffd28a">${af.floor}층 「${af.name}」 진행 중</b> — 목표 Lv ${af.goalLv} (현재 ${state.runBestLevel || 1})`
-          + `<button id="tower-abandon" style="margin-left:6px;padding:2px 8px;border-radius:7px;border:1px solid #9a5a5a;background:linear-gradient(180deg,#6e3f3f,#482727);color:#ffdddd;font-family:inherit;font-weight:800;font-size:10px;cursor:pointer;">포기</button></div>`;
-      } else if (nf) {
-        // Q-Leap 126: 6층 완주 후엔 무한 심층 라벨로 전환
-        const tf = state.towerFloor || 0;
-        const progLabel = tf > TOWER_FLOORS.length
-          ? `완주 · 🌀 심층 ${tf - TOWER_FLOORS.length}`
-          : `${tf}/${TOWER_FLOORS.length}층 돌파`;
-        const deepTag = nf.deep ? `<span style="color:#c89bff">🌀 심층 ${nf.deep} · </span>` : '';
-        towerHtml = `<div style="margin-top:7px;font-size:11px;">🗼 시련의 탑 (${progLabel})`
-          + `<button id="tower-arm" style="margin-left:6px;padding:3px 9px;border-radius:7px;border:1px solid ${state.towerArmed ? '#d0a95c' : '#5a6a9a'};background:linear-gradient(180deg,${state.towerArmed ? '#6e5c2e,#483c1a' : '#3f4a6e,#272e48'});color:${state.towerArmed ? '#ffe9a8' : '#d8e0ff'};font-family:inherit;font-weight:800;font-size:11px;cursor:pointer;">${state.towerArmed ? `✅ ${nf.floor}층 예약됨` : `${nf.floor}층 도전 예약`}</button>`
-          + `<br><span style="color:#aa99cc;">${deepTag}${nf.icon} 「${nf.name}」 ${nf.desc} · 목표 Lv ${nf.goalLv} · 💎${nf.reward.gem}${nf.reward.enlightenment ? `+悟${nf.reward.enlightenment}` : ''} — 다음 윤회에 시작 · <b>계승 없이 입장</b></span></div>`;
-      } else {
-        // TOWER_MAX_FLOOR 도달 시에만 진입 (실질 도달 불가) — 그래도 표기는 정확히
-        towerHtml = `<div style="margin-top:7px;font-size:11px;color:#ffd28a;">🗼 시련의 탑 완주! (${state.towerFloor || 0}층 · 🌀 심층 ${Math.max(0, (state.towerFloor || 0) - TOWER_FLOORS.length)})</div>`;
-      }
-    } else {
-      towerHtml = `<div style="margin-top:7px;font-size:11px;color:#8a80a8;">🗼 시련의 탑 — 윤회 ${TOWER_UNLOCK_PRESTIGE}회 달성 시 해금</div>`;
-    }
     info.innerHTML = `윤회 시 깨달음(悟) <b style="color:#cc88ff">+${enlightGain}</b> 획득<br>총 윤회 ${state.prestigeCount}회 · 영구 골드 +${Math.round((getPrestigeGoldMul() - 1) * 100)}% (다음 +${getNextPrestigeGoldInc()}%p)${adviceLine}${pmLine}`
-      + `<div style="margin-top:7px;font-size:11px;">전략 모드 <button id="strat-cycle" style="margin-left:4px;padding:3px 9px;border-radius:7px;border:1px solid #6a5a9a;background:linear-gradient(180deg,#4a3f6e,#2e2748);color:#e8d8ff;font-family:inherit;font-weight:800;font-size:11px;cursor:pointer;">${sm.label}</button><br><span style="color:#aa99cc;">${sm.desc}</span></div>`
-      + towerHtml;
-    const armBtn = document.getElementById('tower-arm');
-    if (armBtn) armBtn.onclick = () => {
-      getAudio();
-      state.towerArmed = !state.towerArmed;
-      toast(state.towerArmed ? '🗼 다음 윤회에 시련 시작 — 윤회 버튼으로 진행' : '🗼 시련 예약 해제');
-      sfx('move');
-      renderPrestige(); save();
-    };
-    const abandonBtn = document.getElementById('tower-abandon');
-    if (abandonBtn) abandonBtn.onclick = () => {
-      getAudio();
-      abandonTower();
-      renderPrestige();
-    };
-    const stratBtn = document.getElementById('strat-cycle');
-    if (stratBtn) stratBtn.onclick = () => {
-      getAudio();
-      const i = STRATEGY_MODES.findIndex(m => m.id === (state.strategyMode || 'none'));
-      const nextMode = STRATEGY_MODES[(i + 1) % STRATEGY_MODES.length];
-      state.strategyMode = nextMode.id;
-      if (nextMode.id !== 'none') {
-        state.stats.strategyUsed = (state.stats.strategyUsed || 0) + 1;
-        checkAchievements();
-      }
-      toast(`전략: ${nextMode.label} — ${nextMode.desc}`);
-      sfx('move');
-      renderPrestige(); refreshUI(); save();
-    };
+      + _stratHtml
+      + buildTowerSection();
+    bindPrestigeExtras();
     btn.disabled = false;
     btn.textContent = '윤회';
     btn.onclick = () => {
@@ -6621,7 +6642,9 @@ function renderPrestige() {
 //   upgrades, autoMergeUnlock, lifetime stats, attendance, growthLog.
 // Resets: gold, stage, run-best, the rest of upgrades, grid (minus inheritance), blessed.
 function doPrestige() {
-  if ((state.bestLevel || 1) < 8) return false; // guard — matches UI gate
+  // v3.79.2 (감사 F2): 이번 런에서 Lv 8을 다시 밟아야 윤회 — 전생애 bestLevel 게이트는
+  // 한 번 넘으면 영구라 2클릭 스팸(골드 배수 러시)의 문이었다. 재등반 요구로 사이클에 실비용 부여.
+  if ((state.runBestLevel || 1) < 8) return false; // guard — matches UI gate
   const enlightGain = getEnlightenmentGain();
   // v3.79.1 (감사): 윤회 도전(trial)은 직전 런이 알찼을 때만 시작 — trialReward가
   // 윤회 수에 비례(5 + p/3)라, 스팸 루프가 悟 게이트를 우회해 도전 보상으로 수확하던
@@ -7784,6 +7807,9 @@ function claimGate(lv, choice) {
     state.enlightenment = (state.enlightenment || 0) + g.enlight;
     toast(`${g.icon} ${g.name} — 깨달음(悟) +${g.enlight}`);
   } else if (choice === 'variant') {
+    // v3.79.2 (감사 F3): 시련 층 진행 중엔 변종 반입 금지 — 보류-수령이 탑의 무계승
+    // 불변식을 우회해 강화+noteLevelReached로 층을 공짜 클리어하던 밀수 경로
+    if ((state.towerActive || 0) > 0) { toast('🗼 시련 중엔 표창을 반입할 수 없습니다 — 관문은 보존됩니다'); return false; }
     const empties = emptySlots();
     if (empties.length === 0) { toast('그리드 가득 — 공간을 비우고 선택하세요'); return false; }
     const piece = { id: state.nextShurikenId++, level: Math.max(2, g.lv - 4), fireTimer: 0 };
@@ -7812,7 +7838,7 @@ function showGateModal() {
   const pending = state.gatePending || [];
   if (!pending.length) return;
   const g = getGateDef(pending[0]);
-  if (!g) { state.gatePending = pending.slice(1); return; }
+  if (!g) { state.gatePending = pending.slice(1); showGateModal(); return; } // 불량 엔트리 건너뛰고 다음 관문 즉시 (감사 F6)
   const modal = document.getElementById('gate-modal');
   document.getElementById('gate-title').textContent = `${g.icon} ${g.name}`;
   document.getElementById('gate-sub').textContent = `Lv ${g.lv} 최초 도달 — 하나를 선택하세요 (전 생애 1회)`;
@@ -7829,9 +7855,11 @@ function showGateModal() {
   mk('gem', '💎', `보석 ${g.gem}`, '즉시 쓸 수 있는 유연한 자원');
   mk('enlight', '🌌', `깨달음 ${g.enlight}`, '스킬트리·각인에 투자 (윤회 보존)');
   const full = emptySlots().length === 0;
+  const inTower = (state.towerActive || 0) > 0; // v3.79.2 F3
   mk('variant', g.variant === 'golden' ? '✦' : g.variant === 'star' ? '★' : '🌑',
      `${g.vName} 표창 Lv ${Math.max(2, g.lv - 4)}`,
-     full ? '그리드 가득 — 공간을 비우면 선택 가능' : '합성 전선의 재료 (변종 계승 시도)', full);
+     inTower ? '🗼 시련 중 반입 금지 — 층 종료 후 선택 가능'
+             : full ? '그리드 가득 — 공간을 비우면 선택 가능' : '합성 전선의 재료 (변종 계승 시도)', full || inTower);
   modal.classList.add('show');
 }
 // 동적 랭크 칭호 — v3.77 통폐합 때 #hof-sub와 함께 죽었던 기능 복원 (감사 v3.77.2):
