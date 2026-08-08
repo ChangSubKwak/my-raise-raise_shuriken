@@ -9,6 +9,7 @@
     "scan": "node tests/scan-deadcode.js",
     "check": "npm run parse && npm run test",
     "verify:browser": "node tests/browser-verify.js",
-    "verify:gameplay": "node tests/browser-gameplay.js"
+    "verify:gameplay": "node tests/browser-gameplay.js",
+    "verify:journey": "node tests/browser-journey.js"
   }
 }
