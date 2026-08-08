@@ -2004,7 +2004,7 @@ group('UI structure guard — buttons present + wired (Q-Leap 125)', () => {
     'ritual-btn', 'frenzy-btn', 'menu-btn',
     'codex-btn', 'quest-btn', 'shop-btn', 'trophy-btn', 'hof-btn', 'log-btn',
     'help-btn', 'storage-btn', 'meditation-btn',
-    'auto-merge-btn', 'burn-btn', 'instant-spawn-btn',
+    'auto-merge-btn', 'forge-btn', 'instant-spawn-btn',
   ];
   for (const id of buttons) {
     ok(RAW_HTML.includes(`id="${id}"`), `button #${id} present in HTML`);
@@ -3097,19 +3097,49 @@ group('forge mode (Q-Leap 128)', () => {
   eq(sR.runBestLevel, 9, 'runBestLevel follows the record spawn');
 });
 
+group('T1b/T4 curation (v3.74): burning/timeBoost/split/coat removed', () => {
+  // shop no longer sells the removed items; burning button gone
+  ok(!/id: 'timeBoost'/.test(RAW_HTML), 'timeBoost shop item removed');
+  ok(!/id: 'split'/.test(RAW_HTML), 'split shop item removed');
+  ok(!/id: 'coatGolden'/.test(RAW_HTML), 'coatGolden shop item removed');
+  ok(!/id="burn-btn"/.test(RAW_HTML), 'burning button removed');
+  ok(!/BURNING_COST/.test(RAW_HTML), 'burning constants removed');
+  // legacy timers are harmless: no spawn-speed effect
+  withState({});
+  const cleanIv = F.getSpawnInterval();
+  withState({ burningTimer: 10, timeBoostTimer: 10 });
+  eq(F.getSpawnInterval(), cleanIv, 'legacy burning/timeBoost timers no longer affect spawn interval');
+  // T1b absorption: frenzy now doubles jump probabilities (burning identity lives on)
+  const origRandom3 = Math.random;
+  const wk3 = (F.weekdayBonus().luckPlus || 0);
+  Math.random = () => 0.05 + wk3 + 0.01; // above base pJump2, inside the frenzy-doubled window
+  try {
+    const sNo = withState({ bestLevel: 10, grid: gridFrom([5, 5, null, null, null, null]) });
+    F.tryMerge(0, 1);
+    eq(sNo.grid[1].level, 6, 'no frenzy → jump 1 at this roll');
+    const sFr = withState({ bestLevel: 10, frenzyTimer: 20, grid: gridFrom([5, 5, null, null, null, null]) });
+    F.tryMerge(0, 1);
+    eq(sFr.grid[1].level, 7, 'frenzy doubles the jump window (absorbed from burning)');
+  } finally { Math.random = origRandom3; }
+  // removed achievements are gone; count-based milestones still coherent
+  ok(!C.ACHIEVEMENTS.some(a => ['a_burn', 'a_split', 'a_coat_1'].includes(a.id)), 'orphaned achievements removed');
+});
+
 group('active buff strip (T1a curation)', () => {
   withState({});
   eq(F.getActiveBuffs().length, 0, 'no buffs on a clean state');
-  withState({ frenzyTimer: 12.4, goldRushTimer: 3, burningTimer: 0.5, timeBoostTimer: 29 });
+  // T1b/T4 v3.74: burning/timeBoost removed — legacy timers must NOT surface as buffs
+  withState({ frenzyTimer: 12.4, goldRushTimer: 3, burningTimer: 8, timeBoostTimer: 29 });
   const buffs = F.getActiveBuffs();
-  eq(buffs.length, 4, 'all four timed buffs reported');
-  eq(buffs.map(b => b.id).join(','), 'frenzy,goldRush,burning,timeBoost', 'stable order');
+  eq(buffs.length, 2, 'two timed buffs remain after curation (legacy timers ignored)');
+  eq(buffs.map(b => b.id).join(','), 'frenzy,goldRush', 'stable order');
   ok(buffs.every(b => b.icon && b.name && b.desc && b.remain > 0), 'entries fully described with remaining time');
   approx(buffs[0].remain, 12.4, 'remaining seconds passed through raw', 1e-9);
+  ok(/점프 확률 ×2/.test(buffs[0].desc), 'frenzy desc advertises the absorbed jump ×2 (T1b)');
   withState({ frenzyTimer: 0, goldRushTimer: -3 });
   eq(F.getActiveBuffs().length, 0, 'zero/negative timers excluded');
-  withState({ burningTimer: 7 });
-  eq(F.getActiveBuffs()[0].id, 'burning', 'single active buff reported alone');
+  withState({ goldRushTimer: 7 });
+  eq(F.getActiveBuffs()[0].id, 'goldRush', 'single active buff reported alone');
   // structural: strip element + updateHUD wiring
   ok(/id="buff-strip"/.test(RAW_HTML), 'buff strip element present');
   ok(/buff-strip'\)[\s\S]{0,600}getActiveBuffs\(\)/.test(RAW_HTML), 'updateHUD renders the strip from getActiveBuffs');

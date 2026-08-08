@@ -1232,7 +1232,6 @@
      auto-merge / burn buttons are never clipped off the row on narrow widths. */
   #spawn-bar > #instant-spawn-btn,
   #spawn-bar > .auto-merge-group,
-  #spawn-bar > #burn-btn { flex: 1 1 auto; }
   #spawn-progress-wrap {
     flex: 1 1 100%; display: flex; flex-direction: column; gap: 4px; justify-content: center;
     cursor: pointer; user-select: none; padding: 4px 6px; border-radius: 8px;
@@ -1275,7 +1274,7 @@
     background: linear-gradient(90deg, #aa6644, #ffaa33);
   }
   /* Comfortable tap targets for the bottom control row (was ~30px, below mobile 44px norm). */
-  #spawn-bar #instant-spawn-btn, #spawn-bar .auto-btn, #spawn-bar #burn-btn { min-height: 40px; }
+  #spawn-bar #instant-spawn-btn, #spawn-bar .auto-btn, #spawn-bar #forge-btn { min-height: 40px; }
   #instant-spawn-btn {
     flex: 0.8; padding: 8px 10px;
     background: linear-gradient(180deg, #6a2a8e, #4a1a6e);
@@ -1415,14 +1414,6 @@
     0%,100% { box-shadow: 0 0 10px #66ff99aa, inset 0 0 8px #66ff9933; }
     50%     { box-shadow: 0 0 20px #66ff99ee, inset 0 0 14px #66ff9966; }
   }
-  #burn-btn {
-    flex: 0.85; padding: 8px 6px;
-    background: linear-gradient(180deg, #ff5533, #aa2200);
-    border: 1px solid #ff7744; border-radius: 8px; color: #fff;
-    font-family: inherit; font-size: 11px; font-weight: 700; cursor: pointer;
-    box-shadow: 0 0 8px rgba(255,80,40,0.3);
-  }
-  #burn-btn:active { transform: scale(0.94); }
   /* Q-Leap 128: 제련 모드 다이얼 */
   #forge-btn {
     flex: 0.85; padding: 8px 6px;
@@ -1434,17 +1425,6 @@
   #forge-btn.locked { opacity: 0.5; }
   #forge-btn.fine  { background: linear-gradient(180deg, #6e4a2e, #48301a); border-color: #d0a95c; color: #ffe9a8; }
   #forge-btn.swift { background: linear-gradient(180deg, #2e5e4a, #1a3c2e); border-color: #5cd0a9; color: #a8ffe0; }
-  #burn-btn.active {
-    animation: burnPulse 0.5s ease-in-out infinite alternate;
-  }
-  @keyframes burnPulse {
-    from { box-shadow: 0 0 8px #ff5533aa, 0 0 0 rgba(255,80,40,0.3); }
-    to   { box-shadow: 0 0 18px #ffaa44, 0 0 26px rgba(255,170,50,0.5); }
-  }
-  /* burning mode body tint */
-  body.burning #stage {
-    box-shadow: inset 0 0 60px rgba(255, 80, 40, 0.25);
-  }
 
   /* Panel */
   #panel .section-title {
@@ -1624,7 +1604,6 @@
           <button class="cap-btn" id="cap-up">+</button>
         </div>
       </div>
-      <button id="burn-btn" title="💎 10 — 30초 버닝 모드">🔥 버닝</button>
       <button id="forge-btn" title="제련 모드 — 생성 속도·시작 Lv 트레이드오프 (Lv 6 해금)">⚖ 표준</button>
     </div>
   </div>
@@ -2202,7 +2181,7 @@ function defaultState() {
     dailyQuests: [],
     lastQuestDate: '',
     // Q-Leap 42: 보석 상점 — short-lived buffs / instant effects
-    timeBoostTimer: 0,    // seconds; while > 0, spawn interval × 0.5
+    timeBoostTimer: 0,    // legacy (T4 v3.74: 시간 가속 제거 — 세이브 호환용 무해 필드)
     luckyHandCharges: 0,  // next N merges get +1 jump (consumed)
     // Q-Leap 46: 일주일 미션 — single weekly challenge, gem + enlightenment reward
     weeklyQuest: null,        // { type, target, baseline, claimed, reward }
@@ -2375,7 +2354,7 @@ const ACHIEVEMENTS = [
   { id: 'a_lucky_100',    name: '신의 가호',       icon: '🌠', desc: '행운 합성 100회',      check: (s) => (s.stats.luckyMerges || 0) >= 100 },
   { id: 'a_lock',         name: '소중한 표창',     icon: '🔒', desc: '표창 잠금 사용',       check: (s) => (s.stats.locksUsed   || 0) >= 1 },
   { id: 'a_massmerge',    name: '일괄의 묘',       icon: '⚡', desc: '일괄 합치기 사용',     check: (s) => (s.stats.massMerges  || 0) >= 1 },
-  { id: 'a_burn',         name: '불의 시간',       icon: '🔥', desc: '버닝 모드 첫 사용',    check: (s) => (s.stats.burnsUsed   || 0) >= 1 },
+
   { id: 'a_lv20',         name: '극창의 경지',     icon: '🐉', desc: 'Lv 20 도달',           check: (s) => (s.bestLevel || 0) >= 20 },
   { id: 'a_lv30',         name: '사신의 길',       icon: '🐲', desc: 'Lv 30 도달',           check: (s) => (s.bestLevel || 0) >= 30 },
   { id: 'a_auto_unlock',  name: '게으름의 미덕',   icon: '🤖', desc: '자동합치기 영구 해금', check: (s) => !!s.autoMergeUnlocked },
@@ -2416,7 +2395,7 @@ const ACHIEVEMENTS = [
   { id: 'a_dark_1',       name: '어둠의 발견',     icon: '🌑', desc: '검은 표창 첫 획득',   check: (s) => (s.stats.darkSpawned || 0) >= 1 },
   { id: 'a_dark_absorb',  name: '흡수의 술',       icon: '🌀', desc: '검은 흡수 첫 발동',   check: (s) => (s.stats.darkAbsorbs || 0) >= 1 },
   { id: 'a_autosell',     name: '자동화의 시작',   icon: '🤖', desc: '자동 매도 첫 활성',   check: (s) => !!s.autoSellEnabled || (s.stats.autoSells || 0) >= 1 },
-  { id: 'a_split',        name: '분할의 수',       icon: '🔱', desc: '표창 분할 첫 사용',   check: (s) => (s.stats.splitsUsed || 0) >= 1 },
+
   { id: 'a_fusion_1',     name: '융합의 시작',     icon: '⚗', desc: '변종 융합 첫 사용',   check: (s) => ((s.stats || {}).fusionsUsed || 0) >= 1 },
   { id: 'a_strategy_1',   name: '전략가',          icon: '⚖', desc: '전략 모드 첫 선택',   check: (s) => ((s.stats || {}).strategyUsed || 0) >= 1 },
   { id: 'a_fusion_10',    name: '연금의 길',       icon: '⚗', desc: '변종 융합 10회',      check: (s) => ((s.stats || {}).fusionsUsed || 0) >= 10, gem: 8 },
@@ -2433,7 +2412,7 @@ const ACHIEVEMENTS = [
   { id: 'a_exchange_50',  name: '환금의 도',       icon: '🏦', desc: '환산 총 💎 50 누적',    check: (s) => ((s.stats || {}).exchangesUsed || 0) >= 50 },
   { id: 'a_merge_gem_1',  name: '🍀 합성의 행운',  icon: '🍀', desc: '합성 보석 드롭 1회',    check: (s) => ((s.stats || {}).mergeGemDrops || 0) >= 1 },
   { id: 'a_merge_gem_10', name: '🌠 다이아 손',    icon: '🌠', desc: '합성 보석 드롭 10회',   check: (s) => ((s.stats || {}).mergeGemDrops || 0) >= 10 },
-  { id: 'a_coat_1',       name: '황금 코팅장',     icon: '✦', desc: '황금 코팅 첫 사용',     check: (s) => ((s.stats || {}).coatingsUsed || 0) >= 1 },
+
   { id: 'a_spin_1',       name: '룰렛 첫 회',      icon: '🎲', desc: '일일 룰렛 첫 사용',     check: (s) => ((s.stats || {}).spinsUsed || 0) >= 1 },
   { id: 'a_spin_30',      name: '꾸준한 운',       icon: '🎰', desc: '일일 룰렛 30회',        check: (s) => ((s.stats || {}).spinsUsed || 0) >= 30 },
   { id: 'a_charm_1',      name: '부적의 손',       icon: '🔮', desc: '합성 보장 부적 첫 소비', check: (s) => ((s.stats || {}).luckyCharmsUsed || 0) >= 1 },
@@ -2632,16 +2611,8 @@ const SHOP_ITEMS = [
       return true;
     },
   },
-  {
-    id: 'timeBoost', icon: '⏱', name: '시간 가속', cost: 8,
-    desc: '30초 동안 표창 생성 속도 2배',
-    effect: () => {
-      state.timeBoostTimer = Math.max(state.timeBoostTimer || 0, 30);
-      toast('⏱ 시간 가속 30초');
-      sfx('spawn');
-      return true;
-    },
-  },
+  // (T4 큐레이션 v3.74: '시간 가속' 제거 — 폭주/버닝 대비 고유 정체성 없는 완전 하위호환.
+  //  timeBoostTimer 필드는 세이브 호환 위해 무해화 유지, 로드 시 0으로 소거.)
   {
     id: 'luckyHand', icon: '🌟', name: '행운의 손', cost: 10,
     desc: '다음 합성 3회 +1 점프 보장',
@@ -2674,61 +2645,8 @@ const SHOP_ITEMS = [
       return true;
     },
   },
-  {
-    id: 'split', icon: '🔱', name: '표창 분할', cost: 7,
-    desc: '가장 높은 Lv 표창 1개 → Lv−1 짜리 2개 (빈 슬롯 1개 필요)',
-    effect: () => {
-      // need exactly 1+ empty slot
-      if (emptySlots().length < 1) { toast('빈 슬롯이 필요합니다'); return false; }
-      // find highest-level non-locked, non-protected piece
-      let maxIdx = -1, maxLv = 0;
-      for (let i = 0; i < state.grid.length; i++) {
-        const c = state.grid[i];
-        if (!c || c.locked) continue;
-        if (c.level <= 1) continue; // can't split Lv 1
-        if (c.level > maxLv) { maxLv = c.level; maxIdx = i; }
-      }
-      if (maxIdx < 0) { toast('분할 가능한 표창이 없습니다 (Lv 2+, 잠금 해제)'); return false; }
-      const orig = state.grid[maxIdx];
-      const newLv = orig.level - 1;
-      // first child stays at maxIdx
-      state.grid[maxIdx] = { id: state.nextShurikenId++, level: newLv, fireTimer: 0,
-                              golden: orig.golden, star: orig.star, dark: orig.dark };
-      // second child goes to a random empty slot
-      const empties = emptySlots();
-      const targetIdx = empties[Math.floor(Math.random() * empties.length)];
-      state.grid[targetIdx] = { id: state.nextShurikenId++, level: newLv, fireTimer: 0,
-                                 golden: false, star: false, dark: false };
-      state.stats.splitsUsed = (state.stats.splitsUsed || 0) + 1;
-      toast(`🔱 Lv ${orig.level} → Lv ${newLv} 2개로 분할`);
-      addEvent('lucky', `분할 Lv ${orig.level} → Lv ${newLv} ×2`);
-      flashCell(maxIdx);
-      flashCell(targetIdx);
-      sfx('move');
-      setTimeout(() => sfx('spawn'), 80);
-      return true;
-    },
-  },
-  // Q-Leap 86: 황금 코팅 의식 — 선택된 일반 표창에 황금 부여
-  {
-    id: 'coatGolden', icon: '✦', name: '황금 코팅', cost: 25,
-    desc: '선택된 표창에 황금 속성 부여 (변종 아님). 먼저 표창을 탭하여 선택하세요.',
-    effect: () => {
-      if (selectedIdx < 0) { toast('표창을 먼저 탭하여 선택하세요'); return false; }
-      const c = state.grid[selectedIdx];
-      if (!c) { toast('선택이 비었습니다'); return false; }
-      if (c.golden) { toast('이미 황금 속성입니다'); return false; }
-      c.golden = true;
-      c.id = state.nextShurikenId++;
-      state.stats.coatingsUsed = (state.stats.coatingsUsed || 0) + 1;
-      state.stats.goldenSpawned = (state.stats.goldenSpawned || 0) + 1;
-      flashCell(selectedIdx);
-      addEvent('lucky', `황금 코팅 → Lv ${c.level}`);
-      renderGrid();
-      sfx('mergeGold');
-      return true;
-    },
-  },
+  // (T4 큐레이션 v3.74: '표창 분할'(니치 의식 재료기)과 '황금 코팅'(변종 융합과 역할 중복)
+  //  제거 — 사용자 승인. splitsUsed/coatingsUsed 통계 필드는 세이브 호환 위해 무해화 유지.)
 ];
 
 // ---------- Q-Leap 46: 일주일 미션 (Weekly Quest) ----------
@@ -3110,7 +3028,7 @@ function load() {
     }
     state.dailyQuests = Array.isArray(s.dailyQuests) ? s.dailyQuests : [];
     state.lastQuestDate = s.lastQuestDate || '';
-    state.timeBoostTimer = s.timeBoostTimer || 0;
+    state.timeBoostTimer = 0; // (T4 v3.74: 시간 가속 제거 — 잔여 타이머 소거)
     state.luckyHandCharges = s.luckyHandCharges || 0;
     state.trialActive = !!s.trialActive;
     state.trialTimer = s.trialTimer || 0;
@@ -3351,15 +3269,15 @@ function getCenterIndex() {
   return Math.min(idx, size - 1);
 }
 // (v3.35) getFireInterval removed — combat gone; fireTimer is a vestigial field kept at 0.
-function isBurning() { return (state.burningTimer || 0) > 0; }
+// (T1b 큐레이션 v3.74: 버닝 제거 — 사용자 승인. 고유 정체성이던 점프 확률 ×2는 폭주로
+//  흡수(tryMerge의 frenzyJumpMul), 생성 가속·자동합치기 강제는 폭주·명상과 중복이라 소멸.
+//  burningTimer 필드는 세이브 호환 위해 무해화 유지 — 로드/윤회에서 0으로 소거.)
 // T1a (TODOS 큐레이션): 활성 타임드-버프 목록 — "지금 무슨 버프?"를 한 곳에서.
 // 순수 함수 (state의 타이머 4종만 읽음); HUD 표시줄이 초당 1회 소비. 효과/트리거 불변.
 function getActiveBuffs() {
   const out = [];
-  if ((state.frenzyTimer   || 0) > 0) out.push({ id: 'frenzy',    icon: '⚡', name: '폭주',     desc: '생성 ×2 · 골드 +20% · 황금 ×1.5', remain: state.frenzyTimer });
+  if ((state.frenzyTimer   || 0) > 0) out.push({ id: 'frenzy',    icon: '⚡', name: '폭주',     desc: '생성 ×2 · 골드 +20% · 점프 확률 ×2 · 황금 ×1.5', remain: state.frenzyTimer });
   if ((state.goldRushTimer || 0) > 0) out.push({ id: 'goldRush',  icon: '💰', name: '골드러시', desc: '모든 골드 ×2',                    remain: state.goldRushTimer });
-  if ((state.burningTimer  || 0) > 0) out.push({ id: 'burning',   icon: '🔥', name: '버닝',     desc: '자동합치기 강제 ON + 생성 가속',   remain: state.burningTimer });
-  if ((state.timeBoostTimer|| 0) > 0) out.push({ id: 'timeBoost', icon: '⏩', name: '시간가속', desc: '생성 간격 ×0.5',                  remain: state.timeBoostTimer });
   return out;
 }
 // Q-Leap 38: blessed cell — picks a random non-locked cell. Empty cells are preferred to
@@ -3394,9 +3312,7 @@ function countStars() {
 // "+1 Lv 공짜"(가치율 ×2)가 되고 반지배 설계가 뒤집힌다 — 하한을 먼저 밟은 뒤 제련을 곱한다.
 function getSpawnIntervalBase() {
   const base = 16.0; // base spawn interval (sec); raised from 12 to slow the generation gauge
-  const burnMul = isBurning() ? (1 / 3) : 1; // 3× faster when burning
   const skillMul = Math.pow(0.96, getSkillLv('swiftHands')); // −4%/Lv
-  const shopBoost = (state.timeBoostTimer || 0) > 0 ? 0.5 : 1; // Q-Leap 42 shop item
   const trialBoost = state.trialActive ? 0.5 : 1; // Q-Leap 43: trial time×2
   const starBoost = Math.pow(0.7, countStars()); // Q-Leap 47: each star × 0.7
   const chalBoost = isChallenge('spawnFast') ? 0.5 : 1; // Q-Leap 54
@@ -3404,7 +3320,7 @@ function getSpawnIntervalBase() {
   const frenzyMul = (state.frenzyTimer || 0) > 0 ? 0.5 : 1; // Q-Leap 77: 폭주 ×2 spawn
   const weekdayMul = weekdayBonus().spawnMul || 1; // Q-Leap 87
   const eliteMul = hasSet('elite') ? 0.9 : 1; // Q-Leap 105: 정예 진형 +10% 가속
-  return Math.max(0.6, base * Math.pow(0.95, state.upgrades.spawnRate) * burnMul * skillMul * shopBoost * trialBoost * starBoost * chalBoost * prestigeSpeed * frenzyMul * weekdayMul * eliteMul * getStrategySpawnMul() * getTowerSpawnMul()); // floor raised 0.4→0.6 to cap max spawn speed
+  return Math.max(0.6, base * Math.pow(0.95, state.upgrades.spawnRate) * skillMul * trialBoost * starBoost * chalBoost * prestigeSpeed * frenzyMul * weekdayMul * eliteMul * getStrategySpawnMul() * getTowerSpawnMul()); // floor raised 0.4→0.6 to cap max spawn speed
 }
 function getSpawnInterval() {
   return Math.max(0.6, getSpawnIntervalBase() * getForgeSpawnMul()); // Q-Leap 128: 정밀은 하한 위에서도 온전히 ×2.2를 낸다
@@ -3414,8 +3330,6 @@ function getSpawnInterval() {
 const FRENZY_MAX = 100;
 const FRENZY_DURATION = 30;
 
-const BURNING_DURATION = 30;
-const BURNING_COST = 10;
 const AUTO_MERGE_UNLOCK_COST = 50; // gems — one-time purchase
 function tryUnlockAutoMerge() {
   if (state.autoMergeUnlocked) return true;
@@ -3434,20 +3348,6 @@ function tryUnlockAutoMerge() {
   refreshUI();
   save();
   return true;
-}
-function activateBurning() {
-  if (isBurning()) { toast('이미 버닝 중'); return; }
-  if (state.gem < BURNING_COST) { toast(`💎 ${BURNING_COST} 필요 (현재 ${state.gem})`); return; }
-  state.gem -= BURNING_COST;
-  state.burningTimer = BURNING_DURATION;
-  // burning bypasses the unlock gate — engine OR handles it
-  state.stats.burnsUsed = (state.stats.burnsUsed || 0) + 1;
-  checkAchievements();
-  toast('🔥 버닝 30초 — 자동합성 + 가속');
-  sfx('merge');
-  setTimeout(() => sfx('spawn'), 100);
-  refreshUI();
-  save();
 }
 // (v3.35) getBaseDmg removed — only the deleted shurikenDmg used it.
 function getSpawnStartLevel() {
@@ -4218,10 +4118,10 @@ function tryMerge(fromIdx, toIdx, isAuto) {
                     + getSkillLv('fate') * 0.008 // fate skill: +0.8%/Lv
                     + (weekdayBonus().luckPlus || 0) // Q-Leap 87
                     + (isAuto ? 0 : engraveFortuneBonus(toIdx)); // Q-Leap 127: 연의 각인 — 손 합성 전용 (의식-패리티 예외 + 자동 합성 게이트, 감사 127.1)
-    const burnMul = isBurning() ? 2 : 1;
-    const pJump5 = 0.001 * burnMul;
-    const pJump3 = (0.010 + luckBonus * 0.2) * burnMul;
-    const pJump2 = (0.050 + luckBonus) * burnMul;
+    const frenzyJumpMul = (state.frenzyTimer || 0) > 0 ? 2 : 1; // T1b: 버닝의 점프 ×2 정체성을 폭주가 흡수
+    const pJump5 = 0.001 * frenzyJumpMul;
+    const pJump3 = (0.010 + luckBonus * 0.2) * frenzyJumpMul;
+    const pJump2 = (0.050 + luckBonus) * frenzyJumpMul;
     const r = Math.random();
     let jump = 1;
     if      (r < pJump5) jump = 5;
@@ -4701,14 +4601,7 @@ function update(dt) {
       hideComboToast();
     }
   }
-  // Burning mode timer
-  if (state.burningTimer > 0) {
-    state.burningTimer -= dt;
-    if (state.burningTimer <= 0) {
-      state.burningTimer = 0;
-      toast('🔥 버닝 종료');
-    }
-  }
+  // (T1b v3.74: 버닝 타이머 제거 — 점프 ×2는 폭주가 흡수)
   // Q-Leap 77: Frenzy spawn boost timer
   if ((state.frenzyTimer || 0) > 0) {
     state.frenzyTimer -= dt;
@@ -4737,14 +4630,7 @@ function update(dt) {
     rerollBlessedCell();
     state.blessedTimer = blessedDuration(); // Q-Leap 87 (weekday blessMul via blessedDuration)
   }
-  // Q-Leap 42: time-boost timer (shop item)
-  if ((state.timeBoostTimer || 0) > 0) {
-    state.timeBoostTimer -= dt;
-    if (state.timeBoostTimer <= 0) {
-      state.timeBoostTimer = 0;
-      toast('⏱ 시간 가속 종료');
-    }
-  }
+  // (T4 v3.74: 시간 가속 타이머 제거)
   // Q-Leap 43: trial timer
   if (state.trialActive) {
     state.trialTimer -= dt;
@@ -4773,8 +4659,8 @@ function update(dt) {
   }
 
   // auto merge — gated by unlock; burning mode bypasses the gate temporarily.
-  // Q-Leap 125: 수공의 층은 버닝의 자동합성 우회까지 막는다 (제약 런의 요점 — 손 합성만).
-  const autoMergeActive = ((state.autoMerge && state.autoMergeUnlocked) || isBurning()) && !isTowerAutoBanned();
+  // Q-Leap 125: 수공의 층 — 자동 합성 금지 (제약 런의 요점: 손 합성만).
+  const autoMergeActive = (state.autoMerge && state.autoMergeUnlocked) && !isTowerAutoBanned(); // (T1b: 버닝 우회 제거)
   if (autoMergeActive) {
     autoMergeTimer -= dt;
     if (autoMergeTimer <= 0) {
@@ -5016,19 +4902,6 @@ function updateHUD() {
       ? `${fm.icon} ${fm.name} — ${fm.desc}${inert ? ' (지금은 무효: 생성 Lv 하한/고행의 층)' : ''} · 탭하여 전환`
       : `제련 모드 — Lv ${FORGE_UNLOCK_LV} 도달 시 해금`;
   }
-  // Burning UI
-  const burnBtn = document.getElementById('burn-btn');
-  if (burnBtn) {
-    if (isBurning()) {
-      burnBtn.classList.add('active');
-      burnBtn.textContent = `🔥 ${Math.ceil(state.burningTimer)}s`;
-      document.body.classList.add('burning');
-    } else {
-      burnBtn.classList.remove('active');
-      burnBtn.textContent = `🔥 버닝 (💎${BURNING_COST})`;
-      document.body.classList.remove('burning');
-    }
-  }
 }
 
 // ---------- Grid Render ----------
@@ -5079,7 +4952,7 @@ function renderGrid() {
     if (bestA >= 0) { bestPairSet.add(bestA); bestPairSet.add(bestB); }
   }
   // Q-Leap 79: predict next auto-merge pair when autoMerge is active
-  const autoActive = (state.autoMerge && state.autoMergeUnlocked) || isBurning();
+  const autoActive = state.autoMerge && state.autoMergeUnlocked;
   const autoPairSet = new Set();
   if (autoActive) {
     const p = findNextAutoMergePair();
@@ -6667,10 +6540,6 @@ document.getElementById('auto-merge-btn').addEventListener('click', () => {
   try { refreshUI(); } catch (e) {}
   save();
 });
-document.getElementById('burn-btn').addEventListener('click', () => {
-  getAudio();
-  activateBurning();
-});
 // Q-Leap 128: 제련 모드 순환 (표준 → 정밀 → 속성)
 document.getElementById('forge-btn').addEventListener('click', () => {
   getAudio();
@@ -6958,7 +6827,6 @@ function renderShop() {
   let html = '';
   for (const it of SHOP_ITEMS) {
     let extra = '';
-    if (it.id === 'timeBoost' && (state.timeBoostTimer || 0) > 0) extra = ` <span style="color:#88ddff">활성 ${Math.ceil(state.timeBoostTimer)}s</span>`;
     if (it.id === 'luckyHand' && (state.luckyHandCharges || 0) > 0) extra = ` <span style="color:#ffd966">충전 ×${state.luckyHandCharges}</span>`;
     const disabled = state.gem < it.cost ? 'disabled' : '';
     html += `<div class="shop-item">
@@ -7151,8 +7019,6 @@ function renderTrophy() {
       ['🧿 성소 각인',       `${engraveCount()} / ${ENGRAVE_MAX}칸`],
       ['⚖ 제련 모드',        `${getForgeMode().icon} ${getForgeMode().name}`],
       ['⚗ 변종 융합',        s.fusionsUsed || 0],
-      ['🔱 표창 분할',       s.splitsUsed || 0],
-      ['✦ 황금 코팅',        s.coatingsUsed || 0],
       ['💰 누적 골드',       fmt(s.totalGoldEarned || 0)],
       ['⚡ 최고 콤보',       s.bestCombo || 0],
       ['🍀 행운 합성',       s.luckyMerges || 0],
@@ -7162,7 +7028,6 @@ function renderTrophy() {
       ['🛒 상점 이용',       s.shopUses || 0],
       ['⚔ 도전 성공',        s.trialsWon || 0],
       ['🔒 잠금 사용',       s.locksUsed || 0],
-      ['🔥 버닝 사용',       s.burnsUsed || 0],
       ['📅 출석 연속',       state.attendStreak || 0],
     ];
     progress.textContent = `${rows.length}개 통계`;
@@ -7759,7 +7624,6 @@ const HELP_SECTIONS = {
     { title: '잠금 (Lock)', body: '표창 길게 누르면 🔒 잠금. 자동합치기/판매로부터 보호. 강력한 표창 보존용.' },
     { title: '판매 (Sell)', body: '💸 판매 모드 토글 후 표창 탭 시 골드 환전 (값 = 2^Lv × 0.5 × 골드 배수 (시세/변종 프리미엄 별도)).' },
     { title: '윤회 (Prestige)', body: 'Lv 8+ 도달 시 윤회 가능. 깨달음(悟) 획득 → 스킬트리 강화. 누적 +50% 골드/회. 도감/grid 크기 보존.' },
-    { title: '버닝 모드', body: '💎 10 — 30초간 자동합치기 + 가속.' },
   ],
   variants: [
     { title: '✦ 황금 표창', body: '0.5% 자연 발생. <span class="hk">판매 5x</span> 또는 <span class="hk">합성 +1 점프</span>. 부모 1=50% / 2=100% 전이.' },
@@ -7795,7 +7659,7 @@ const HELP_SECTIONS = {
   combat: [
     { title: '⚔ 윤회 도전 (Trial)', body: '윤회 직후 60초 도전 시작. <span class="hk">spawn ×2</span>, 목표 Lv 달성 시 깨달음 +5 (윤회 횟수에 따라 증가).' },
     { title: '🎆 마일스톤', body: 'Lv 20/30/40/50/60 첫 도달 시 화면 폭발 + 보석 5~60. <span class="hk">최고 Lv 60 = 무한(無限)</span>.' },
-    { title: '🛒 보석 상점', body: '일회성 효과: 셔플/축복재배치/시간가속/행운의손/표창강화/분할/<span class="hk">황금 코팅</span>. 가격 자연 제한.' },
+    { title: '🛒 보석 상점', body: '일회성 효과: 셔플/축복 재배치/<span class="hk">행운의 손</span>/표창 강화. 가격 자연 제한.' },
     { title: '💱 보석 환산소', body: '상점 내. 골드를 보석으로 환산 (비율 = 10000 − 윤회×1000, 최소 2000). 후기 정체 해소.' },
     { title: '🌌 깨달음 스킬', body: '9종 트리 — 골드/spawn/행운/계승/축복지속/도감/황금운/별운 등. 윤회 시 누적.' },
     { title: '⚖ 전략 모드', body: 'Lv 8+ 윤회 패널의 <span class="hk">전략 버튼</span>으로 런 스타일 선택: <span class="hk">부유</span>(골드+30%·생성18%↓) / <span class="hk">신속</span>(생성18%↑·골드−15%) / <span class="hk">변종</span>(변종×2·골드−12%) / 균형(없음). 이득마다 상응하는 손실 — 지배적 선택이 없는 트레이드오프.' },
@@ -8025,8 +7889,8 @@ const TUTORIAL_STEPS = [
     body: '같은 레벨의 표창을 탭→탭 하면 합쳐져 한 단계 올라갑니다. 골드도 함께 획득합니다.' },
   { emoji: '✋', title: '드래그도 가능',
     body: '표창을 끌어다 다른 표창 위에 놓으면 합쳐집니다. 같은 Lv: 합체 / 다른 Lv: 자리바꿈.' },
-  { emoji: '🔥', title: '버닝 모드와 자동화',
-    body: '💎 10으로 30초 가속 + 자동합성. 자동합치기 ON과 ⚡ 모두 버튼으로 빠르게 진행할 수 있습니다.' },
+  { emoji: '⚡', title: '폭주와 자동화',
+    body: '합성으로 폭주 게이지를 채워 30초 가속·점프 확률 ×2를 터뜨리세요. 자동합치기 ON과 ⚡ 모두 버튼으로 빠르게 진행할 수 있습니다.' },
 ];
 let _tutStep = 0;
 function showTutorial() {
