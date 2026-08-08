@@ -1523,7 +1523,7 @@
         <button id="compact-btn" class="grid-action-btn" title="빈칸만 제거 — 표창 배치 순서는 유지">⬇ 압축</button>
         <button id="ritual-btn" class="grid-action-btn" title="의식 합성 — 같은 Lv 3+ 연결 그룹을 한 번에 합쳐 큰 점프" disabled>✨ 의식</button>
         <button id="frenzy-btn" class="grid-action-btn" title="폭주 — 합성으로 충전, 가득 차면 발동 시 30s spawn ×2">⚡ 폭주 <span id="frenzy-count">0/100</span></button>
-        <button id="menu-btn" class="grid-action-btn" title="메뉴 — 도감/오늘/상점/명예/보관/자동화/도움말">☰ 메뉴</button>
+        <button id="menu-btn" class="grid-action-btn" title="메뉴 — 도감/오늘/상점/명예/보관/자동화/명상/도움말">☰ 메뉴</button>
       </div>
       <div id="grid-menu">
         <button id="codex-btn" class="grid-action-btn" title="표창 도감 — 처음 도달한 레벨이 영구 기록됩니다">📖 도감</button>
@@ -6718,7 +6718,7 @@ function renderCodex() {
   // Two codex grids exist — the inline panel (#codex-grid) and the modal (#codex-grid-modal).
   // They previously shared the same id, so getElementById only ever found the inline one and
   // the modal grid rendered empty. Populate both with identical slot markup.
-  const grids = [document.getElementById('codex-grid'), document.getElementById('codex-grid-modal')].filter(Boolean);
+  const grids = [document.getElementById('codex-grid-modal')].filter(Boolean); // v3.77.1: 패널 그리드 제거 — 모달 그리드만
   if (grids.length === 0) return;
   if (!state.codex) state.codex = {};
   const MAX_LV = 60;
@@ -7133,10 +7133,15 @@ function renderTrophy() {
   const progress = document.getElementById('trophy-progress');
   if (!content) return;
   // tab active state
-  document.querySelectorAll('.trophy-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === trophyTab));
+  document.querySelectorAll('.trophy-tab').forEach(t => {
+    if (t.dataset.tab === 'hof') t.style.display = getRevealState().hof ? '' : 'none'; // 윤회 1회부터
+    t.classList.toggle('active', t.dataset.tab === trophyTab);
+  });
   // 단순화 통폐합 (v3.77): 전당·로그 모달을 명예 모달의 탭으로 흡수 — 콘텐츠·렌더러는 보존
+  // 전당 탭은 윤회 1회부터 (v3.77 통폐합 때 끊긴 hof 게이트 복원 — 감사 v3.77.2)
+  if (trophyTab === 'hof' && !getRevealState().hof) trophyTab = 'achievements';
   if (trophyTab === 'hof') {
-    progress.textContent = '한 표창술사의 일대기';
+    progress.textContent = getHofRankTitle(); // 죽어 있던 동적 랭크 칭호 복원
     content.innerHTML = '<div class="hof-content" id="hof-content"></div>';
     renderHallOfFame();
     return;
@@ -7626,6 +7631,7 @@ function renderHallOfFame() {
     { ico: '⏰', label: '플레이 시간', val: fmtPlaytime(s.playTimeSec || 0) },
   ];
   const content = document.getElementById('hof-content');
+  if (!content) return; // 컨테이너는 renderTrophy 전당 탭이 주입 — 단독 호출 가드 (감사 v3.77.2)
   let html = rows.map(r =>
     `<div class="hof-row${r.featured ? ' featured' : ''}">
        <span class="hof-ico">${r.ico}</span>
@@ -7668,15 +7674,15 @@ function renderHallOfFame() {
     </div>`;
   }
   content.innerHTML = html;
-  const sub = document.getElementById('hof-sub');
-  if (sub) {
-    const title = state.prestigeCount >= 10 ? '윤회를 거듭한 초월자'
-                : trans > 0 ? '무한을 넘어선 자'
-                : state.bestLevel >= 40 ? '도(道)에 이른 표창술사'
-                : state.bestLevel >= 20 ? '극창의 경지에 선 자'
-                : '수행 중인 표창술사';
-    sub.textContent = title;
-  }
+}
+// 동적 랭크 칭호 — v3.77 통폐합 때 #hof-sub와 함께 죽었던 기능 복원 (감사 v3.77.2):
+// 이제 renderTrophy의 전당 탭 헤더(progress)에 표시된다.
+function getHofRankTitle() {
+  return state.prestigeCount >= 10 ? '윤회를 거듭한 초월자'
+       : getTranscendence() > 0 ? '무한을 넘어선 자'
+       : state.bestLevel >= 40 ? '도(道)에 이른 표창술사'
+       : state.bestLevel >= 20 ? '극창의 경지에 선 자'
+       : '수행 중인 표창술사';
 }
 // (v3.77 통폐합: 전당은 명예 모달의 탭 — 전용 모달/버튼/핸들러 제거)
 // Single source of truth for frenzy-meter charging. `units` = merge-equivalents

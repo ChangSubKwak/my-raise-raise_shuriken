@@ -3208,6 +3208,9 @@ group('progressive disclosure (Q-Leap 130)', () => {
   ok(/#grid-menu \{[\s\S]{0,300}display: none;/.test(RAW_HTML), 'grid-menu default-hidden via CSS (so .open can win)');
   // reveal announces stagger instead of overwriting the single toast slot
   ok(/400 \+ i \* 2100/.test(RAW_HTML), 'multiple reveal announces are staggered');
+  // v3.77.2: hof key regained a consumer — it gates the 전당 tab; rank title restored there
+  ok(/dataset\.tab === 'hof'\) t\.style\.display = getRevealState\(\)\.hof/.test(RAW_HTML), 'hof reveal key gates the 전당 tab');
+  ok(/function getHofRankTitle/.test(RAW_HTML) && /progress\.textContent = getHofRankTitle\(\)/.test(RAW_HTML), 'dynamic rank title restored on the 전당 tab');
 });
 
 group('active buff strip (T1a curation)', () => {
