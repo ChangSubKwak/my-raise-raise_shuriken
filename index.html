@@ -430,21 +430,7 @@
   .today-status { font-size: 11px; color: #bbc; background: rgba(255,255,255,0.04); border-radius: 8px; padding: 8px 10px; line-height: 1.5; }
 
   /* Q-Leap 100: Hall of Fame modal */
-  #hof-modal {
-    position: fixed; inset: 0; z-index: 254;
-    display: none; align-items: center; justify-content: center;
-    background: rgba(0,0,0,0.9);
-  }
-  #hof-modal.show { display: flex; }
-  .hof-box {
-    background: radial-gradient(ellipse at top, #2a1f3a 0%, #0a0612 100%);
-    border: 2px solid #ffcc66; border-radius: 18px;
-    padding: 20px 24px; max-width: 400px; width: 92%;
-    box-shadow: 0 0 40px rgba(255,204,102,0.3);
-    max-height: 86vh; overflow-y: auto;
-  }
-  .hof-title { font-size: 22px; font-weight: 900; color: #ffcc66; text-align: center; letter-spacing: 4px; margin-bottom: 2px; text-shadow: 0 0 12px #ffaa44aa; }
-  .hof-sub { font-size: 11px; color: #aa99cc; text-align: center; margin-bottom: 16px; }
+  /* v3.77 통폐합: 전당은 명예 모달 탭 — 콘텐츠 스타일만 유지, 모달 셸 제거 */
   .hof-content { display: flex; flex-direction: column; gap: 8px; margin-bottom: 14px; }
   .hof-row {
     display: flex; align-items: center; gap: 10px;
@@ -455,12 +441,6 @@
   .hof-row .hof-label { flex: 1; font-size: 12px; color: #ccbbdd; }
   .hof-row .hof-val { font-size: 14px; font-weight: 800; color: #fff; text-align: right; }
   .hof-row.featured { border-color: #ffcc66; background: rgba(255,204,102,0.14); }
-  .hof-close {
-    width: 100%; padding: 10px; border-radius: 10px; cursor: pointer;
-    background: linear-gradient(180deg, #ffcc66, #cc9933); border: none; color: #2a1500;
-    font-family: inherit; font-weight: 900; font-size: 13px;
-  }
-  .hof-close:active { transform: scale(0.97); }
 
   /* Q-Leap 57: help modal */
   #help-modal {
@@ -594,25 +574,7 @@
     color: #ffcf9e; user-select: none; -webkit-user-select: none;
   }
 
-  /* Log modal — Q-Leap 52 */
-  #log-modal {
-    position: fixed; inset: 0; z-index: 252;
-    display: none; align-items: center; justify-content: center;
-    background: rgba(0,0,0,0.85);
-  }
-  #log-modal.show { display: flex; }
-  .log-box {
-    background: linear-gradient(180deg, #181c24 0%, #08090c 100%);
-    border: 2px solid #99ccdd; border-radius: 18px;
-    padding: 18px 22px; max-width: 380px; width: 92%;
-    max-height: 85vh; overflow-y: auto;
-    box-shadow: 0 0 30px rgba(153,204,221,0.25);
-  }
-  .log-title {
-    font-size: 18px; font-weight: 900; color: #ccddee;
-    text-align: center; letter-spacing: 4px; margin-bottom: 4px;
-  }
-  .log-sub { font-size: 10px; color: #88a; text-align: center; margin-bottom: 10px; }
+  /* Log — Q-Leap 52 (v3.77 통폐합: 명예 모달 탭 — 목록 스타일만 유지) */
   .log-list { display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px; }
   .log-row {
     background: rgba(255,255,255,0.04); border: 1px solid #2a3138;
@@ -1585,15 +1547,13 @@
         <button id="compact-btn" class="grid-action-btn" title="빈칸만 제거 — 표창 배치 순서는 유지">⬇ 압축</button>
         <button id="ritual-btn" class="grid-action-btn" title="의식 합성 — 같은 Lv 3+ 연결 그룹을 한 번에 합쳐 큰 점프" disabled>✨ 의식</button>
         <button id="frenzy-btn" class="grid-action-btn" title="폭주 — 합성으로 충전, 가득 차면 발동 시 30s spawn ×2">⚡ 폭주 <span id="frenzy-count">0/100</span></button>
-        <button id="menu-btn" class="grid-action-btn" title="메뉴 — 도감/미션/상점/명예/로그/도움말/보관/명상/전당">☰ 메뉴</button>
+        <button id="menu-btn" class="grid-action-btn" title="메뉴 — 도감/오늘/상점/명예/보관/자동화/도움말">☰ 메뉴</button>
       </div>
       <div id="grid-menu">
         <button id="codex-btn" class="grid-action-btn" title="표창 도감 — 처음 도달한 레벨이 영구 기록됩니다">📖 도감</button>
         <button id="quest-btn" class="grid-action-btn" title="오늘 — 일일 미션·주간·도전·합성·출석·룰렛·환산을 한곳에">📅 오늘</button>
         <button id="shop-btn" class="grid-action-btn" title="보석 상점 — 일회성 효과 구매">🛒 상점</button>
         <button id="trophy-btn" class="grid-action-btn" title="명예 & 통계 — 도달한 명예와 일생 통계 확인">🏆 명예</button>
-        <button id="hof-btn" class="grid-action-btn" title="명예의 전당 — 평생 기록 쇼케이스">🏛 전당</button>
-        <button id="log-btn" class="grid-action-btn" title="활동 로그 — 최근 30개 사건">📜 로그</button>
         <button id="help-btn" class="grid-action-btn" title="도움말 — 게임 시스템 가이드">❓ 도움말</button>
         <button id="storage-btn" class="grid-action-btn" title="보관소 — 그리드 외 3칸 보관">📦 보관 <span id="storage-count">0/3</span></button>
         <button id="automation-btn" class="grid-action-btn" title="자동화 — 자동 합치기/매도/잠금/의식/우선순위/윤회가속 설정">⚙ 자동화</button>
@@ -1782,21 +1742,14 @@
   </div>
 </div>
 
-<div id="log-modal">
-  <div class="log-box">
-    <div class="log-title">📜 활동 로그</div>
-    <div class="log-sub">최근 30개의 의미있는 사건</div>
-    <div id="log-list" class="log-list"></div>
-    <button class="codex-close" id="log-close">닫기</button>
-  </div>
-</div>
-
 <div id="trophy-modal">
   <div class="trophy-box">
     <div class="trophy-title">🏆 명예 & 통계</div>
     <div class="trophy-tabs">
       <button class="trophy-tab active" data-tab="achievements">명예</button>
       <button class="trophy-tab" data-tab="stats">통계</button>
+      <button class="trophy-tab" data-tab="hof">전당</button>
+      <button class="trophy-tab" data-tab="log">로그</button>
     </div>
     <div class="trophy-progress" id="trophy-progress">0 / 0</div>
     <div class="trophy-content" id="trophy-content"></div>
@@ -1944,15 +1897,6 @@
   <span class="combo-label">콤보!</span>
   <span class="combo-mul" id="combo-mul">+40%</span>
   <span class="combo-timer-bar"><span class="combo-timer-fill" id="combo-timer-fill"></span></span>
-</div>
-
-<div id="hof-modal">
-  <div class="hof-box">
-    <div class="hof-title">🏛 명예의 전당</div>
-    <div class="hof-sub" id="hof-sub">한 표창술사의 일대기</div>
-    <div class="hof-content" id="hof-content"></div>
-    <button class="hof-close" id="hof-close">닫기</button>
-  </div>
 </div>
 
 <div id="record-overlay">
@@ -6256,7 +6200,7 @@ const REVEAL_TARGETS = [
   ['#daily-challenge-banner', 'daily'], ['#weekday-banner', 'daily'],
   ['#quest-btn', 'daily'], ['#shop-btn', 'shop'], ['#codex-btn', 'codex'],
   ['#storage-btn', 'storage'], ['#automation-btn', 'autoMerge'], ['#meditation-btn', 'autoMerge'],
-  ['#hof-btn', 'hof'], ['#trophy-btn', 'achv'],
+  ['#trophy-btn', 'achv'], // (v3.77: 전당·로그는 명예 모달 탭으로 흡수 — 별도 버튼 없음)
   ['#codex-block', 'codex'], ['#achv-block', 'achv'],
   ['#prestige-block', 'prestige'], ['#skill-block', 'skills'],
   ['#formation-stat', 'formation'], ['#hint-sell-line', 'sellInfo'],
@@ -7200,6 +7144,19 @@ function renderTrophy() {
   if (!content) return;
   // tab active state
   document.querySelectorAll('.trophy-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === trophyTab));
+  // 단순화 통폐합 (v3.77): 전당·로그 모달을 명예 모달의 탭으로 흡수 — 콘텐츠·렌더러는 보존
+  if (trophyTab === 'hof') {
+    progress.textContent = '한 표창술사의 일대기';
+    content.innerHTML = '<div class="hof-content" id="hof-content"></div>';
+    renderHallOfFame();
+    return;
+  }
+  if (trophyTab === 'log') {
+    progress.textContent = '최근 30개의 의미있는 사건';
+    content.innerHTML = '<div id="log-list" class="log-list"></div>';
+    renderLog();
+    return;
+  }
   if (trophyTab === 'achievements') {
     const unlocked = ACHIEVEMENTS.filter(a => (state.achievements || {})[a.id]).length; // 고아 키 제외 (107/106 방지)
     progress.textContent = `명예 ${unlocked} / ${ACHIEVEMENTS.length}`;
@@ -7335,17 +7292,7 @@ function renderLog() {
     return `<div class="log-row t-${e.type}"><span class="log-icon">${icon}</span><span class="log-msg">${e.msg}</span><span class="log-time">${t}</span></div>`;
   }).join('');
 }
-document.getElementById('log-btn').addEventListener('click', () => {
-  getAudio();
-  renderLog();
-  document.getElementById('log-modal').classList.add('show');
-});
-document.getElementById('log-close').addEventListener('click', () => {
-  document.getElementById('log-modal').classList.remove('show');
-});
-document.getElementById('log-modal').addEventListener('click', (e) => {
-  if (e.target.id === 'log-modal') document.getElementById('log-modal').classList.remove('show');
-});
+// (v3.77 통폐합: 로그는 명예 모달의 탭 — 전용 모달/버튼/핸들러 제거)
 // Variant fusion (crafting): sacrifice 3 same-variant pieces → 1 of the next-rarer tier.
 // Gives the otherwise-passive variants a strategic decision + a non-luck path to rare variants.
 const VARIANT_FUSION_NEXT = { golden: 'star', star: 'dark' }; // dark is top tier (no fusion)
@@ -7741,17 +7688,7 @@ function renderHallOfFame() {
     sub.textContent = title;
   }
 }
-document.getElementById('hof-btn').addEventListener('click', () => {
-  getAudio();
-  renderHallOfFame();
-  document.getElementById('hof-modal').classList.add('show');
-});
-document.getElementById('hof-close').addEventListener('click', () => {
-  document.getElementById('hof-modal').classList.remove('show');
-});
-document.getElementById('hof-modal').addEventListener('click', (e) => {
-  if (e.target.id === 'hof-modal') document.getElementById('hof-modal').classList.remove('show');
-});
+// (v3.77 통폐합: 전당은 명예 모달의 탭 — 전용 모달/버튼/핸들러 제거)
 // Single source of truth for frenzy-meter charging. `units` = merge-equivalents
 // (normal merge = 1; ritual of N pieces = N-1, matching creditMerges). Packed set
 // doubles the gain. Must be called from EVERY merge path so ritual users charge at
@@ -7882,7 +7819,7 @@ const HELP_SECTIONS = {
     { title: '⚖ 제련 모드', body: '최고 Lv 6 해금. 생성 게이지 옆 <span class="hk">제련 버튼</span>으로 순환: <span class="hk">표준</span> / <span class="hk">🔥 정밀</span>(생성 120% 느림 · 시작 Lv +1 — 슬롯·손 절약) / <span class="hk">🌪 속성</span>(생성 45% 빠름 · 시작 Lv −1 — 합성 횟수↑, 콤보·폭주·미션에 유리). 두 특화 모두 원시 효율은 표준의 ~91% — 상황이 선택을 만든다. 시작 Lv 1이거나 고행의 층에선 무효(🚫). 전략 모드가 런의 방침이라면 제련은 <span class="hk">언제든 바꾸는 전술 다이얼</span>.' },
     { title: '🧿 성소 각인', body: '윤회 1회 해금. 깨달음(悟) 패널의 <span class="hk">🧿 각인 버튼</span> → 그리드 칸을 탭해 룬을 새김 (최대 3칸, 悟 15/30/50). <span class="hk">💰 부</span>(그 칸 패시브 ×1.5) / <span class="hk">⚒ 정련</span>(그 칸에서 완성된 합성·의식 골드 ×1.35) / <span class="hk">🍀 연</span>(그 칸으로의 손 합성 행운 +4%p). 효과는 칸 조건부 — 합성 동선을 각인 칸으로 유도하는 공간 전략. 팁: <span class="hk">의식 결과는 그룹의 가장 낮은 번호 칸에 생성</span>되므로 정련 각인으로 노릴 수 있음. 연의 각인은 손 합성에만 발동 (자동 합치기 제외). 윤회에도 보존, 제거는 무료(환불 없음). 스킬트리와 悟를 두고 경쟁하는 선택.' },
     { title: '🎵 정취 (생성 음악)', body: '진행이 소리가 됩니다 — <span class="hk">최고 Lv가 음높이</span>(5Lv마다 반음↑), 콤보·폭주가 선율의 밀도를, 골드러시가 하모니를 정하는 <span class="hk">상태 반응형 배경 음악</span>. 하단 🎵 버튼으로 켜고 끄기 (음소거와 별개, 효과·보상 무관한 순수 감상 계층).' },
-    { title: '🏛 명예의 전당', body: '평생 기록 + 🎯다음 목표 + 💰골드 배수 분해 + 📈성장 스파크라인을 한눈에.' },
+    { title: '🏛 명예의 전당', body: '평생 기록 + 🎯다음 목표 + 💰골드 배수 분해 + 📈성장 스파크라인을 한눈에. <span class="hk">🏆 명예 모달의 전당 탭</span>에 있습니다 (활동 로그도 로그 탭으로 통합).' },
   ],
   convenience: [
     { title: '🤖 자동화', body: '자동합치기(💎50 영구해금)·자동매도·자동잠금·자동의식·자동폭주. 각각 토글.' },

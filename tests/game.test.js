@@ -2002,7 +2002,7 @@ group('UI structure guard — buttons present + wired (Q-Leap 125)', () => {
   const buttons = [
     'hint-btn', 'sell-btn', 'info-btn', 'merge-all-btn', 'sort-btn', 'compact-btn',
     'ritual-btn', 'frenzy-btn', 'menu-btn',
-    'codex-btn', 'quest-btn', 'shop-btn', 'trophy-btn', 'hof-btn', 'log-btn',
+    'codex-btn', 'quest-btn', 'shop-btn', 'trophy-btn',
     'help-btn', 'storage-btn', 'meditation-btn',
     'auto-merge-btn', 'forge-btn', 'instant-spawn-btn',
   ];
