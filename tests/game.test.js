@@ -2825,6 +2825,127 @@ group('tower deep floors (Q-Leap 126)', () => {
   eq(a10.check({ towerFloor: BASE + 10 }), true, 'deep10 achievement at base+10');
 });
 
+group('cell engraving (Q-Leap 127)', () => {
+  const RUNES = C.ENGRAVE_RUNES;
+  eq(RUNES.length, 3, 'three runes defined');
+  ok(RUNES.every(r => r.id && r.icon && r.name && r.desc), 'runes fully described');
+
+  // unlock gate: no prestige → no engraving, no 悟 spent
+  const s0 = withState({ prestigeCount: 0, enlightenment: 100 });
+  eq(F.isEngraveUnlocked(), false, 'locked before first prestige');
+  eq(F.applyEngraving(0, 'wealth'), false, 'apply refused while locked');
+  eq(s0.enlightenment, 100, 'no 悟 spent on refused apply');
+
+  // cost ladder 15/30/50, max 3 cells, swap 8, remove free (no refund)
+  const s1 = withState({ prestigeCount: 2, enlightenment: 200 });
+  eq(F.getEngraveCost(), C.ENGRAVE_COSTS[0], 'first engrave at slot-1 cost');
+  eq(F.applyEngraving(0, 'wealth'), true, 'first engrave applied');
+  eq(s1.enlightenment, 200 - 15, 'slot-1 cost deducted');
+  eq(F.applyEngraving(1, 'forge'), true, 'second engrave applied');
+  eq(F.applyEngraving(2, 'fortune'), true, 'third engrave applied');
+  eq(s1.enlightenment, 200 - 15 - 30 - 50, 'cost ladder 15/30/50 deducted');
+  eq(F.engraveCount(), 3, 'three cells engraved');
+  eq(F.applyEngraving(3, 'wealth'), false, 'fourth cell refused at cap');
+  eq(F.applyEngraving(0, 'wealth'), false, 'same-rune re-apply is a no-op');
+  eq(F.applyEngraving(0, 'forge'), true, 'rune swap allowed on engraved cell');
+  eq(s1.enlightenment, 200 - 95 - C.ENGRAVE_SWAP_COST, 'swap costs flat swap fee');
+  const before = s1.enlightenment;
+  eq(F.removeEngraving(0), true, 'remove works');
+  eq(s1.enlightenment, before, 'remove refunds nothing');
+  eq(F.engraveCount(), 2, 'count drops after remove');
+  eq(F.getEngraveCost(), C.ENGRAVE_COSTS[2], 're-engraving a third cell costs slot-3 price again (moving is not free)');
+  // insufficient 悟
+  const s2 = withState({ prestigeCount: 1, enlightenment: 5 });
+  eq(F.applyEngraving(0, 'wealth'), false, 'refused when 悟 insufficient');
+  eq(s2.enlightenment, 5, 'no partial deduction');
+  // out-of-grid index refused (default grid size 6)
+  eq(F.applyEngraving(10, 'wealth'), false, 'index beyond grid size refused');
+  eq(F.applyEngraving(-1, 'wealth'), false, 'negative index refused');
+  eq(F.applyEngraving(0, 'nope'), false, 'unknown rune refused');
+
+  // effect: wealth ×1.5 on passive weight (non-center cell to isolate)
+  const centerIdx = (() => { withState({}); return F.getCenterIndex(); })();
+  const spot = centerIdx === 0 ? 1 : 0;
+  const sW = withState({ grid: place(6, { [spot]: 5 }) });
+  const baseW = F.pieceGoldWeight(spot);
+  sW.engravings = { [spot]: 'wealth' };
+  approx(F.pieceGoldWeight(spot), baseW * 1.5, 'wealth rune ×1.5 passive weight', 1e-9);
+  approx(F.getPassiveGoldRate(), baseW * 1.5 * F.getGoldMul() * F.getPassiveGoldBonus(), 'passive rate flows through the same fn', 1e-6);
+  eq(F.engraveWealthMul(spot === 0 ? 1 : 0), 1, 'wealth mul is cell-local');
+
+  // effect: forge ×1.35 on merge gold landing on the engraved cell (deterministic via patched RNG)
+  const origRandom = Math.random;
+  Math.random = () => 0.99; // no jump, no procs, no spontaneous variants
+  try {
+    const sA = withState({ bestLevel: 10, grid: gridFrom([5, 5, null, null, null, null]), gold: 0 });
+    const expectA = Math.floor(Math.pow(2, 6) * F.getGoldMul() * F.getMergeGoldBonus());
+    F.tryMerge(0, 1);
+    eq(sA.gold, expectA, 'baseline merge gold (no rune)');
+    const sB = withState({ bestLevel: 10, grid: gridFrom([5, 5, null, null, null, null]), gold: 0, engravings: { 1: 'forge' } });
+    const expectB = Math.floor(Math.pow(2, 6) * F.getGoldMul() * F.getMergeGoldBonus() * 1.35);
+    F.tryMerge(0, 1);
+    eq(sB.gold, expectB, 'forge rune ×1.35 on merge completed onto the cell');
+    const sC = withState({ bestLevel: 10, grid: gridFrom([5, 5, null, null, null, null]), gold: 0, engravings: { 0: 'forge' } });
+    F.tryMerge(0, 1);
+    eq(sC.gold, expectA, 'forge on the FROM cell does nothing (destination-keyed)');
+    // ritual parity: result cell engraved → ritual gold ×1.35.
+    // (기대값은 의식 "후" 계산 — 의식이 삼위일체 세트를 소모한 뒤 골드가 산정되므로)
+    const sD = withState({ bestLevel: 10, grid: gridFrom([5, 5, 5, null, null, null]), gold: 0 });
+    F.doRitualMerge();
+    const expectD = Math.floor(Math.pow(2, 7) * F.getGoldMul() * 3 * 2 * F.getMergeGoldBonus());
+    eq(sD.gold, expectD, 'baseline ritual gold');
+    const sE = withState({ bestLevel: 10, grid: gridFrom([5, 5, 5, null, null, null]), gold: 0, engravings: { 0: 'forge' } });
+    F.doRitualMerge();
+    const expectE = Math.floor(Math.pow(2, 7) * F.getGoldMul() * 3 * 2 * F.getMergeGoldBonus() * 1.35);
+    eq(sE.gold, expectE, 'forge rune applies to ritual result cell (parity)');
+    // effect: fortune +4%p on the +2-jump threshold, destination-keyed, hand merges only
+    const wkLuck = (F.weekdayBonus().luckPlus || 0);
+    Math.random = () => 0.05 + wkLuck + 0.02; // above base pJump2, inside +4%p window
+    const sF = withState({ bestLevel: 10, grid: gridFrom([5, 5, null, null, null, null]) });
+    F.tryMerge(0, 1);
+    eq(sF.grid[1].level, 6, 'no fortune rune → jump 1 at this roll');
+    const sG = withState({ bestLevel: 10, grid: gridFrom([5, 5, null, null, null, null]), engravings: { 1: 'fortune' } });
+    F.tryMerge(0, 1);
+    eq(sG.grid[1].level, 7, 'fortune rune converts the same roll into a +2 jump');
+  } finally { Math.random = origRandom; }
+  eq(F.engraveFortuneBonus(0), 0, 'no fortune bonus without rune');
+
+  // persistence: engravings survive prestige (permanent purchase, like skills)
+  const sP = withState({ bestLevel: 12, prestigeCount: 2, enlightenment: 50, engravings: { 2: 'wealth' } });
+  F.doPrestige();
+  eq((sP.engravings || {})[2], 'wealth', 'engraving survives prestige');
+
+  // save integrity: bad idx / unknown rune / over-cap / non-object all repaired
+  const sV = withState({ engravings: { 0: 'wealth', 10: 'forge', 1: 'nope', 2: 'fortune', 3: 'forge', 4: 'wealth' } });
+  F.validateAndRepairState();
+  ok(!('10' in sV.engravings) && !('1' in sV.engravings), 'out-of-grid + unknown-rune entries dropped');
+  ok(Object.keys(sV.engravings).length <= C.ENGRAVE_MAX, 'entry count clamped to max');
+  eq(sV.engravings[0], 'wealth', 'valid entry preserved');
+  const sV2 = withState({ engravings: ['wealth'] });
+  F.validateAndRepairState();
+  ok(!Array.isArray(sV2.engravings) && typeof sV2.engravings === 'object', 'array-shaped engravings reset to {}');
+
+  // stats + achievements
+  const sS = withState({ prestigeCount: 1, enlightenment: 100 });
+  F.applyEngraving(0, 'wealth');
+  eq(sS.stats.engravesUsed, 1, 'engrave stat credited');
+  ok(C.ACHIEVEMENTS.some(a => a.id === 'a_engrave_1') && C.ACHIEVEMENTS.some(a => a.id === 'a_engrave_3'), 'engrave achievements registered');
+  const a3 = C.ACHIEVEMENTS.find(a => a.id === 'a_engrave_3');
+  eq(a3.check({ engravings: { 0: 'wealth', 1: 'forge', 2: 'fortune' } }), true, 'a_engrave_3 at 3 cells');
+  eq(a3.check({ engravings: { 0: 'wealth' } }), false, 'a_engrave_3 not below 3');
+  eq(a3.check({}), false, 'a_engrave_3 tolerates missing field');
+
+  // render smoke with engravings present (grid mark path)
+  withState({ engravings: { 0: 'wealth' }, grid: gridFrom([3, null, null, null, null, null]) });
+  let threw = false;
+  try { F.renderGrid(); } catch (e) { threw = true; }
+  eq(threw, false, 'renderGrid renders engraved cells without throwing');
+
+  // structural guards: button + modal wired
+  ok(/engrave-btn'\)\.addEventListener/.test(RAW_HTML), 'engrave button wired');
+  ok(/id="engrave-modal"/.test(RAW_HTML), 'engrave modal present');
+});
+
 // ---- helpers ----
 function defaultUpgrades() {
   return { maxShuriken: 0, spawnRate: 0, spawnBatch: 0, firerate: 0, baseDmg: 0, goldMul: 0, spawnLevel: 0, luckChance: 0 };

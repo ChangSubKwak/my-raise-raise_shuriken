@@ -112,8 +112,10 @@ function loadGame() {
     isTowerUnlocked, getTowerFloorDef, getDeepFloorDef, getActiveTowerFloor, getNextTowerFloor,
     getTowerSpawnMul, getTowerGoldMul, isTowerAutoBanned, isTowerRitualBanned, isTowerSpawnLv1,
     checkTowerProgress, abandonTower,
+    isEngraveUnlocked, engraveCount, getEngraveCost, getEngraving,
+    engraveWealthMul, engraveForgeMul, engraveFortuneBonus, applyEngraving, removeEngraving,
   },
-  consts: { FRENZY_MAX, FRENZY_DURATION, TRANSCEND_BASE, DAILY_CHALLENGE_TARGET, SET_DEFS, ACHIEVEMENTS, LEVEL_NAMES, TRANSCEND_NAMES_61_80, EXPEDITION_TIERS, EXPEDITION_UNLOCK_LV, TOWER_FLOORS, TOWER_UNLOCK_PRESTIGE, TOWER_DEEP_PATTERNS, TOWER_MAX_FLOOR },
+  consts: { FRENZY_MAX, FRENZY_DURATION, TRANSCEND_BASE, DAILY_CHALLENGE_TARGET, SET_DEFS, ACHIEVEMENTS, LEVEL_NAMES, TRANSCEND_NAMES_61_80, EXPEDITION_TIERS, EXPEDITION_UNLOCK_LV, TOWER_FLOORS, TOWER_UNLOCK_PRESTIGE, TOWER_DEEP_PATTERNS, TOWER_MAX_FLOOR, ENGRAVE_RUNES, ENGRAVE_COSTS, ENGRAVE_MAX, ENGRAVE_SWAP_COST, ENGRAVE_UNLOCK_PRESTIGE },
 };
 `;
 
