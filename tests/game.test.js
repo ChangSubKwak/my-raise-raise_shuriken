@@ -2732,7 +2732,7 @@ group('trial tower (Q-Leap 125)', () => {
 
   // structural guards: merge-all gate + shop-강화 progress checks wired
   ok(/merge-all-btn'\)\.addEventListener[\s\S]{0,300}isTowerAutoBanned/.test(RAW_HTML), 'merge-all button gated on auto-ban floor');
-  ok(/registerCodex\(state\.grid\[minIdx\]\.level\);[\s\S]{0,400}checkTowerProgress/.test(RAW_HTML), '표창 강화 triggers tower progress check');
+  ok(/flashCell\(minIdx\);[\s\S]{0,400}noteLevelReached\(state\.grid\[minIdx\]\.level\)/.test(RAW_HTML), '표창 강화 routes through noteLevelReached (tower check + record rewards)');
 });
 
 group('tower deep floors (Q-Leap 126)', () => {
@@ -2969,6 +2969,42 @@ group('cell engraving (Q-Leap 127)', () => {
   ok(/sell-btn'\)\.addEventListener[\s\S]{0,400}setEngraveMode\(false\)/.test(RAW_HTML), 'sell mode exits engrave mode');
   ok(/info-btn'\)\.addEventListener[\s\S]{0,500}setEngraveMode\(false\)/.test(RAW_HTML), 'info mode exits engrave mode');
   ok(/function doPrestige[\s\S]{0,6000}setEngraveMode\(false\)/.test(RAW_HTML), 'prestige resets engrave mode');
+});
+
+group('cross-system audit fixes (v3.72.4)', () => {
+  // offline reward must NOT extend 15~30s transient buffs (goldRush ×2 / frenzy ×1.2) over the window
+  const offlineGold = (extra) => {
+    const s = withState(Object.assign({
+      grid: gridFrom([8, null, null, null, null, null]),
+      lastSave: Date.now() - 3600 * 1000,
+      gold: 0,
+      spawnProgress: 1, // suppress the spawn-precharge branch variance
+    }, extra));
+    F.processOfflineReward();
+    return s.gold;
+  };
+  const base = offlineGold({});
+  ok(base > 0, 'offline gold accrues for an hour away');
+  eq(offlineGold({ goldRushTimer: 12 }), base, 'persisted gold rush does NOT inflate the offline window');
+  eq(offlineGold({ frenzyTimer: 20 }), base, 'persisted frenzy does NOT inflate the offline window');
+  eq(offlineGold({ goldRushTimer: 12, frenzyTimer: 20 }), base, 'stacked transient buffs excluded together');
+
+  // expedition return honors auto-lock (parity with both merge paths)
+  const sE = withState({
+    autoLockEnabled: true, autoLockThreshold: 5,
+    grid: gridFrom([null, null, null, null, null, null]),
+    expedition: { piece: { id: 500, level: 10, fireTimer: 0 }, tier: 0, startedAt: Date.now() - 700000, endsAt: Date.now() - 1000 },
+  });
+  eq(F.claimExpedition(), true, 'finished expedition claims');
+  const returned = sE.grid.find(c => c && c.id === 500);
+  ok(returned && returned.locked === true, 'returned piece auto-locked at threshold');
+
+  // level-raising paths route through noteLevelReached (record rewards can never be skipped)
+  ok(/연쇄 ×30[\s\S]{0,600}noteLevelReached/.test(RAW_HTML), 'combo ×30 강화 routes through noteLevelReached');
+  // noteLevelReached grants milestone gems for crossed levels (regression for the lost-forever bug)
+  const sM = withState({ bestLevel: 19, runBestLevel: 19, gem: 0 });
+  F.noteLevelReached(20);
+  ok(sM.gem >= 1, 'record via non-merge path still grants level rewards (Lv20 crossing)');
 });
 
 group('active buff strip (T1a curation)', () => {

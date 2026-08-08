@@ -187,7 +187,7 @@
   /* Achievement unlock toast (slides in top-center, rich card) */
   #achv-toast {
     position: fixed; top: 24px; left: 50%; transform: translateX(-50%) translateY(-120px);
-    z-index: 220; pointer-events: none;
+    z-index: 255; pointer-events: none; /* 모달(240~254) 위 — 상점 구매 중 해금돼도 보이게 */
     background: linear-gradient(135deg, #2a1f08 0%, #4a3318 100%);
     border: 2px solid #ffd966; border-radius: 14px;
     padding: 12px 16px; min-width: 240px; max-width: 90vw;
@@ -1538,7 +1538,7 @@
     position: fixed; left: 50%; transform: translateX(-50%); bottom: 30px;
     background: rgba(20,20,40,0.95); border: 1px solid #ffd966;
     padding: 8px 16px; border-radius: 8px; color: #ffd966; font-size: 13px;
-    opacity: 0; transition: opacity 0.3s; pointer-events: none; z-index: 200; font-weight: 600;
+    opacity: 0; transition: opacity 0.3s; pointer-events: none; z-index: 256; font-weight: 600; /* 모든 모달(240~254) 위, 튜토리얼(260) 아래 */
   }
   #toast.show { opacity: 1; }
 
@@ -2107,8 +2107,8 @@ function levelName(lv) {
 const UPGRADES = [
   { id: 'maxShuriken', name: '최대 표창 수',  base: 6,    costBase: 80,  costMul: 1.45, effect: 'maxshuriken',
     desc: '필드 동시 보유 +1 / Lv (시작 6, 최대 30)' },
-  { id: 'spawnRate', name: '제작시간 감소',   base: 12.0, costBase: 30,  costMul: 1.15, effect: 'spawnrate',
-    desc: '생성 주기 −5% / Lv (기본 12초)' },
+  { id: 'spawnRate', name: '제작시간 감소',   base: 16.0, costBase: 30,  costMul: 1.15, effect: 'spawnrate',
+    desc: '생성 주기 −5% / Lv (기본 16초)' },
   { id: 'spawnBatch', name: '제작 최대치',    base: 1,    costBase: 200, costMul: 2.20, effect: 'spawnbatch',
     desc: '한번에 동시 생성 +1 / Lv (최대 6)' },
   { id: 'firerate',  name: '연마 (패시브 골드)', base: 0, costBase: 50,  costMul: 1.18, effect: 'passivegold',
@@ -2651,16 +2651,13 @@ const SHOP_ITEMS = [
       if (minIdx < 0) { toast('표창이 없습니다'); return false; }
       state.grid[minIdx].level += 1;
       state.grid[minIdx].id = state.nextShurikenId++; // new id forces sprite repaint
-      if (state.grid[minIdx].level > state.bestLevel) state.bestLevel = state.grid[minIdx].level;
-      if (state.grid[minIdx].level > state.runBestLevel) state.runBestLevel = state.grid[minIdx].level;
       flashCell(minIdx);
       renderGrid();
       sfx('mergeGold');
-      registerCodex(state.grid[minIdx].level); // Q-Leap 116: shared codex path (milestones + weekday bonus)
-      // Q-Leap 125.1: 강화도 runBestLevel을 올리는 경로 — 도전/탑 목표 판정 누락 시
-      // 배너는 12/12인데 층은 안 끝나고, 그대로 윤회하면 달성한 층이 실패 처리된다.
-      if (state.trialActive) checkTrialProgress();
-      if (state.towerActive) checkTowerProgress();
+      // 감사 수정: 신기록 처리를 noteLevelReached로 일원화 — 기존 수동 블록은 bestLevel만
+      // 올리고 마일스톤 💎/짝수 💎/초월/기록 연출을 건너뛰어 해당 레벨 보상이 영구 소실됐다.
+      // (도감 + 도전/탑 판정도 내부에서 처리 — 레벨 상승 경로의 단일 진입점)
+      noteLevelReached(state.grid[minIdx].level);
       return true;
     },
   },
@@ -3345,7 +3342,7 @@ function isBurning() { return (state.burningTimer || 0) > 0; }
 // 순수 함수 (state의 타이머 4종만 읽음); HUD 표시줄이 초당 1회 소비. 효과/트리거 불변.
 function getActiveBuffs() {
   const out = [];
-  if ((state.frenzyTimer   || 0) > 0) out.push({ id: 'frenzy',    icon: '⚡', name: '폭주',     desc: '생성 ×2 · 골드 +20% · 변종 ×1.5', remain: state.frenzyTimer });
+  if ((state.frenzyTimer   || 0) > 0) out.push({ id: 'frenzy',    icon: '⚡', name: '폭주',     desc: '생성 ×2 · 골드 +20% · 황금 ×1.5', remain: state.frenzyTimer });
   if ((state.goldRushTimer || 0) > 0) out.push({ id: 'goldRush',  icon: '💰', name: '골드러시', desc: '모든 골드 ×2',                    remain: state.goldRushTimer });
   if ((state.burningTimer  || 0) > 0) out.push({ id: 'burning',   icon: '🔥', name: '버닝',     desc: '자동합치기 강제 ON + 생성 가속',   remain: state.burningTimer });
   if ((state.timeBoostTimer|| 0) > 0) out.push({ id: 'timeBoost', icon: '⏩', name: '시간가속', desc: '생성 간격 ×0.5',                  remain: state.timeBoostTimer });
@@ -3899,7 +3896,7 @@ function announceTranscendIfNeeded(newLv, prevBest) {
   if (newLv <= TRANSCEND_BASE) return;
   if (newLv - Math.max(TRANSCEND_BASE, prevBest) <= 0) return;
   state.stats.transcendReached = getTranscendence();
-  setTimeout(() => toast(`🌌 초월 ${getTranscendence()} — 데미지/골드 +${getTranscendence() * 2}%`), 900);
+  setTimeout(() => toast(`🌌 초월 ${getTranscendence()} — 골드 +${getTranscendence() * 2}%`), 900);
   addEvent('milestone', `초월 ${getTranscendence()} 도달`);
   grantTranscendMilestone(); // Q-Leap 102
 }
@@ -4065,6 +4062,7 @@ function claimExpedition() {
   const targetIdx = empties[0];
   piece.fireTimer = 0;
   state.grid[targetIdx] = piece;
+  autoLockPass(); // 감사 수정: 귀환 표창도 자동 잠금 대상 (두 합성 경로와 패리티)
   state.expedition = null;
   state.stats.expeditionsClaimed = (state.stats.expeditionsClaimed || 0) + 1;
   toast(`${t.icon} 귀환! 💰+${fmt(gold)} · 💎+${gem}${grew ? ` · 🌟 Lv ${piece.level} 성장!` : ''}`);
@@ -4740,6 +4738,7 @@ function update(dt) {
 }
 
 let statRefreshTimer = 0;
+let upgradeRefreshTimer = 0;
 function render() {
   // No canvas in v2.5 — just HUD updates
   updateHUD();
@@ -4749,12 +4748,19 @@ function render() {
     statRefreshTimer = 0;
     renderStats();
   }
+  // 감사 수정: 패시브 골드가 임계를 넘겨도 구매 버튼이 최대 60초 stale이던 문제 —
+  // 1초 스로틀로 업그레이드 패널 affordability 재도색 (HUD 골드와의 표시 불일치 제거)
+  upgradeRefreshTimer++;
+  if (upgradeRefreshTimer >= 60) {
+    upgradeRefreshTimer = 0;
+    renderUpgrades();
+  }
 }
 
 // ---------- HUD ----------
 function updateHUD() {
   document.getElementById('gold').textContent = fmt(state.gold);
-  document.getElementById('gem').textContent = state.gem;
+  document.getElementById('gem').textContent = fmt(state.gem); // 감사 수정: 골드와 표기 일관 (심층 보상로 만 단위 도달 가능)
   // Q-Leap 54: daily challenge banner
   const banner = document.getElementById('daily-challenge-banner');
   if (banner) {
@@ -5906,7 +5912,11 @@ const COMBO_MILESTONES = {
       const c = state.grid[i];
       if (c && c.level < minLv) { minLv = c.level; minIdx = i; }
     }
-    if (minIdx >= 0) { state.grid[minIdx].level += 1; state.grid[minIdx].id = state.nextShurikenId++; }
+    if (minIdx >= 0) {
+      state.grid[minIdx].level += 1;
+      state.grid[minIdx].id = state.nextShurikenId++;
+      noteLevelReached(state.grid[minIdx].level); // 감사 수정: 레벨 상승 경로는 반드시 기록 처리 (CLAUDE.md 불변식)
+    }
   } },
   50: { gem: 10, tint: '#ff66ff', label: '연쇄 ×50 — 천상의 경지', effect: () => { state.enlightenment = (state.enlightenment || 0) + 3; } },
   // Q-Leap 106: 초고 콤보 마일스톤 — 폭주/골드러시 보상 연계
@@ -7048,7 +7058,7 @@ function renderTrophy() {
       ['💎 윤회 횟수',       state.prestigeCount || 0],
       ['🌌 깨달음(悟)',      state.enlightenment || 0],
       ['🏔 최고 Lv',         `${state.bestLevel || 1} (${levelName(state.bestLevel || 1)})`],
-      ['🌌 초월',            getTranscendence() > 0 ? `${getTranscendence()} (+${getTranscendence() * 2}% 뎀/골드)` : '—'],
+      ['🌌 초월',            getTranscendence() > 0 ? `${getTranscendence()} (+${getTranscendence() * 2}% 골드)` : '—'],
       ['📖 도감',           `${Object.keys(state.codex || {}).length} / 60`],
       ['✨ 누적 합체',       s.totalMerges || 0],
       ['🏭 누적 생성',       s.totalSpawned || 0],
@@ -7502,7 +7512,7 @@ function renderHallOfFame() {
   const rows = [
     { ico: '🎯', label: '다음 목표', val: goal.kind === 'endless' ? '∞' : `${goal.current}/${goal.target}`, sub: goal.label, featured: true },
     { ico: '🏔', label: '최고 표창', val: `Lv ${state.bestLevel || 1}`, sub: levelName(state.bestLevel || 1), featured: true },
-    ...(trans > 0 ? [{ ico: '🌌', label: '초월 경지', val: `초월 ${trans}`, sub: `데미지/골드 +${trans * 2}%`, featured: true }] : []),
+    ...(trans > 0 ? [{ ico: '🌌', label: '초월 경지', val: `초월 ${trans}`, sub: `골드 +${trans * 2}%`, featured: true }] : []),
     { ico: '🎌', label: '진형 등급', val: getFormationGrade().grade, sub: `평균 Lv ${getFormationGrade().avg.toFixed(1)}` },
     { ico: '💵', label: '현재 골드율', val: `${fmt(getPassiveGoldRate())}/초`, sub: `골드 배수 ×${goldMul.toFixed(2)}` },
     { ico: '💎', label: '윤회 횟수', val: `${state.prestigeCount || 0}회` },
@@ -7666,7 +7676,7 @@ const HELP_SECTIONS = {
   basics: [
     { title: '기본 합성', body: '같은 Lv 표창 2개를 <span class="hk">탭→탭</span> 또는 <span class="hk">드래그</span>로 합치면 Lv+1. 자동으로 진행 — 시간이 흐르며 표창이 자동 생성됩니다.' },
     { title: '잠금 (Lock)', body: '표창 길게 누르면 🔒 잠금. 자동합치기/판매로부터 보호. 강력한 표창 보존용.' },
-    { title: '판매 (Sell)', body: '💸 판매 모드 토글 후 표창 탭 시 골드 환전 (값 = 2^Lv × 0.5).' },
+    { title: '판매 (Sell)', body: '💸 판매 모드 토글 후 표창 탭 시 골드 환전 (값 = 2^Lv × 0.5 × 골드 배수 (시세/변종 프리미엄 별도)).' },
     { title: '윤회 (Prestige)', body: 'Lv 8+ 도달 시 윤회 가능. 깨달음(悟) 획득 → 스킬트리 강화. 누적 +50% 골드/회. 도감/grid 크기 보존.' },
     { title: '버닝 모드', body: '💎 10 — 30초간 자동합치기 + 가속.' },
   ],
@@ -7683,8 +7693,8 @@ const HELP_SECTIONS = {
     { title: '🔗 인접 시너지', body: '같은 Lv 표창이 4방향 인접 시 <span class="hk">골드 생성 +20%/인접</span> (max +80%). 색상 dot으로 표시.' },
     { title: '✨ 의식 합성', body: '같은 Lv 4방향 연결 그룹 3+ 시 자동 활성화. 발동 시 <span class="hk">한꺼번에 합쳐 큰 점프</span> (3개→+1, 4개→+2 ...).' },
     { title: '🌟 콤보', body: '2.5초 안 chain merge 시 콤보 ×N. 콤보당 +20% 골드. 5/10/15/20/30/50 마일스톤 보너스.' },
-    { title: '🔺 세트 효과', body: '그리드 구성으로 패시브 발동 (그리드 위 배지 표시): <span class="hk">삼위일체</span>(같은 Lv 3+·골드+15%) / <span class="hk">황금 진형</span>(황금 2+·변종×1.5) / <span class="hk">만재</span>(90%+·폭주충전×2) / <span class="hk">승천</span>(Lv20+ 3개·콤보+1s) / <span class="hk">무지개</span>(황금·별·검은 동시·골드+25%).' },
-    { title: '🌌 초월', body: 'Lv 60 초과 최고기록 = 초월 포인트. <span class="hk">포인트당 데미지·골드 +2%</span> (윤회 보존). 초월 5/10/15/20에 보석 마일스톤. Lv 61~80 고유 명명.' },
+    { title: '🔺 세트 효과', body: '그리드 구성으로 패시브 발동 (그리드 위 배지 표시): <span class="hk">삼위일체</span>(같은 Lv 3+·골드+15%) / <span class="hk">황금 진형</span>(황금 2+·변종×1.5) / <span class="hk">만재</span>(90%+·폭주충전×2) / <span class="hk">승천</span>(Lv20+ 3개·콤보+1s) / <span class="hk">무지개</span>(황금·별·검은 동시·골드+25%) / <span class="hk">정예 진형</span>(5+ 표창 전부 최고Lv−3↑·생성+10%) / <span class="hk">완전 진형</span>(삼위일체·만재·승천·정예 동시·골드+50%).' },
+    { title: '🌌 초월', body: 'Lv 60 초과 최고기록 = 초월 포인트. <span class="hk">포인트당 골드 +2%</span> (윤회 보존). 초월 5/10/15/20에 보석 마일스톤. Lv 61~80 고유 명명.' },
     { title: '⚡ 폭주 게이지', body: '합성 1회당 +1 충전(만재 진형 시 ×2). 100 도달 시 ⚡폭주 버튼 발동 → <span class="hk">30초 생성 ×2 + 골드 +20% + 황금 ×1.5</span>. Shift+클릭 = 자동 발동 토글.' },
     { title: '💰 골드 러시', body: '합성 시 낮은 확률(또는 콤보 ×100)로 발동 → <span class="hk">15초 골드 ×2</span>.' },
     { title: '◈ 중앙 칸', body: '그리드 정중앙 칸(◈ 표시)의 표창은 <span class="hk">골드 기여 +25%</span>. 최고 earner를 중앙에 두는 배치 전략.' },
@@ -7928,7 +7938,7 @@ document.getElementById('reset-btn').onclick = () => {
 // First-play tutorial — shown only when no save existed at boot.
 const TUTORIAL_STEPS = [
   { emoji: '💰', title: '표창키우기에 오신 것을 환영합니다',
-    body: '시간이 흐르며 표창이 자동으로 생성됩니다. 처음 진행 속도는 12초/표창입니다.' },
+    body: '시간이 흐르며 표창이 자동으로 생성됩니다. 처음 진행 속도는 16초/표창입니다.' },
   { emoji: '👆', title: '탭하여 합치기',
     body: '같은 레벨의 표창을 탭→탭 하면 합쳐져 한 단계 올라갑니다. 골드도 함께 획득합니다.' },
   { emoji: '✋', title: '드래그도 가능',
@@ -8055,7 +8065,12 @@ function processOfflineReward() {
   const EFFICIENCY = 0.5;
   const elapsedSec = Math.min(CAP_SEC, Math.floor(elapsedMs / 1000));
   const capped = (elapsedMs / 1000) > CAP_SEC;
-  const rate = getPassiveGoldRate();
+  // 감사 수정: 저장 시점에 살아 있던 15~30초짜리 버프(골드러시 ×2, 폭주 ×1.2)가
+  // 오프라인 4시간 전체에 곱해지던 인플레이션 — 시한부 버프 배수는 창 전체에서 제외.
+  const transientMul = getGoldMulBreakdown()
+    .filter(f => f.key === 'frenzy' || f.key === 'goldRush')
+    .reduce((a, f) => a * f.mul, 1);
+  const rate = getPassiveGoldRate() / transientMul;
   // Q-Leap 84: 자리비움 보너스 — 폭주 게이지 충전 + spawn 진행 사전 충전
   // 1분당 frenzy +2 (cap 100); 별도 spawn은 다음 표창 progress 만큼 즉시 충전.
   const frenzyGain = Math.min(FRENZY_MAX - (state.frenzyCharge || 0),
