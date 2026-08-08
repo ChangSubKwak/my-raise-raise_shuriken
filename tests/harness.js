@@ -114,6 +114,7 @@ function loadGame() {
     checkTowerProgress, abandonTower,
     getActiveBuffs, processOfflineReward,
     isForgeUnlocked, getForgeMode, getForgeSpawnMul, getForgeLevelDelta, getSpawnIntervalBase,
+    getAmbienceParams, startAmbience, stopAmbience, updateAmbience, getAudio,
     isEngraveUnlocked, engraveCount, getEngraveCost, getEngraving,
     engraveWealthMul, engraveForgeMul, engraveFortuneBonus, applyEngraving, removeEngraving,
   },

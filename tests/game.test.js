@@ -3125,6 +3125,39 @@ group('T1b/T4 curation (v3.74): burning/timeBoost/split/coat removed', () => {
   ok(!C.ACHIEVEMENTS.some(a => ['a_burn', 'a_split', 'a_coat_1'].includes(a.id)), 'orphaned achievements removed');
 });
 
+group('ambience (Q-Leap 129)', () => {
+  // pure params: pitch follows bestLevel, density follows combo/frenzy, harmony follows gold rush
+  withState({ bestLevel: 1 });
+  const p1 = F.getAmbienceParams();
+  approx(p1.root, 110, 'root starts at 110Hz', 1e-9);
+  withState({ bestLevel: 10 });
+  approx(F.getAmbienceParams().root, 110 * Math.pow(2, 2 / 12), 'root rises a semitone per 5 levels', 1e-9);
+  withState({ bestLevel: 500 });
+  approx(F.getAmbienceParams().root, 110 * 4, 'root capped at +2 octaves', 1e-9);
+  withState({ bestLevel: 10, comboCount: 12 });
+  ok(F.getAmbienceParams().pluckMin < p1.pluckMin, 'high combo densifies plucks');
+  withState({ bestLevel: 10, frenzyTimer: 10 });
+  const pf = F.getAmbienceParams();
+  ok(pf.pluckMin < p1.pluckMin && pf.bright && pf.padCut > p1.padCut, 'frenzy: fastest plucks + bright + open filter');
+  withState({ bestLevel: 10, goldRushTimer: 5 });
+  ok(F.getAmbienceParams().bright, 'gold rush brightens (5th harmony)');
+  // runtime smoke under stubs: start/update/stop never throw
+  withState({ musicEnabled: true });
+  let threw = false;
+  try { F.getAudio(); F.startAmbience(); F.updateAmbience(); F.stopAmbience(); } catch (e) { threw = true; }
+  eq(threw, false, 'ambience lifecycle runs without throwing (stubbed audio)');
+  // persistence: explicit OFF survives load, old saves default ON
+  const sM = withState({ musicEnabled: false });
+  F.save();
+  withState({});
+  F.load();
+  eq(G.getState().musicEnabled, false, 'music OFF persists through save/load');
+  // structural: toggle button + gesture hook wired
+  ok(/id="music-btn"/.test(RAW_HTML), 'music button present');
+  ok(/music-btn'\)\.onclick/.test(RAW_HTML), 'music toggle wired');
+  ok(/if \(state\.musicEnabled\) startAmbience\(\)/.test(RAW_HTML), 'ambience starts on first audio gesture');
+});
+
 group('active buff strip (T1a curation)', () => {
   withState({});
   eq(F.getActiveBuffs().length, 0, 'no buffs on a clean state');
