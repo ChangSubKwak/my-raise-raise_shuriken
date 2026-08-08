@@ -1463,31 +1463,7 @@
     border: 1px solid #ffd96644;
   }
 
-  /* Achievement grid */
-  .achv-grid {
-    display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px;
-    padding: 6px; background: #14141e; border-radius: 8px; border: 1px solid #2a2a3e;
-  }
-  .achv-cell {
-    aspect-ratio: 1; display: flex; align-items: center; justify-content: center;
-    border-radius: 6px; background: rgba(20,20,30,0.6); font-size: 18px;
-    filter: grayscale(1) brightness(0.5); cursor: help;
-    border: 1px solid #2a2a3e; transition: filter 0.2s, transform 0.1s;
-    position: relative;
-  }
-  .achv-cell.unlocked {
-    filter: none;
-    background: linear-gradient(135deg, rgba(255,217,102,0.15), rgba(255,170,50,0.08));
-    border-color: #ffd96644;
-  }
-  .achv-cell:hover { transform: scale(1.1); }
-  .achv-cell:hover::after {
-    content: attr(data-tip);
-    position: absolute; bottom: calc(100% + 4px); left: 50%; transform: translateX(-50%);
-    background: rgba(0,0,0,0.95); color: #fff; padding: 4px 8px;
-    border-radius: 4px; font-size: 11px; white-space: nowrap; z-index: 100;
-    border: 1px solid #ffd96644;
-  }
+  /* (v3.77 통폐합: 패널 .achv-grid/.achv-cell 제거 — 전체 그리드는 🏆 명예 모달의 .ach-grid) */
   .upgrade-btn {
     background: #2a4a8e; border: 1px solid #4a6aae; border-radius: 6px;
     padding: 6px 10px; color: #fff; font-weight: 700; font-size: 11px;
@@ -1620,13 +1596,20 @@
         <div id="overall-fill" style="height:100%;width:0%;background:linear-gradient(90deg,#aa6644,#ffaa33,#ffd966);transition:width 0.4s;"></div>
       </div>
     </div>
+    <!-- v3.77 통폐합: 패널의 도감 60칸/명예 106칸 그리드는 모달과 완전 중복이라 요약 카드로 축약 -->
     <div id="codex-block">
     <div class="section-title">도감 (圖鑑) <span id="codex-count" style="color:#aaa;font-weight:400;font-size:10px;">0</span></div>
-    <div class="codex-grid" id="codex-grid"></div>
+    <div class="upgrade-card">
+      <div class="upgrade-info"><div class="upgrade-sub" id="codex-summary">—</div></div>
+      <button class="upgrade-btn" id="codex-open-btn">열기</button>
+    </div>
     </div>
     <div id="achv-block">
     <div class="section-title">명예 (Achievements) <span id="achv-count" style="color:#aaa;font-weight:400;font-size:10px;">0/0</span></div>
-    <div class="achv-grid" id="achv-grid"></div>
+    <div class="upgrade-card">
+      <div class="upgrade-info"><div class="upgrade-sub" id="achv-summary">—</div></div>
+      <button class="upgrade-btn" id="achv-open-btn">열기</button>
+    </div>
     </div>
     <div id="prestige-block">
     <div class="section-title">환생</div>
@@ -6287,26 +6270,18 @@ function renderStats() {
 // (JS keeps the last declaration), so this copy never ran. Removed to kill the maintenance
 // hazard — the live renderCodex is the one near the codex-modal wiring.
 
+// v3.77 통폐합: 패널의 106칸 그리드 제거 — 요약 한 줄 + 열기 버튼 (전체 그리드는 🏆 명예 모달 탭)
 function renderAchievements() {
-  const grid = document.getElementById('achv-grid');
   const count = document.getElementById('achv-count');
-  if (!grid) return;
+  const sum = document.getElementById('achv-summary');
   const got = state.achievements || {};
   const unlocked = ACHIEVEMENTS.filter(a => got[a.id]).length;
-  if (count) {
-    const next = getNextAchievementMilestone(unlocked);
-    count.textContent = next
-      ? `${unlocked}/${ACHIEVEMENTS.length} · 다음 🎖 ${next.n}개 (💎+${next.gem})`
-      : `${unlocked}/${ACHIEVEMENTS.length} · 전부 수집 🏆`;
-  }
-  grid.innerHTML = '';
-  for (const a of ACHIEVEMENTS) {
-    const cell = document.createElement('div');
-    cell.className = 'achv-cell' + (got[a.id] ? ' unlocked' : '');
-    cell.textContent = a.icon;
-    cell.dataset.tip = (got[a.id] ? '✓ ' : '✗ ') + a.name + ' — ' + a.desc + ` · 💎+${getAchievementGem(a)}`;
-    grid.appendChild(cell);
-  }
+  const next = getNextAchievementMilestone(unlocked);
+  const line = next
+    ? `${unlocked}/${ACHIEVEMENTS.length} · 다음 🎖 ${next.n}개 (💎+${next.gem})`
+    : `${unlocked}/${ACHIEVEMENTS.length} · 전부 수집 🏆`;
+  if (count) count.textContent = line;
+  if (sum) sum.textContent = line;
 }
 // Single source of truth for gold/sec. Includes BOTH adjacency synergy (Q-Leap 44)
 // AND the center-cell bonus (Q-Leap 107). update()'s live income, the HUD readout, and the
@@ -6776,6 +6751,9 @@ function renderCodex() {
   if (prog) prog.textContent = `${found} / ${MAX_LV} 발견${milestoneTail}`;
   const cnt = document.getElementById('codex-count');
   if (cnt) cnt.textContent = `${found} / ${MAX_LV}`;
+  // v3.77 통폐합: 패널은 요약 한 줄 (전체 그리드는 모달)
+  const sum = document.getElementById('codex-summary');
+  if (sum) sum.textContent = `${found} / ${MAX_LV} 발견${milestoneTail}`;
   // narrative line (mobile-friendly — the slot tooltip is desktop-hover only): show the lore of
   // the highest discovered milestone level. textContent, so the flavor's quotes need no escaping.
   const loreEl = document.getElementById('codex-lore');
@@ -6793,6 +6771,18 @@ document.getElementById('codex-btn').addEventListener('click', () => {
   getAudio();
   renderCodex();
   document.getElementById('codex-modal').classList.add('show');
+});
+// v3.77: 패널 요약 카드의 열기 버튼들 — 기존 모달을 그대로 연다
+document.getElementById('codex-open-btn').addEventListener('click', () => {
+  getAudio();
+  renderCodex();
+  document.getElementById('codex-modal').classList.add('show');
+});
+document.getElementById('achv-open-btn').addEventListener('click', () => {
+  getAudio();
+  trophyTab = 'achievements';
+  renderTrophy();
+  document.getElementById('trophy-modal').classList.add('show');
 });
 document.getElementById('codex-close').addEventListener('click', () => {
   document.getElementById('codex-modal').classList.remove('show');
