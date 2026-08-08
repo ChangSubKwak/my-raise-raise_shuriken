@@ -569,6 +569,19 @@
     50%      { box-shadow: 0 0 14px rgba(255,217,102,0.6); }
   }
 
+  /* T1a: 활성 타임드-버프 통합 표시줄 */
+  #buff-strip {
+    width: 100%; max-width: 380px; margin-top: 2px;
+    display: flex; flex-wrap: wrap; gap: 4px; justify-content: center;
+  }
+  .buff-chip {
+    font-size: 10px; font-weight: 800; line-height: 1.2;
+    padding: 3px 8px; border-radius: 8px;
+    border: 1px solid #ffaa5588;
+    background: linear-gradient(90deg, rgba(255,170,85,0.16), rgba(255,136,68,0.05));
+    color: #ffcf9e; user-select: none; -webkit-user-select: none;
+  }
+
   /* Log modal — Q-Leap 52 */
   #log-modal {
     position: fixed; inset: 0; z-index: 252;
@@ -1574,6 +1587,7 @@
       </div>
       <div id="set-badges" title="표창 세트 효과 — 그리드 구성으로 활성화"></div>
       <div id="expedition-chip" style="display:none;" title="표창 원정 — ℹ 정보 모드에서 표창을 탭해 파견 (Lv 10 해금)"></div>
+      <div id="buff-strip" style="display:none;" title="지금 켜져 있는 시간제 버프"></div>
       <div id="grid"></div>
       <div style="font-size:10px;color:#888;text-align:center;">
         같은 Lv 탭→탭 또는 <b>드래그</b>로 합체 · 길게누름 = 🔒 잠금<br>
@@ -3325,6 +3339,16 @@ function getCenterIndex() {
 }
 // (v3.35) getFireInterval removed — combat gone; fireTimer is a vestigial field kept at 0.
 function isBurning() { return (state.burningTimer || 0) > 0; }
+// T1a (TODOS 큐레이션): 활성 타임드-버프 목록 — "지금 무슨 버프?"를 한 곳에서.
+// 순수 함수 (state의 타이머 4종만 읽음); HUD 표시줄이 초당 1회 소비. 효과/트리거 불변.
+function getActiveBuffs() {
+  const out = [];
+  if ((state.frenzyTimer   || 0) > 0) out.push({ id: 'frenzy',    icon: '⚡', name: '폭주',     desc: '생성 ×2 · 골드 +20% · 변종 ×1.5', remain: state.frenzyTimer });
+  if ((state.goldRushTimer || 0) > 0) out.push({ id: 'goldRush',  icon: '💰', name: '골드러시', desc: '모든 골드 ×2',                    remain: state.goldRushTimer });
+  if ((state.burningTimer  || 0) > 0) out.push({ id: 'burning',   icon: '🔥', name: '버닝',     desc: '자동합치기 강제 ON + 생성 가속',   remain: state.burningTimer });
+  if ((state.timeBoostTimer|| 0) > 0) out.push({ id: 'timeBoost', icon: '⏩', name: '시간가속', desc: '생성 간격 ×0.5',                  remain: state.timeBoostTimer });
+  return out;
+}
 // Q-Leap 38: blessed cell — picks a random non-locked cell. Empty cells are preferred to
 // surface the bonus visually; falls back to any cell if grid is empty.
 function rerollBlessedCell() {
@@ -4776,6 +4800,22 @@ function updateHUD() {
     } else if (exChip._sig !== 'off') {
       exChip._sig = 'off';
       exChip.style.display = 'none';
+    }
+  }
+  // T1a: 활성 버프 표시줄 — 시그니처(초 단위)로 게이트해 초당 최대 1회만 DOM 갱신
+  const buffStrip = document.getElementById('buff-strip');
+  if (buffStrip) {
+    const buffs = getActiveBuffs();
+    const sig = buffs.map(b => `${b.id}:${Math.ceil(b.remain)}`).join('|');
+    if (buffStrip._sig !== sig) {
+      buffStrip._sig = sig;
+      if (buffs.length === 0) {
+        buffStrip.style.display = 'none';
+      } else {
+        buffStrip.style.display = '';
+        buffStrip.innerHTML = buffs.map(b =>
+          `<span class="buff-chip" title="${b.desc}">${b.icon} ${b.name} ${Math.ceil(b.remain)}s</span>`).join('');
+      }
     }
   }
   // Q-Leap 95: set-effect badges

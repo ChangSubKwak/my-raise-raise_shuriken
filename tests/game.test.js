@@ -2946,6 +2946,24 @@ group('cell engraving (Q-Leap 127)', () => {
   ok(/id="engrave-modal"/.test(RAW_HTML), 'engrave modal present');
 });
 
+group('active buff strip (T1a curation)', () => {
+  withState({});
+  eq(F.getActiveBuffs().length, 0, 'no buffs on a clean state');
+  withState({ frenzyTimer: 12.4, goldRushTimer: 3, burningTimer: 0.5, timeBoostTimer: 29 });
+  const buffs = F.getActiveBuffs();
+  eq(buffs.length, 4, 'all four timed buffs reported');
+  eq(buffs.map(b => b.id).join(','), 'frenzy,goldRush,burning,timeBoost', 'stable order');
+  ok(buffs.every(b => b.icon && b.name && b.desc && b.remain > 0), 'entries fully described with remaining time');
+  approx(buffs[0].remain, 12.4, 'remaining seconds passed through raw', 1e-9);
+  withState({ frenzyTimer: 0, goldRushTimer: -3 });
+  eq(F.getActiveBuffs().length, 0, 'zero/negative timers excluded');
+  withState({ burningTimer: 7 });
+  eq(F.getActiveBuffs()[0].id, 'burning', 'single active buff reported alone');
+  // structural: strip element + updateHUD wiring
+  ok(/id="buff-strip"/.test(RAW_HTML), 'buff strip element present');
+  ok(/buff-strip'\)[\s\S]{0,600}getActiveBuffs\(\)/.test(RAW_HTML), 'updateHUD renders the strip from getActiveBuffs');
+});
+
 // ---- helpers ----
 function defaultUpgrades() {
   return { maxShuriken: 0, spawnRate: 0, spawnBatch: 0, firerate: 0, baseDmg: 0, goldMul: 0, spawnLevel: 0, luckChance: 0 };

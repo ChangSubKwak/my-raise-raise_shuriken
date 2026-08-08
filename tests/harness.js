@@ -112,6 +112,7 @@ function loadGame() {
     isTowerUnlocked, getTowerFloorDef, getDeepFloorDef, getActiveTowerFloor, getNextTowerFloor,
     getTowerSpawnMul, getTowerGoldMul, isTowerAutoBanned, isTowerRitualBanned, isTowerSpawnLv1,
     checkTowerProgress, abandonTower,
+    getActiveBuffs,
     isEngraveUnlocked, engraveCount, getEngraveCost, getEngraving,
     engraveWealthMul, engraveForgeMul, engraveFortuneBonus, applyEngraving, removeEngraving,
   },
