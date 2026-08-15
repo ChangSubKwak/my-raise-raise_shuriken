@@ -3327,9 +3327,24 @@ group('progressive disclosure (Q-Leap 130)', () => {
   withState({ bestLevel: 2 });
   G.getState().stats.totalMerges = 40;
   ok(F.getRevealState().frenzy, 'frenzy reveals by merge count too');
-  // skills gate on prestige (bestLevel alone never shows them)
+  // 감사 스윕 C4: 悟 패널은 '깨달음 보유'로 열려 있었는데, 도감 등록이 첫 합성(Lv2)에서 이미
+  // 悟를 주므로 사다리가 통째로 뒤집혀 있었다 (신규 플레이어가 처음 보는 고급 UI가 9노드 스킬트리).
+  // 이제 환생 티저와 같은 rung(Lv6). 아래는 '실제로 도달하는 상태'로 검증한다 —
+  // 옛 테스트는 bestLevel 60인데 悟 0·도감 {}인 도달 불가 상태라 이 결함을 영원히 못 잡았다.
+  withState({ bestLevel: 2, enlightenment: 3, codex: { 2: true } });
+  ok(!F.getRevealState().skills, '첫 합성 직후(Lv2·悟 3 보유)에는 悟 패널이 아직 안 보인다');
+  withState({ bestLevel: 5, enlightenment: 6, codex: { 2: true, 3: true, 4: true, 5: true } });
+  ok(!F.getRevealState().skills, 'Lv5·悟 6이 쌓여도 아직 (의식 단계까지는 핵심 루프에 집중)');
+  withState({ bestLevel: 6, enlightenment: 6 });
+  ok(F.getRevealState().skills && F.getRevealState().prestige, 'Lv6에서 환생 티저와 함께 등장 — 윤회 전 계승/명장 구매 창 유지');
   withState({ bestLevel: 60 });
-  ok(!F.getRevealState().skills && !F.getRevealState().hof, 'skills/HoF wait for first prestige');
+  ok(!F.getRevealState().hof, 'HoF는 여전히 첫 윤회까지 기다린다');
+  withState({ bestLevel: 5, prestigeCount: 0, skills: { swiftHands: 1 } });
+  ok(F.getRevealState().skills, '이미 산 스킬이 있으면 레벨과 무관하게 유지 (단조)');
+  withState({ bestLevel: 5, prestigeCount: 1 });
+  ok(F.getRevealState().engrave, '각인 버튼은 윤회 1회부터 등장 (🔒 라벨 대신 부재)');
+  withState({ bestLevel: 60, prestigeCount: 0 });
+  ok(!F.getRevealState().engrave, '윤회 전에는 각인 버튼 자체가 없다');
   withState({ bestLevel: 10, prestigeCount: 1 });
   ok(F.getRevealState().skills && F.getRevealState().hof, 'skills/HoF after prestige');
   // monotonic sources only: bestLevel survives prestige → nothing regresses
@@ -3546,6 +3561,66 @@ group('transcendence constellation (Q-Leap 132)', () => {
   ok(/label: '💰 부\(富\)의 별'/.test(RAW_HTML), 'gold breakdown labels the transcend factor as the wealth star');
   ok(!/✦\$\{(a|cn)\.mutation/.test(RAW_HTML), 'mutation star does not reuse the golden-variant ✦ glyph');
   ok(/constelModal\._sig/.test(RAW_HTML), 'open modal re-renders when T changes (signature gate)');
+});
+
+group('감사 스윕 — 자동 폭주 교착 / 제련 게이지 이중취득 / load 강건성', () => {
+  const MAX = C.FRENZY_MAX;
+
+  // C0 (high): 게이지를 addFrenzyCharge를 거치지 않고 직접 대입하는 경로(오프라인 충전,
+  // 연쇄 ×75)는 '만재 처리'를 건너뛴다. 그러면 이후 모든 addFrenzyCharge가 early-return에
+  // 걸려 자동 폭주가 런 내내 정지했다. update()가 상태 자체를 보게 해 진입점과 무관히 복구.
+  const sF = withState({ frenzyCharge: MAX, frenzyTimer: 0, autoFrenzyEnabled: true, grid: gridFrom([null, null, null, null, null, null]) });
+  sF.stats = {};
+  F.update(0.1);
+  ok((sF.frenzyTimer || 0) > 0, '직접 대입으로 만재가 된 뒤에도 자동 폭주가 발동한다');
+  eq(sF.frenzyCharge, 0, '발동하면서 게이지를 소비한다');
+  // 자동이 꺼져 있으면 건드리지 않는다 (수동 플레이어의 만재 게이지를 훔치지 않음)
+  const sF2 = withState({ frenzyCharge: MAX, frenzyTimer: 0, autoFrenzyEnabled: false, grid: gridFrom([null, null, null, null, null, null]) });
+  sF2.stats = {};
+  F.update(0.1);
+  eq(sF2.frenzyCharge, MAX, '자동 폭주 OFF면 게이지를 유지 (수동 발동 대기)');
+  eq(sF2.frenzyTimer || 0, 0, '자동 OFF면 발동하지 않는다');
+  // 이미 폭주 중이면 중복 발동하지 않는다
+  const sF3 = withState({ frenzyCharge: MAX, frenzyTimer: 10, autoFrenzyEnabled: true, grid: gridFrom([null, null, null, null, null, null]) });
+  sF3.stats = {};
+  F.update(0.1);
+  eq(sF3.frenzyCharge, MAX, '폭주 진행 중에는 게이지를 소비하지 않는다 (중복 발동 없음)');
+
+  // C1 (high): 제련 전환 시 게이지 재가격 — 속성으로 채우고 정밀로 스폰하는 이중 취득 봉쇄
+  const sG = withState({ bestLevel: 20, runBestLevel: 20, forgeMode: 'swift', spawnProgress: 0.97, upgrades: defaultUpgrades() });
+  const swiftInterval = F.getSpawnInterval();
+  eq(F.applyForgeMode('fine'), true, '제련 모드 전환 성공');
+  const fineInterval = F.getSpawnInterval();
+  ok(fineInterval > swiftInterval, '정밀은 속성보다 간격이 길다 (전제)');
+  approx(sG.spawnProgress, 0.97 * (swiftInterval / fineInterval), '전환 후 게이지가 경과 시간 기준으로 재가격된다', 1e-9);
+  // 시간 보존: 전환 전 흘린 시간 + 남은 시간 = 정직한 정밀 1사이클
+  const elapsed = 0.97 * swiftInterval;
+  const remaining = (1 - sG.spawnProgress) * fineInterval;
+  approx(elapsed + remaining, fineInterval, '총 소요 시간이 정직한 정밀 1사이클과 같다 (이중 취득 소멸)', 1e-6);
+  ok(sG.spawnProgress < 0.97, '속성→정밀 전환은 게이지를 되돌린다 (공짜 +1 Lv 없음)');
+  const sG2 = withState({ bestLevel: 20, runBestLevel: 20, forgeMode: 'standard', spawnProgress: 0 });
+  eq(F.applyForgeMode('fine'), true, 'progress 0에서도 안전');
+  eq(sG2.spawnProgress, 0, '빈 게이지는 그대로 (0 × 비율 = 0)');
+  eq(F.applyForgeMode('bogus'), false, '알 수 없는 모드는 거부');
+  eq(G.getState().forgeMode, 'fine', '거부된 전환은 상태를 바꾸지 않는다');
+
+  // C2/C3 (medium): 변조 세이브의 음수 maxShuriken이 load()의 리사이즈 루프를 무한 루프로
+  // 만들었다 (탭 영구 정지 · 📥 가져오기로 도달 가능). 종료 보장 + 복구를 단언한다.
+  for (const bad of [-7, -1, -6, 'x', NaN]) {
+    const seed = G.defaultState();
+    seed.upgrades.maxShuriken = bad;
+    seed.grid = new Array(6).fill(null).map((_, i) => ({ id: i + 1, level: 3, fireTimer: 0 }));
+    G.setState(seed);
+    F.save();
+    const t0 = Date.now();
+    const loaded = F.load();
+    ok(Date.now() - t0 < 2000, `maxShuriken=${String(bad)}: load()가 정지하지 않고 끝난다`);
+    eq(loaded, true, `maxShuriken=${String(bad)}: 로드 성공`);
+    eq(G.getState().upgrades.maxShuriken, 0, `maxShuriken=${String(bad)}: 정수 ≥0으로 복구`);
+    eq(G.getState().grid.length, F.getGridSize(), `maxShuriken=${String(bad)}: 그리드 길이가 정본과 일치`);
+  }
+  ok(/const targetSize = Math\.max\(1, getGridSize\(\)\);/.test(RAW_HTML), 'load의 리사이즈가 종료를 구조적으로 보장');
+  ok(/if \(!load\(\)\) \{/.test(RAW_HTML), '📥 가져오기가 load()로 복구를 검증한 뒤에만 진행');
 });
 
 group('삼재의 결 / grain (Q-Leap 133)', () => {

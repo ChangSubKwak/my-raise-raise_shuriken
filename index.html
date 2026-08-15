@@ -503,6 +503,10 @@
     background: linear-gradient(180deg, #1a1c20 0%, #08090c 100%);
     border: 2px solid #aacccc; border-radius: 18px;
     padding: 18px 22px; max-width: 320px; width: 88%;
+    /* 감사 스윕 C6: 장식이 다 붙은 표창(황금+별+검은+결)을 320폭/가로 모드에서 열면 제목과
+       닫기 버튼이 화면 밖으로 잘렸다. 형제 모달(help/trophy/shop)과 같은 값으로 스크롤 허용 —
+       587px 이상 뷰포트에서는 max-height가 걸리지 않아 기존 렌더링과 100% 동일하다. */
+    max-height: 85vh; overflow-y: auto;
     box-shadow: 0 0 30px rgba(170,204,204,0.25);
   }
   .info-title { font-size: 17px; font-weight: 900; color: #ccddee; text-align: center; margin-bottom: 12px; letter-spacing: 2px; }
@@ -1248,6 +1252,11 @@
     width: 70%; height: 70%; display: flex; align-items: center; justify-content: center;
     transition: transform 0.05s;
   }
+  /* 감사 스윕 C5: 캔버스는 replaced element라 flex의 min-width:auto가 내재 80px로 굳는다 —
+     .shuriken의 70% 박스가 무력해져 5·6열에서 셀 밖으로 넘치고 overflow:hidden이 잘라냈다
+     (6열에서 그려진 픽셀의 44.7%만 보였다). max-*는 내재 종횡비를 보존해 별이 눌리지 않는다
+     (width/height:100%는 금지 — 셀이 정사각형이 아니라 종횡비 0.57~0.81로 왜곡된다). */
+  .cell .shuriken canvas { max-width: 100%; max-height: 100%; }
   /* New-spawn drop animation: falls in from above with rotation + bounce settle */
   .cell.spawn-drop .shuriken {
     animation: spawnDrop 0.5s cubic-bezier(0.34, 1.5, 0.64, 1) both;
@@ -1989,7 +1998,7 @@
 <script>
 'use strict';
 // 릴리즈 버전 — package.json version과 동기 (테스트가 불일치를 잡는다). 커밋 시 함께 범프.
-const GAME_VERSION = '3.82.3';
+const GAME_VERSION = '3.83.0';
 // =============================================================
 // 표창키우기 v2 — 합체 게임
 // Concept: 3×3+ grid, drop shuriken (Lv 1), merge same-level → Lv+1
@@ -3103,10 +3112,15 @@ function load() {
     state = Object.assign(defaultState(), s);
     state.upgrades = Object.assign(defaultState().upgrades, s.upgrades || {});
     state.grid = Array.isArray(s.grid) ? s.grid : defaultState().grid;
-    // resize grid to upgraded size if needed
-    const targetSize = getGridSize();
+    // resize grid to upgraded size if needed.
+    // 감사 스윕 C2/C3: 이 리사이즈는 validateAndRepairState보다 먼저 돈다. 변조된 세이브의
+    // maxShuriken이 음수면 targetSize가 음수가 되어 아래 while이 절대 끝나지 않고 — 예외가
+    // 아니라 무한 루프라 catch도 못 잡는다 — 부팅이 영구 정지한다(📥 가져오기로 도달 가능).
+    // Math.max(1, …)로 종료를 구조적으로 보장한다. 진짜 복구는 아래 validateAndRepairState가
+    // upgrades를 정수 ≥0으로 되돌린 뒤 자체 getGridSize()로 그리드를 정본 재구성하며 끝난다.
+    const targetSize = Math.max(1, getGridSize());
     while (state.grid.length < targetSize) state.grid.push(null);
-    while (state.grid.length > targetSize) state.grid.pop();
+    if (state.grid.length > targetSize) state.grid = state.grid.slice(0, targetSize); // pop 루프 대신 slice (음수·NaN 안전)
     // lifetime stats migration — re-anchor sessionStart so play-time count resumes
     state.stats = Object.assign(defaultState().stats, s.stats || {});
     state.stats.sessionStart = Date.now();
@@ -3554,6 +3568,24 @@ function forgeEffective() {
 }
 function getForgeSpawnMul()   { return forgeEffective().spawnMul; }
 function getForgeLevelDelta() { return forgeEffective().lvDelta; }
+// 감사 스윕 C1 (high): 게이지(state.spawnProgress)는 '비율'이라 모드를 바꾸면 이미 흘린 시간이
+// 새 간격으로 재해석된다. 그래서 🌪속성(0.55×)으로 97% 채운 뒤 완충 직전 🔥정밀로 두 번 탭하면
+// 빠른 충전과 +1 Lv을 동시에 취해 가치율이 표준 대비 3.35배가 됐다 — 제련의 반지배 설계
+// (양쪽 특화가 같은 ~9% 세금)를 통째로 무너뜨리는 이중 취득. 전환 시 '남은 실시간'이 보존되도록
+// 게이지를 재가격해 봉쇄한다. 튜닝 상수는 하나도 건드리지 않는다 (순수 구조 수정).
+// 핸들러와 테스트가 같은 코드를 타도록 함수로 분리 — 핸들러 안에 두면 회귀 테스트가 불가능하다.
+function applyForgeMode(id) {
+  if (!FORGE_MODES.some(m => m.id === id)) return false;
+  const prevInterval = getSpawnInterval();
+  state.forgeMode = id;
+  const newInterval = getSpawnInterval();
+  if (prevInterval > 0 && newInterval > 0 && (state.spawnProgress || 0) > 0) {
+    // 경과 시간 = progress × prevInterval 을 새 간격 기준 비율로 환산 (상한 1: 정밀→속성 방향의
+    // 잉여 사이클은 버린다 — 플레이어에게 불리한 방향이라 익스플로잇 안전)
+    state.spawnProgress = Math.min(1, state.spawnProgress * (prevInterval / newInterval));
+  }
+  return true;
+}
 // Q-Leap 118: 골드 배수 분해 — 누적된 10개 출처를 한 곳에서 정의 (단일 진실 공급원).
 // getGoldMul은 이 곱. 활성(>1) 요소는 명예의 전당에 표시되어 경제가 투명해진다.
 // Strategy Mode (전략) — a prestige-tier choice of mutually-exclusive TRADE-OFF run modifiers.
@@ -5076,6 +5108,16 @@ function update(dt) {
       if (state.autoFrenzyEnabled && (state.frenzyCharge || 0) >= FRENZY_MAX) activateFrenzy(true);
     }
   }
+  // 감사 스윕 C0: v3.67.3은 위 '폭주 종료 시' 경로 하나만 막았다. 게이지를 addFrenzyCharge를
+  // 거치지 않고 직접 대입하는 경로가 둘 더 있다 — processOfflineReward(자리비움 충전)와
+  // COMBO_MILESTONES[75](연쇄 75 만재). 둘 다 만재 처리를 건너뛰므로 게이지가 100에 얼어붙고,
+  // 이후 모든 addFrenzyCharge는 'already MAX' early-return에 걸려 자동 폭주가 런 내내 정지한다
+  // (실측: 60분 자리비움 후 복귀 → 합성 40회를 더 해도 발동 0). 진입점마다 알림을 다는 대신
+  // 상태 자체를 매 틱 검사해 앞으로 생길 어떤 직접 대입 경로도 함께 덮는다.
+  // activateFrenzy가 timer>0 / charge<MAX를 자체 가드하므로 중복 발동은 불가능하다.
+  if (state.autoFrenzyEnabled && (state.frenzyTimer || 0) <= 0 && (state.frenzyCharge || 0) >= FRENZY_MAX) {
+    activateFrenzy(true);
+  }
   // Q-Leap 104: Gold Rush timer
   if ((state.goldRushTimer || 0) > 0) {
     state.goldRushTimer -= dt;
@@ -5273,7 +5315,7 @@ function updateHUD() {
   if (smEl) smEl.textContent = totalSlots;
   if (biEl) biEl.textContent = '×' + getSpawnBatch();
   const nslEl = document.getElementById('next-spawn-lv');
-  if (nslEl) nslEl.textContent = getSpawnStartLevel();
+  if (nslEl) nslEl.textContent = getNextSpawnLevel(); // 감사 스윕 C9: 생성 바(5331)·spawnShuriken과 같은 진실 — 제련/윤회 부스트가 칩에도 반영된다
   // Q-Leap 74: storage count
   const stcEl = document.getElementById('storage-count');
   if (stcEl) stcEl.textContent = `${(state.storage || []).length}/3`;
@@ -6592,7 +6634,8 @@ function getRevealState() {
     storage:   b >= 5,
     prestige:  b >= 6 || p >= 1,          // 환생 섹션 — 해금(8) 2레벨 전 티저 (손상 세이브 방어: 윤회자는 항상)
     // 감사 v3.76.1: 悟를 다 쓰면(잔액 0) 산 스킬째로 사라지던 비단조 — 보유 스킬도 조건에
-    skills:    p >= 1 || (state.enlightenment || 0) > 0 || Object.values(state.skills || {}).some(v => v > 0),
+    skills:    b >= 6 || p >= 1 || Object.values(state.skills || {}).some(v => v > 0), // 감사 스윕 C4: enl>0은 첫 합성(Lv2)에 참이라 사다리가 뒤집혔다 — 환생 티저와 같은 rung으로
+    engrave:   p >= ENGRAVE_UNLOCK_PRESTIGE, // 각인 버튼: 🔒 라벨 대신 부재로 (윤회 1회부터 등장)
     hof:       p >= 1,                    // 전당 — 기록이 쌓인 뒤
     formation: b >= 8,                    // 진형 등급 스탯
   };
@@ -6608,7 +6651,7 @@ const REVEAL_TARGETS = [
   ['#storage-btn', 'storage'], ['#automation-btn', 'autoMerge'], ['#meditation-btn', 'autoMerge'],
   ['#trophy-btn', 'achv'], // (v3.77: 전당·로그는 명예 모달 탭으로 흡수 — 별도 버튼 없음)
   ['#codex-block', 'codex'], ['#achv-block', 'achv'],
-  ['#prestige-block', 'prestige'], ['#skill-block', 'skills'],
+  ['#prestige-block', 'prestige'], ['#skill-block', 'skills'], ['#engrave-btn', 'engrave'],
   ['#formation-stat', 'formation'], ['#hint-sell-line', 'sellInfo'],
 ];
 // 주요 시스템 첫 등장 안내 (세션 캐시 — 로드 직후 일괄 발화 방지 위해 첫 호출은 무음)
@@ -6819,8 +6862,8 @@ function renderSkillTree() {
   // Q-Leap 127: 각인 버튼 상태 (해금 전 잠금 표시 / 해금 후 사용량)
   const engBtn = document.getElementById('engrave-btn');
   if (engBtn) {
-    engBtn.textContent = isEngraveUnlocked() ? `🧿 각인 ${engraveCount()}/${ENGRAVE_MAX}` : '🧿 각인 🔒';
-    engBtn.style.opacity = isEngraveUnlocked() ? '1' : '0.55';
+    // 감사 스윕 C4: 잠금 라벨(🔒) 대신 부재로 — CLAUDE.md 점진 공개 규칙 (노출은 applyReveal이 담당)
+    engBtn.textContent = `🧿 각인 ${engraveCount()}/${ENGRAVE_MAX}`;
   }
   el.innerHTML = '';
   for (const sk of SKILLS) {
@@ -7154,7 +7197,7 @@ document.getElementById('forge-btn').addEventListener('click', () => {
   if (!isForgeUnlocked()) { toast(`⚖ 제련 모드 — 최고 Lv ${FORGE_UNLOCK_LV} 도달 시 해금`); return; }
   const i = FORGE_MODES.findIndex(m => m.id === (state.forgeMode || 'standard'));
   const next = FORGE_MODES[(i + 1) % FORGE_MODES.length];
-  state.forgeMode = next.id;
+  applyForgeMode(next.id);
   if (next.id !== 'standard') state.stats.forgeUsed = (state.stats.forgeUsed || 0) + 1;
   toast(`${next.icon} ${next.name} — ${next.desc}`);
   sfx('move');
@@ -8635,7 +8678,16 @@ document.getElementById('import-btn').onclick = () => {
     const obj = JSON.parse(decodeURIComponent(escape(atob(code.trim()))));
     if (typeof obj !== 'object' || !obj.upgrades) throw new Error('형식 오류');
     if (!confirm('현재 진행도를 덮어쓰고 가져온 코드로 교체합니다. 계속?')) return;
+    // 감사 스윕 C3 (심층 방어): 원본 blob을 그대로 영속화하면 손상된 코드가 부팅 경로에 그대로
+    // 장전된다. 덮어쓴 뒤 load()로 복구까지 태우고, 실패하면 이전 세이브로 원복한다.
+    const prevSave = localStorage.getItem(SAVE_KEY);
     localStorage.setItem(SAVE_KEY, JSON.stringify(obj));
+    if (!load()) {
+      if (prevSave !== null) localStorage.setItem(SAVE_KEY, prevSave); else localStorage.removeItem(SAVE_KEY);
+      toast('잘못된 코드 — 기존 진행도를 유지합니다');
+      return;
+    }
+    save(); // 검증·복구된 정본을 다시 기록 (원본 blob이 아니라)
     location.reload();
   } catch (e) {
     toast('잘못된 코드: ' + (e.message || ''));

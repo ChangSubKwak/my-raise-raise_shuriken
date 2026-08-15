@@ -113,7 +113,7 @@ function loadGame() {
     getTowerSpawnMul, getTowerGoldMul, isTowerAutoBanned, isTowerRitualBanned, isTowerSpawnLv1,
     checkTowerProgress, abandonTower,
     getActiveBuffs, processOfflineReward,
-    isForgeUnlocked, getForgeMode, getForgeSpawnMul, getForgeLevelDelta, getSpawnIntervalBase, getSpawnIntervalRaw,
+    isForgeUnlocked, getForgeMode, getForgeSpawnMul, getForgeLevelDelta, getSpawnIntervalBase, getSpawnIntervalRaw, applyForgeMode,
     getAmbienceParams, startAmbience, stopAmbience, updateAmbience, getAudio,
     getRevealState, applyReveal,
     getUpgradeCost, isUpgradeMaxed, activateFrenzy,

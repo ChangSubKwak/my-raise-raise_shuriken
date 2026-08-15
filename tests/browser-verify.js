@@ -307,6 +307,62 @@ function ok(cond, msg) {
     `칸 마크 전수 무충돌 (6열 최악 조건 · 애니메이션 전주기)${markCollisions.pairs.length ? ` — ${markCollisions.pairs.join(' / ')}` : ''}`);
   await clearOverlays(); await page.waitForTimeout(200); await page.screenshot({ path: path.join(SHOTS, '07-grain-marks.png') });
 
+  // ================= 감사 스윕 C5/C6: 스프라이트 맞춤 + 좁은 뷰포트 모달 =================
+  // C5: 캔버스가 셀을 넘치면 overflow:hidden이 잘라낸다 (6열에서 픽셀의 44.7%만 보였다).
+  // 존재가 아니라 '셀 안에 들어가는가 + 종횡비가 보존되는가'를 잰다.
+  console.log('감사 스윕 C5/C6');
+  for (const [ms, wantCols] of [[7, 5], [24, 6]]) {
+    const fit = await page.evaluate((m) => {
+      state.bestLevel = 40; state.runBestLevel = 40;
+      state.upgrades.maxShuriken = m;
+      state.grid = new Array(getGridSize()).fill(null).map((_, i) => ({ id: 6000 + i, level: 12, fireTimer: 0 }));
+      selectedIdx = -1;
+      renderGrid();
+      let worstOver = 0, worstRatio = 0, n = 0;
+      for (const cell of document.querySelectorAll('#grid .cell')) {
+        const cv = cell.querySelector('canvas');
+        if (!cv) continue;
+        n++;
+        const cr = cell.getBoundingClientRect(), vr = cv.getBoundingClientRect();
+        worstOver = Math.max(worstOver, vr.width - cr.width, vr.height - cr.height);
+        worstRatio = Math.max(worstRatio, Math.abs(vr.width / vr.height - 1));
+      }
+      return { cols: getGridCols(), n, over: +worstOver.toFixed(2), ratio: +worstRatio.toFixed(3) };
+    }, ms);
+    ok(fit.cols === wantCols && fit.n >= 10, `C5: ${wantCols}열 ${fit.n}칸 렌더 (maxShuriken ${ms})`);
+    ok(fit.over <= 0.5, `C5: ${wantCols}열에서 스프라이트가 칸을 넘지 않음 (초과 ${fit.over}px)`);
+    ok(fit.ratio < 0.02, `C5: ${wantCols}열에서 종횡비 보존 (편차 ${fit.ratio})`);
+  }
+
+  // C6: 좁은/낮은 뷰포트에서 열린 모달이 화면을 벗어나면 제목·닫기 버튼이 잘린다.
+  // 여기서 재는 것은 .info-box만이 아니라 '열려 있는 모달 박스'라 앞으로 추가될 모달도 함께 덮는다.
+  for (const vp of [{ width: 320, height: 568, name: '320×568 세로' }, { width: 568, height: 320, name: '568×320 가로' }]) {
+    await page.setViewportSize({ width: vp.width, height: vp.height });
+    await page.waitForTimeout(150);
+    const box = await page.evaluate(() => {
+      state.bestLevel = 120; state.runBestLevel = 120;
+      state.upgrades.maxShuriken = 4;
+      state.grid = new Array(getGridSize()).fill(null);
+      state.grid[0] = { id: 7100, level: 120, fireTimer: 0, grain: 'cheon', golden: true, star: true, dark: true };
+      renderGrid();
+      showShurikenInfo(0);
+      const el = document.querySelector('#info-modal .info-box');
+      const r = el.getBoundingClientRect();
+      const cs = getComputedStyle(el);
+      return {
+        clipTop: +Math.max(0, -r.top).toFixed(1),
+        clipBot: +Math.max(0, r.bottom - innerHeight).toFixed(1),
+        scrollable: cs.overflowY === 'auto' || cs.overflowY === 'scroll',
+      };
+    });
+    ok(box.clipTop === 0 && box.clipBot === 0,
+      `C6: ${vp.name}에서 정보 모달이 뷰포트 안에 들어옴 (위 ${box.clipTop}px · 아래 ${box.clipBot}px 잘림)`);
+    ok(box.scrollable, `C6: ${vp.name}에서 내용이 넘치면 스크롤 가능`);
+    await page.evaluate(() => { const m = document.getElementById('info-modal'); if (m) m.classList.remove('show'); });
+  }
+  await page.setViewportSize({ width: 480, height: 960 });
+  await page.waitForTimeout(150);
+
   // ================= console errors =================
   const errs = consoleErrors.filter(e => !/favicon/i.test(e));
   ok(errs.length === 0, `콘솔 에러 0건${errs.length ? ' — ' + errs.slice(0, 3).join(' | ') : ''}`);
