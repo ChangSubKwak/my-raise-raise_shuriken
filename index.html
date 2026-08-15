@@ -346,12 +346,29 @@
   }
   #storage-modal.show { display: flex; }
   /* Q-Leap 127: 성소 각인 */
-  #engrave-modal, #gate-modal {
+  #engrave-modal, #gate-modal, #constellation-modal {
     position: fixed; inset: 0; z-index: 253;
     display: none; align-items: center; justify-content: center;
     background: rgba(0,0,0,0.85);
   }
-  #engrave-modal.show, #gate-modal.show { display: flex; }
+  #engrave-modal.show, #gate-modal.show, #constellation-modal.show { display: flex; }
+  /* Q-Leap 132: 초월 성좌 */
+  .constel-row {
+    display: flex; align-items: center; gap: 8px; width: 100%;
+    margin: 5px 0; padding: 7px 10px; border-radius: 10px;
+    border: 1px solid #4a5a8a; background: linear-gradient(180deg, #2c3450, #1a2036);
+    color: #dce4ff;
+  }
+  .constel-row .cs-name { font-weight: 800; font-size: 12px; }
+  .constel-row .cs-desc { font-size: 10px; color: #93a2cc; }
+  .constel-row .cs-pts { margin-left: auto; display: flex; align-items: center; gap: 5px; white-space: nowrap; }
+  .constel-row .cs-val { font-weight: 800; font-size: 12px; min-width: 52px; text-align: center; }
+  .constel-btn {
+    width: 22px; height: 22px; border-radius: 6px; cursor: pointer;
+    border: 1px solid #6a7ab0; background: linear-gradient(180deg, #3c4a76, #263050);
+    color: #dce4ff; font-family: inherit; font-weight: 900; font-size: 12px; line-height: 1;
+  }
+  .constel-btn:disabled { opacity: 0.35; cursor: default; }
   .engrave-box {
     background: linear-gradient(180deg, #221a2e 0%, #0a0612 100%);
     border: 2px solid #aa88ff; border-radius: 18px;
@@ -1716,6 +1733,16 @@
   </div>
 </div>
 
+<div id="constellation-modal">
+  <div class="engrave-box" style="border-color:#88aaff;box-shadow:0 0 30px rgba(136,170,255,0.25);">
+    <div class="engrave-title" style="color:#c8d8ff;">🌌 초월 성좌</div>
+    <div class="engrave-sub" id="constellation-sub">—</div>
+    <div id="constellation-list"></div>
+    <div id="constellation-note" style="font-size:10px;color:#8a94b8;text-align:center;margin-top:7px;">재배분은 <b style="color:#c8d8ff">다음 윤회</b>부터 적용됩니다 · 미배분 pt는 부(富)로</div>
+    <button class="codex-close" id="constellation-close">닫기</button>
+  </div>
+</div>
+
 <div id="help-modal">
   <div class="help-box">
     <div class="help-title">❓ 게임 가이드 <span id="help-version" style="font-size:10px;color:#667;letter-spacing:0;font-weight:400;"></span></div>
@@ -1914,7 +1941,7 @@
 <script>
 'use strict';
 // 릴리즈 버전 — package.json version과 동기 (테스트가 불일치를 잡는다). 커밋 시 함께 범프.
-const GAME_VERSION = '3.80.0';
+const GAME_VERSION = '3.81.0';
 // =============================================================
 // 표창키우기 v2 — 합체 게임
 // Concept: 3×3+ grid, drop shuriken (Lv 1), merge same-level → Lv+1
@@ -2228,6 +2255,10 @@ function defaultState() {
     // Q-Leap 131 (PACING C): 미드게임 관문 — 선택 기록(영구)과 미선택 대기열(저장됨)
     gatesClaimed: {},
     gatePending: [],
+    // Q-Leap 132: 초월 성좌 — 초월 pt의 별 배분 (활성) / 다음 윤회 예약 (스테이징, null=변경 없음)
+    constellation: {},
+    constellationNext: null,
+    constellationIntroShown: false,
     // Q-Leap 59: 자동 매도 — auto-sell shuriken at or below threshold
     autoSellEnabled: false,
     autoSellThreshold: 1,     // Lv ≤ this → auto-sell (golden/star/dark/locked excluded)
@@ -2428,6 +2459,7 @@ const ACHIEVEMENTS = [
   { id: 'a_gate_all',     name: '세 관문을 지난 자', icon: '⛩', desc: '미드게임 관문 3개 모두 통과', check: (s) => Object.keys(s.gatesClaimed || {}).length >= 3, gem: 10 },
   { id: 'a_engrave_1',    name: '첫 각인',          icon: '🧿', desc: '성소 각인 1칸 새기기',        check: (s) => Object.keys(s.engravings || {}).length >= 1 },
   { id: 'a_engrave_3',    name: '성소의 완성',      icon: '🛕', desc: '성소 각인 3칸 모두 새기기',   check: (s) => Object.keys(s.engravings || {}).length >= 3, gem: 10 },
+  { id: 'a_constellation', name: '별을 잇는 자',    icon: '🌌', desc: '초월 성좌 재배분 첫 적용 (윤회)', check: (s) => ((s.stats || {}).constellationAssigns || 0) >= 1, gem: 5 },
   { id: 'a_tower_deep10', name: '적멸의 끝',        icon: '☄', desc: '무한 심층 10층 돌파 (탑 16층)', check: (s) => (s.towerFloor || 0) >= TOWER_FLOORS.length + 10, gem: 40 },
 ];
 
@@ -3233,6 +3265,42 @@ function validateAndRepairState() {
   // are false) and renders literally as "이번 run Lv NaN" in the HUD. Clamp ≤ bestLevel.
   fixNum('runBestLevel', 1, 1);
   if (state.runBestLevel > state.bestLevel) { state.runBestLevel = state.bestLevel; repairs++; }
+  // 성좌 (Q-Leap 132) — 배분 객체: 알려진 별 id에 유한 정수 ≥1만, 합계는 초월 pt로 클램프
+  // (id 순서로 잘라냄 — getConstellationAlloc의 읽기 클램프와 같은 규칙이라 저장본이 곧 정본).
+  // bestLevel 복구(위) 이후에 실행해야 T가 정확하다 — 순서 이동 금지.
+  const cleanConstel = (obj) => {
+    if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return null;
+    const T = Math.max(0, Math.floor((state.bestLevel || 1) - TRANSCEND_BASE));
+    const out = {}; let used = 0, dropped = false;
+    for (const id of CONSTELLATION_ALLOC_IDS) {
+      const v = obj[id];
+      if (typeof v === 'number' && isFinite(v) && v >= 1) {
+        const take = Math.min(Math.floor(v), T - used);
+        if (take >= 1) { out[id] = take; used += take; }
+        if (take !== Math.floor(v) || v !== Math.floor(v)) dropped = true;
+      } else if (v !== undefined && v !== 0) dropped = true;
+    }
+    for (const k of Object.keys(obj)) if (!CONSTELLATION_ALLOC_IDS.includes(k)) dropped = true;
+    return { out, dropped };
+  };
+  {
+    const c = cleanConstel(state.constellation);
+    if (c === null) { if (state.constellation !== undefined && state.constellation !== null) repairs++; state.constellation = {}; }
+    else { if (c.dropped) repairs++; state.constellation = c.out; }
+    if (state.constellationNext === null || state.constellationNext === undefined) { state.constellationNext = null; }
+    else {
+      const n = cleanConstel(state.constellationNext);
+      if (n === null) { repairs++; state.constellationNext = null; }
+      else {
+        // 활성 배분과 동치일 때만 null 정규화 (stageConstellationDelta와 같은 규칙).
+        // '전부 부로 되돌리기' 예약(모두 0)은 활성과 다르면 실제 변경 — 빈 객체라고 지우면 안 된다.
+        if (n.dropped) repairs++;
+        const act = getConstellationAlloc(); // 위에서 정리된 state.constellation 기준
+        state.constellationNext = CONSTELLATION_ALLOC_IDS.every(id => (n.out[id] || 0) === act[id]) ? null : n.out;
+      }
+    }
+    state.constellationIntroShown = !!state.constellationIntroShown;
+  }
   // lifetime stat counters must be finite ≥ 0 — a corrupt NaN here would poison
   // displays (playtime, totals) and accumulation forever.
   if (state.stats && typeof state.stats === 'object') {
@@ -3313,7 +3381,7 @@ function countStars() {
 // 제련 前 생성 간격 (0.6s 하한 적용까지). 감사 128.1: 제련 배수를 하한 안쪽에 넣으면
 // 엔드게임(무하한 spawnRate 강화로 하한 도달)에서 정밀의 ×2.2 페널티가 하한에 흡수되어
 // "+1 Lv 공짜"(가치율 ×2)가 되고 반지배 설계가 뒤집힌다 — 하한을 먼저 밟은 뒤 제련을 곱한다.
-function getSpawnIntervalBase() {
+function getSpawnIntervalRaw() {
   const base = 16.0; // base spawn interval (sec); raised from 12 to slow the generation gauge
   const skillMul = Math.pow(0.96, getSkillLv('swiftHands')); // −4%/Lv
   const trialBoost = state.trialActive ? 0.5 : 1; // Q-Leap 43: trial time×2
@@ -3323,8 +3391,16 @@ function getSpawnIntervalBase() {
   const frenzyMul = (state.frenzyTimer || 0) > 0 ? 0.5 : 1; // Q-Leap 77: 폭주 ×2 spawn
   const weekdayMul = weekdayBonus().spawnMul || 1; // Q-Leap 87
   const eliteMul = hasSet('elite') ? 0.9 : 1; // Q-Leap 105: 정예 진형 +10% 가속
-  return Math.max(0.6, base * Math.pow(0.95, state.upgrades.spawnRate) * skillMul * trialBoost * starBoost * chalBoost * prestigeSpeed * frenzyMul * weekdayMul * eliteMul * getStrategySpawnMul() * getTowerSpawnMul()); // floor raised 0.4→0.6 to cap max spawn speed
+  return base * Math.pow(0.95, state.upgrades.spawnRate) * skillMul * trialBoost * starBoost * chalBoost * prestigeSpeed * frenzyMul * weekdayMul * eliteMul * getStrategySpawnMul() * getTowerSpawnMul() * getConstellationSpawnMul();
 }
+// 하한 적용본 (0.4→0.6으로 상향: 최대 생성 속도 상한). raw를 분리한 이유는 감사 132.1 —
+// 하한에 흡수된 신속(haste) 별을 UI에서 inert 표시하려면 하한 前 값이 필요하다.
+function getSpawnIntervalBase() {
+  return Math.max(0.6, getSpawnIntervalRaw());
+}
+// 감사 132.1: 신속의 별이 0.6s 하한에 흡수되어 추가 pt 기여가 0인 상태.
+// 제련 swift의 🚫 inert 게이트와 같은 취지 — 함정(무효 배분에 wealth를 지불) 방지 표시용.
+function isConstellationHasteInert() { return getSpawnIntervalRaw() <= 0.6 + 1e-9; }
 function getSpawnInterval() {
   return Math.max(0.6, getSpawnIntervalBase() * getForgeSpawnMul()); // Q-Leap 128: 정밀은 하한 위에서도 온전히 ×2.2를 낸다
 }
@@ -3577,7 +3653,7 @@ function getGoldMulBreakdown() {
     { key: 'trinity',   label: '🔺 삼위일체',  mul: sets.trinity ? 1.15 : 1 },               // Q-Leap 95
     { key: 'rainbow',   label: '🌈 무지개',    mul: sets.rainbow ? 1.25 : 1 },               // Q-Leap 101
     { key: 'perfect',   label: '👑 완전 진형', mul: sets.perfect ? 1.5 : 1 },                // Q-Leap 109
-    { key: 'transcend', label: '🌌 초월',      mul: getTranscendMul() },                      // Q-Leap 98
+    { key: 'transcend', label: '💰 부(富)의 별', mul: getTranscendMul() },                      // Q-Leap 98 → 132: wealth 배분분만 의미
     { key: 'goldRush',  label: '💰 골드러시',  mul: (state.goldRushTimer || 0) > 0 ? 2 : 1 }, // Q-Leap 104
     { key: 'strategy',  label: '⚖ 전략',      mul: getStrategyGoldMul() },
     { key: 'tower',     label: '🗼 시련',      mul: getTowerGoldMul() },                       // Q-Leap 125
@@ -3727,6 +3803,7 @@ function getVariantSpontaneousMul() {
   if (weekdayBonus().variantMul) m *= weekdayBonus().variantMul;
   if (hasSet('goldFormation')) m *= 1.5;
   m *= getStrategyVariantMul();
+  m *= getConstellationVariantMul(); // Q-Leap 132: 변화의 별 — tryMerge·의식 양쪽이 이 함수를 읽으므로 패리티 자동
   return m;
 }
 
@@ -3759,8 +3836,69 @@ const WEEKDAY_BONUS = {
 function weekdayBonus() { return WEEKDAY_BONUS[new Date().getDay()] || {}; }
 // Q-Leap 98: 초월 시스템 — Lv 60 초과 최고 기록만큼 초월 포인트 (윤회 무관, bestLevel 파생)
 const TRANSCEND_BASE = 60;
-function getTranscendence() { return Math.max(0, (state.bestLevel || 1) - TRANSCEND_BASE); }
-function getTranscendMul() { return 1 + getTranscendence() * 0.02; } // +2% dmg & gold per pt
+// 감사 132.4/132.9: Math.floor는 검증(cleanConstel)과 읽기 경로의 T를 완전 일치시킨다 —
+// 변조된 소수 bestLevel에서 클램프 기준이 어긋나 소수 wealth가 UI 문자열로 새던 비대칭 제거.
+function getTranscendence() { return Math.floor(Math.max(0, (state.bestLevel || 1) - TRANSCEND_BASE)); }
+// Q-Leap 132: 초월 성좌 — 고정 승수였던 초월 pt를 4개 별에 배분하는 결정으로 전환.
+// 미배분 pt는 부(富)로 귀속(= 기존 +2% 골드/pt 그대로) → 빈 배분 세이브는 동작 불변.
+// 재배분은 다음 윤회에 적용(constellationNext 스테이징) — 합성 직전 행운으로 갈아타는
+// 핫스왑을 원천 차단한다 (전략 모드와 같은 '윤회 단위 정책' 결정). 총량은 재분배일 뿐
+// 증가하지 않는다 (안티-인플레이션: 새 배수 없이 기존 파워의 방향만 선택).
+const CONSTELLATION_STARS = [
+  { id: 'wealth',   icon: '💰', name: '부(富)의 별',   desc: '골드 +2%/pt · 미배분 귀속' },
+  { id: 'haste',    icon: '⚡', name: '신속(迅速)의 별', desc: '생성 간격 −1%/pt (하한 0.6s)' },
+  { id: 'fortune',  icon: '🍀', name: '연(緣)의 별',   desc: '합성 점프 행운 +0.1%p/pt' },
+  { id: 'mutation', icon: '☄', name: '변화(變化)의 별', desc: '변종 자연발생 +2%/pt' },
+];
+const CONSTELLATION_ALLOC_IDS = ['haste', 'fortune', 'mutation']; // wealth = 잔여 (명시 배분 대상 아님)
+// 활성 배분 (읽기 시 클램프 — 손상 세이브의 초과 배분은 id 순서로 잘라내고 잔여는 부로).
+function getConstellationAlloc() {
+  const T = getTranscendence();
+  const c = state.constellation || {};
+  const out = { wealth: 0, haste: 0, fortune: 0, mutation: 0 };
+  let used = 0;
+  for (const id of CONSTELLATION_ALLOC_IDS) {
+    const raw = c[id];
+    const v = (typeof raw === 'number' && isFinite(raw)) ? Math.max(0, Math.floor(raw)) : 0;
+    const take = Math.min(v, T - used);
+    out[id] = take; used += take;
+  }
+  out.wealth = T - used;
+  return out;
+}
+function getTranscendMul() { return 1 + getConstellationAlloc().wealth * 0.02; } // 부의 별: +2% 골드/pt (구 고정 효과)
+function getConstellationSpawnMul() { return Math.pow(0.99, getConstellationAlloc().haste); }
+function getConstellationLuckBonus() { return getConstellationAlloc().fortune * 0.001; }
+function getConstellationVariantMul() { return 1 + getConstellationAlloc().mutation * 0.02; }
+// 스테이징 편집: constellationNext가 없으면 현재 활성 배분을 베이스로 시작.
+// 합계가 초월 pt를 넘는 편집은 거부. 활성과 같아지면 null로 정규화 (예약 없음 상태).
+function stageConstellationDelta(starId, delta) {
+  if (!CONSTELLATION_ALLOC_IDS.includes(starId)) return false;
+  if (!isFinite(delta)) return false; // 감사 132.2: NaN delta는 used > T 가드를 통과해 NaN을 저장했다 — 페일-클로즈
+  const T = getTranscendence();
+  const a = getConstellationAlloc();
+  const base = state.constellationNext || { haste: a.haste, fortune: a.fortune, mutation: a.mutation };
+  const next = {};
+  let used = 0;
+  for (const id of CONSTELLATION_ALLOC_IDS) {
+    const raw = base[id];
+    next[id] = (typeof raw === 'number' && isFinite(raw)) ? Math.max(0, Math.floor(raw)) : 0;
+  }
+  next[starId] = Math.max(0, next[starId] + Math.floor(delta));
+  for (const id of CONSTELLATION_ALLOC_IDS) used += next[id];
+  if (used > T) return false;
+  const sameAsActive = CONSTELLATION_ALLOC_IDS.every(id => next[id] === a[id]);
+  state.constellationNext = sameAsActive ? null : next;
+  return true;
+}
+// 윤회 시 예약 적용 (doPrestige에서 호출). 적용됐으면 true.
+function applyConstellationNext() {
+  if (!state.constellationNext) return false;
+  state.constellation = state.constellationNext;
+  state.constellationNext = null;
+  state.stats.constellationAssigns = (state.stats.constellationAssigns || 0) + 1;
+  return true;
+}
 // Q-Leap 110: 일일 합성 마일스톤 — 그날 누적 합성 수에 따른 1회성 보석 (자정 리셋).
 const DAILY_MERGE_TIERS = { 50: 5, 150: 10, 300: 20, 600: 40 };
 function dailyMergeRewardFor(count) { return DAILY_MERGE_TIERS[count] || 0; }
@@ -3851,8 +3989,15 @@ function announceTranscendIfNeeded(newLv, prevBest) {
   if (newLv <= TRANSCEND_BASE) return;
   if (newLv - Math.max(TRANSCEND_BASE, prevBest) <= 0) return;
   state.stats.transcendReached = getTranscendence();
-  setTimeout(() => toast(`🌌 초월 ${getTranscendence()} — 골드 +${getTranscendence() * 2}%`), 900);
+  setTimeout(() => toast(`🌌 초월 ${getTranscendence()} — 성좌 별빛 ${getTranscendence()}pt (미배분은 골드 +2%/pt)`), 900);
   addEvent('milestone', `초월 ${getTranscendence()} 도달`);
+  // Q-Leap 132: 성좌 첫 해금 안내 (1회 영구 — 세이브 플래그)
+  if (!state.constellationIntroShown) {
+    state.constellationIntroShown = true;
+    setTimeout(() => toast('🌌 초월 성좌 해금 — 윤회 패널에서 별빛(초월 pt)을 배분하세요'), 3100);
+    addEvent('milestone', '초월 성좌 해금');
+    save(); // 감사 132.3: 첫 저장 전 종료 시 안내 반복 방지
+  }
   grantTranscendMilestone(); // Q-Leap 102
 }
 // (v3.35) shurikenDmg/getTotalDPS/getPieceDpsShare removed — combat gone; the info modal
@@ -4148,6 +4293,7 @@ function tryMerge(fromIdx, toIdx, isAuto) {
     const luckBonus = (state.upgrades.luckChance || 0) * 0.01
                     + getSkillLv('fate') * 0.008 // fate skill: +0.8%/Lv
                     + (weekdayBonus().luckPlus || 0) // Q-Leap 87
+                    + getConstellationLuckBonus() // Q-Leap 132: 연의 별 — 전역 효과라 auto 게이트 불요 (의식-패리티 예외: 점프는 2-피스 메커니즘)
                     + (isAuto ? 0 : engraveFortuneBonus(toIdx)); // Q-Leap 127: 연의 각인 — 손 합성 전용 (의식-패리티 예외 + 자동 합성 게이트, 감사 127.1)
     const frenzyJumpMul = (state.frenzyTimer || 0) > 0 ? 2 : 1; // T1b: 버닝의 점프 ×2 정체성을 폭주가 흡수
     const pJump5 = 0.001 * frenzyJumpMul;
@@ -4903,6 +5049,13 @@ function updateHUD() {
       exChip._sig = 'off';
       exChip.style.display = 'none';
     }
+  }
+  // 감사 132.6: 성좌 모달이 열린 채 백그라운드 합성으로 T가 오르면 표시가 스테일 —
+  // 원정 칩과 같은 시그니처 게이트로 T(+하한 inert 상태)가 바뀔 때만 재렌더.
+  const constelModal = document.getElementById('constellation-modal');
+  if (constelModal && constelModal.classList.contains('show')) {
+    const sig = getTranscendence() + ':' + (isConstellationHasteInert() ? 1 : 0);
+    if (constelModal._sig !== sig) { constelModal._sig = sig; renderConstellationModal(); }
   }
   // T1a: 활성 버프 표시줄 — 시그니처(초 단위)로 게이트해 초당 최대 1회만 DOM 갱신
   const buffStrip = document.getElementById('buff-strip');
@@ -6536,7 +6689,19 @@ function buildTowerSection() {
   // TOWER_MAX_FLOOR 도달 시에만 진입 (실질 도달 불가) — 그래도 표기는 정확히
   return `<div style="margin-top:7px;font-size:11px;color:#ffd28a;">🗼 시련의 탑 완주! (${state.towerFloor || 0}층 · 🌀 심층 ${Math.max(0, (state.towerFloor || 0) - TOWER_FLOORS.length)})</div>`;
 }
+// Q-Leap 132: 초월 성좌 섹션 — 초월 pt(Lv 61+)가 생기기 전엔 완전 비노출 (점진 공개:
+// REVEAL_TARGETS는 정적 요소용이고, 윤회 패널 내부 섹션은 build*Section의 자체 게이트가 관례 — 탑/전략과 동일).
+function buildConstellationSection() {
+  const T = getTranscendence();
+  if (T < 1) return '';
+  const a = getConstellationAlloc();
+  const pending = state.constellationNext ? ' · <span style="color:#ffd28a">재배분 예약됨</span>' : '';
+  return `<div style="margin-top:7px;font-size:11px;">🌌 초월 성좌 <button id="constellation-open" style="margin-left:4px;padding:3px 9px;border-radius:7px;border:1px solid #5a6a9a;background:linear-gradient(180deg,#3f4a6e,#272e48);color:#d8e0ff;font-family:inherit;font-weight:800;font-size:11px;cursor:pointer;">별빛 배분</button>`
+    + `<br><span style="color:#aa99cc;">별빛 ${T}pt — 💰${a.wealth} ⚡${a.haste} 🍀${a.fortune} ☄${a.mutation}${pending}</span></div>`;
+}
 function bindPrestigeExtras() {
+  const constelBtn = document.getElementById('constellation-open');
+  if (constelBtn) constelBtn.onclick = () => { getAudio(); openConstellationModal(); };
   const armBtn = document.getElementById('tower-arm');
   if (armBtn) armBtn.onclick = () => {
     getAudio();
@@ -6581,7 +6746,7 @@ function renderPrestige() {
       ? `이번 런에서 Lv 8 재도달 시 윤회 가능 (현재 ${state.runBestLevel || 1})`
       : `Lv 8 도달 시 윤회 가능 (현재 최고 Lv ${state.bestLevel})`;
     if ((state.bestLevel || 1) >= 8) {
-      info.innerHTML = lockLine + _stratHtml + buildTowerSection();
+      info.innerHTML = lockLine + _stratHtml + buildTowerSection() + buildConstellationSection();
       bindPrestigeExtras();
     } else {
       info.textContent = lockLine;
@@ -6594,7 +6759,8 @@ function renderPrestige() {
     const pmLine = npm ? `<br><span style="color:#cc88ff;font-size:11px;">다음 ☯ 마일스톤: 윤회 ${npm.n}회 (💎+${npm.gem})</span>` : '';
     info.innerHTML = `윤회 시 깨달음(悟) <b style="color:#cc88ff">+${enlightGain}</b> 획득<br>총 윤회 ${state.prestigeCount}회 · 영구 골드 +${Math.round((getPrestigeGoldMul() - 1) * 100)}% (다음 +${getNextPrestigeGoldInc()}%p)${adviceLine}${pmLine}`
       + _stratHtml
-      + buildTowerSection();
+      + buildTowerSection()
+      + buildConstellationSection();
     bindPrestigeExtras();
     btn.disabled = false;
     btn.textContent = '윤회';
@@ -6631,6 +6797,11 @@ function renderPrestige() {
         }
         if (state.towerArmed && getNextTowerFloor()) {
           rows.push(['🗼 시련 예약', `<span style="color:#ffd28a">${getNextTowerFloor().floor}층 시작 (계승 없음)</span>`]);
+        }
+        if (state.constellationNext) { // 감사 132.5: 시련 예약 행과 패리티 — 이 윤회에서 소비되는 예약을 명시
+          const cn = state.constellationNext;
+          let cnUsed = 0; for (const id of CONSTELLATION_ALLOC_IDS) cnUsed += (cn[id] || 0);
+          rows.push(['🌌 성좌 예약', `<span style="color:#ffd28a">💰${getTranscendence() - cnUsed} ⚡${cn.haste || 0} 🍀${cn.fortune || 0} ☄${cn.mutation || 0} 적용</span>`]);
         }
         summary.innerHTML = rows.map(([k, v]) =>
           `<div style="display:flex;justify-content:space-between;"><span style="color:#aaa;">${k}</span><span style="color:#fff;font-weight:700;">${v}</span></div>`
@@ -6719,6 +6890,7 @@ function doPrestige() {
   // Q-Leap 127.1: 각인 모드/모달은 런타임 UI — 윤회를 넘겨 남으면 점선·묵은 모달이 스테일
   if (engraveMode) setEngraveMode(false);
   closeEngraveModal();
+  closeConstellationModal(); // 감사 132.7: 성좌 모달도 같은 위생 블록 — 열린 채 넘기면 예약이 소비된 스테일 표시가 남는다
   // Q-Leap 125: 시련의 탑 — 진행 중이던 시련은 런과 함께 끝난다 (미돌파 = 실패, 보상 없음).
   if ((state.towerActive || 0) > 0) {
     addEvent('tower', `시련 ${state.towerActive}층 중단 (윤회)`);
@@ -6733,6 +6905,12 @@ function doPrestige() {
       setTimeout(() => toast(`🗼 ${nf.floor}층 「${nf.name}」 입장 (계승 없음) — ${nf.desc} · 목표 Lv ${nf.goalLv}`), 900);
       addEvent('tower', `시련의 탑 ${nf.floor}층 입장 (계승 없음)`);
     }
+  }
+  // Q-Leap 132: 예약된 성좌 재배분은 새 런과 함께 적용 (윤회 전엔 효과 불변 — 핫스왑 차단)
+  if (applyConstellationNext()) {
+    setTimeout(() => toast('🌌 성좌 재배분 적용 — 새 별빛이 흐릅니다'), 1300);
+    addEvent('prestige', '초월 성좌 재배분 적용');
+    checkAchievements();
   }
   startStage();
   if (wasSubstantialRun) startTrial(); // Q-Leap 43 · v3.79.1: 알찬 런 뒤에만 (스팸 뒷문 차단)
@@ -7272,7 +7450,7 @@ function renderTrophy() {
       ['💎 윤회 횟수',       state.prestigeCount || 0],
       ['🌌 깨달음(悟)',      state.enlightenment || 0],
       ['🏔 최고 Lv',         `${state.bestLevel || 1} (${levelName(state.bestLevel || 1)})`],
-      ['🌌 초월',            getTranscendence() > 0 ? `${getTranscendence()} (+${getTranscendence() * 2}% 골드)` : '—'],
+      ['🌌 초월',            getTranscendence() > 0 ? (() => { const a = getConstellationAlloc(); return `${getTranscendence()}pt — 💰${a.wealth} ⚡${a.haste} 🍀${a.fortune} ☄${a.mutation}`; })() : '—'],
       ['📖 도감',           `${Object.keys(state.codex || {}).length} / 60`],
       ['✨ 누적 합체',       s.totalMerges || 0],
       ['🏭 누적 생성',       s.totalSpawned || 0],
@@ -7693,6 +7871,58 @@ document.getElementById('gate-later').addEventListener('click', () => {
 document.getElementById('engrave-modal').addEventListener('click', (e) => {
   if (e.target.id === 'engrave-modal') closeEngraveModal();
 });
+// Q-Leap 132: 초월 성좌 모달 — +/−는 예약본(constellationNext)만 편집. 효과는 다음 윤회부터.
+function closeConstellationModal() { document.getElementById('constellation-modal').classList.remove('show'); }
+function renderConstellationModal() {
+  const T = getTranscendence();
+  const a = getConstellationAlloc();
+  const n = state.constellationNext || { haste: a.haste, fortune: a.fortune, mutation: a.mutation };
+  let used = 0; for (const id of CONSTELLATION_ALLOC_IDS) used += (n[id] || 0);
+  const freeNext = T - used; // 예약 기준 부(富) = 잔여
+  document.getElementById('constellation-sub').innerHTML =
+    `별빛 <b style="color:#c8d8ff">${T}pt</b> — 초월(Lv 61+) 1레벨 = 1pt`
+    + (state.constellationNext ? ' · <span style="color:#ffd28a">재배분 예약됨</span>' : '');
+  const list = document.getElementById('constellation-list');
+  list.innerHTML = '';
+  for (const s of CONSTELLATION_STARS) {
+    const isWealth = s.id === 'wealth';
+    const activePts = a[s.id];
+    const nextPts = isWealth ? freeNext : (n[s.id] || 0);
+    const valTxt = nextPts === activePts ? `${activePts}` : `${activePts} → <b style="color:#ffd28a">${nextPts}</b>`;
+    // 감사 132.1: 신속의 별은 0.6s 하한에 흡수되면 pt당 기여가 정확히 0 — 제련 swift의 🚫와 같은 함정 표시.
+    const inert = s.id === 'haste' && isConstellationHasteInert();
+    const descTxt = inert
+      ? `<span style="color:#ff9a5a">🚫 생성 하한(0.6s) 도달 — 지금은 추가 pt 효과 없음</span>`
+      : s.desc;
+    const row = document.createElement('div');
+    row.className = 'constel-row';
+    row.innerHTML = `<span style="font-size:16px;">${inert ? '🚫' : s.icon}</span>`
+      + `<span><div class="cs-name">${s.name}</div><div class="cs-desc">${descTxt}</div></span>`
+      + `<span class="cs-pts">${isWealth ? '' : `<button class="constel-btn" data-star="${s.id}" data-d="-1" ${nextPts <= 0 ? 'disabled' : ''}>−</button>`}`
+      + `<span class="cs-val">${valTxt}</span>`
+      + `${isWealth ? '' : `<button class="constel-btn" data-star="${s.id}" data-d="1" ${freeNext <= 0 ? 'disabled' : ''}>+</button>`}</span>`;
+    list.appendChild(row);
+  }
+  list.querySelectorAll('[data-star]').forEach(b => {
+    b.onclick = () => {
+      getAudio();
+      if (stageConstellationDelta(b.dataset.star, +b.dataset.d)) {
+        sfx('move');
+        renderConstellationModal();
+        renderPrestige(); // 패널 요약의 '재배분 예약됨' 태그 동기화
+        save();
+      }
+    };
+  });
+}
+function openConstellationModal() {
+  renderConstellationModal();
+  document.getElementById('constellation-modal').classList.add('show');
+}
+document.getElementById('constellation-close').addEventListener('click', closeConstellationModal);
+document.getElementById('constellation-modal').addEventListener('click', (e) => {
+  if (e.target.id === 'constellation-modal') closeConstellationModal();
+});
 document.getElementById('storage-modal').addEventListener('click', (e) => {
   if (e.target.id === 'storage-modal') document.getElementById('storage-modal').classList.remove('show');
 });
@@ -7720,7 +7950,7 @@ function renderHallOfFame() {
   const rows = [
     { ico: '🎯', label: '다음 목표', val: goal.kind === 'endless' ? '∞' : `${goal.current}/${goal.target}`, sub: goal.label, featured: true },
     { ico: '🏔', label: '최고 표창', val: `Lv ${state.bestLevel || 1}`, sub: levelName(state.bestLevel || 1), featured: true },
-    ...(trans > 0 ? [{ ico: '🌌', label: '초월 경지', val: `초월 ${trans}`, sub: `골드 +${trans * 2}%`, featured: true }] : []),
+    ...(trans > 0 ? [{ ico: '🌌', label: '초월 경지', val: `초월 ${trans}`, sub: `성좌 별빛 ${trans}pt`, featured: true }] : []),
     { ico: '🎌', label: '진형 등급', val: getFormationGrade().grade, sub: `평균 Lv ${getFormationGrade().avg.toFixed(1)}` },
     { ico: '💵', label: '현재 골드율', val: `${fmt(getPassiveGoldRate())}/초`, sub: `골드 배수 ×${goldMul.toFixed(2)}` },
     { ico: '💎', label: '윤회 횟수', val: `${state.prestigeCount || 0}회` },
@@ -7982,7 +8212,8 @@ const HELP_SECTIONS = {
     { title: '✨ 의식 합성', body: '같은 Lv 4방향 연결 그룹 3+ 시 자동 활성화. 발동 시 <span class="hk">한꺼번에 합쳐 큰 점프</span> (3개→+1, 4개→+2 ...).' },
     { title: '🌟 콤보', body: '2.5초 안 chain merge 시 콤보 ×N. 콤보당 +20% 골드. 5/10/15/20/30/50 마일스톤 보너스.' },
     { title: '🔺 세트 효과', body: '그리드 구성으로 패시브 발동 (그리드 위 배지 표시): <span class="hk">삼위일체</span>(같은 Lv 3+·골드+15%) / <span class="hk">황금 진형</span>(황금 2+·변종×1.5) / <span class="hk">만재</span>(90%+·폭주충전×2) / <span class="hk">승천</span>(Lv20+ 3개·콤보+1s) / <span class="hk">무지개</span>(황금·별·검은 동시·골드+25%) / <span class="hk">정예 진형</span>(5+ 표창 전부 최고Lv−3↑·생성+10%) / <span class="hk">완전 진형</span>(삼위일체·만재·승천·정예 동시·골드+50%).' },
-    { title: '🌌 초월', body: 'Lv 60 초과 최고기록 = 초월 포인트. <span class="hk">포인트당 골드 +2%</span> (윤회 보존). 초월 5/10/15/20에 보석 마일스톤. Lv 61~80 고유 명명.' },
+    { title: '🌌 초월', body: 'Lv 60 초과 최고기록 = 초월 포인트(별빛). 초월 5/10/15/20에 보석 마일스톤. Lv 61~80 고유 명명.' },
+    { title: '🌌 초월 성좌', body: '별빛(초월 pt)을 4개 별에 배분 — <span class="hk">💰부 골드 +2%/pt(미배분 귀속) · ⚡신속 생성 −1%/pt · 🍀연 합성 행운 +0.1%p/pt · ✦변화 변종 +2%/pt</span>. 재배분은 <span class="hk">다음 윤회부터</span> 적용 (윤회 패널 → 별빛 배분).' },
     { title: '⚡ 폭주 게이지', body: '합성 1회당 +1 충전(만재 진형 시 ×2). 100 도달 시 ⚡폭주 버튼 발동 → <span class="hk">30초 생성 ×2 + 골드 +20% + 황금 ×1.5</span>. Shift+클릭 = 자동 발동 토글.' },
     { title: '💰 골드 러시', body: '합성 시 낮은 확률(또는 콤보 ×100)로 발동 → <span class="hk">15초 골드 ×2</span>.' },
     { title: '◈ 중앙 칸', body: '그리드 정중앙 칸(◈ 표시)의 표창은 <span class="hk">골드 기여 +25%</span>. 최고 earner를 중앙에 두는 배치 전략.' },
@@ -8434,6 +8665,13 @@ function boot() {
   setTimeout(processAttendance, loaded ? 400 : 1200);
   // Q-Leap 131: 보류된 관문 선택이 있으면 부팅 흐름 뒤에 다시 묻는다
   if (loaded && (state.gatePending || []).length) setTimeout(showGateModal, 2500);
+  // Q-Leap 132: 이미 Lv 61+인 기존 세이브 — 도달 시점 안내가 지나갔으므로 부팅에서 1회 소개
+  if (loaded && getTranscendence() >= 1 && !state.constellationIntroShown) {
+    state.constellationIntroShown = true;
+    addEvent('milestone', '초월 성좌 해금'); // 감사 132.3: 도달 경로와 로그 대칭
+    save(); // 10초 자동 저장 전에 종료해도 안내가 반복되지 않도록 즉시 고정
+    setTimeout(() => toast('🌌 초월 성좌 해금 — 윤회 패널에서 별빛(초월 pt)을 배분하세요'), 3200);
+  }
   setInterval(save, 10000);
   setInterval(repaintGridSprites, 100);
   // Q-Leap 41: check daily-quest rollover every minute

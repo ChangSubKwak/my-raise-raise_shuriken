@@ -3380,6 +3380,172 @@ group('active buff strip (T1a curation)', () => {
   ok(/buff-strip'\)[\s\S]{0,600}getActiveBuffs\(\)/.test(RAW_HTML), 'updateHUD renders the strip from getActiveBuffs');
 });
 
+group('transcendence constellation (Q-Leap 132)', () => {
+  // ── 1) 빈 배분 = 기존 동작 그대로 (마이그레이션 항등) ──
+  withState({ bestLevel: 65 }); // T=5
+  let a = F.getConstellationAlloc();
+  eq(a.wealth, 5, 'unallocated points default to wealth');
+  eq(a.haste + a.fortune + a.mutation, 0, 'no other allocation by default');
+  approx(F.getTranscendMul(), 1 + 5 * 0.02, 'empty allocation reproduces legacy +2%/pt exactly');
+  approx(F.getConstellationSpawnMul(), 1, 'no haste → spawn mul 1');
+  approx(F.getConstellationLuckBonus(), 0, 'no fortune → luck bonus 0');
+  approx(F.getConstellationVariantMul(), 1, 'no mutation → variant mul 1');
+  withState({ bestLevel: 50, constellation: { haste: 3 } }); // T=0 — allocation without points is inert
+  a = F.getConstellationAlloc();
+  eq(a.wealth + a.haste + a.fortune + a.mutation, 0, 'no transcendence → allocation fully inert');
+
+  // ── 2) 배분 효과 + 총량 보존 (안티-인플레이션: 합은 항상 T) ──
+  withState({ bestLevel: 70, constellation: { haste: 4, fortune: 3, mutation: 2 } }); // T=10
+  a = F.getConstellationAlloc();
+  eq(a.wealth, 1, 'wealth = remainder after explicit allocation');
+  eq(`${a.haste},${a.fortune},${a.mutation}`, '4,3,2', 'explicit allocation honored');
+  eq(a.wealth + a.haste + a.fortune + a.mutation, 10, 'allocation always sums to T (pure redistribution)');
+  approx(F.getTranscendMul(), 1.02, 'wealth 1pt → gold +2%');
+  approx(F.getConstellationSpawnMul(), Math.pow(0.99, 4), 'haste −1%/pt compounds');
+  approx(F.getConstellationLuckBonus(), 0.003, 'fortune +0.1%p/pt');
+  approx(F.getConstellationVariantMul(), 1.04, 'mutation +2%/pt');
+
+  // ── 3) 손상 세이브: 초과/NaN/음수/실수는 읽기 시 무해화 ──
+  withState({ bestLevel: 63, constellation: { haste: 99, fortune: 5, mutation: 1 } }); // T=3
+  a = F.getConstellationAlloc();
+  eq(a.haste, 3, 'overflow clamped in id order (haste first)');
+  eq(a.fortune + a.mutation + a.wealth, 0, 'nothing left after clamp');
+  withState({ bestLevel: 65, constellation: { haste: NaN, fortune: -3, mutation: 2.9 } });
+  a = F.getConstellationAlloc();
+  eq(`${a.haste},${a.fortune},${a.mutation},${a.wealth}`, '0,0,2,3', 'NaN/negative → 0, fraction floored');
+
+  // ── 4) 효과 배선: 스폰 간격 · 변종 발생률 (비율 비교라 요일 보너스와 무관) ──
+  withState({ bestLevel: 70, constellation: { haste: 10 } });
+  const spawnWith = F.getSpawnInterval();
+  const varWith0 = F.getVariantSpontaneousMul();
+  withState({ bestLevel: 70 });
+  const spawnWithout = F.getSpawnInterval();
+  approx(spawnWith / spawnWithout, Math.pow(0.99, 10), 'haste wired into getSpawnIntervalBase');
+  withState({ bestLevel: 70, constellation: { mutation: 10 } });
+  approx(F.getVariantSpontaneousMul() / varWith0, 1.2, 'mutation wired into getVariantSpontaneousMul');
+
+  // ── 5) 스테이징: 예약은 즉시 효과 없음 (핫스왑 차단), 초과/무효 별 거부, 활성 동치 → null ──
+  const sStage = withState({ bestLevel: 70, constellation: { haste: 2 } });
+  eq(F.stageConstellationDelta('fortune', 3), true, 'stage +3 fortune accepted');
+  eq(sStage.constellationNext.fortune, 3, 'staged value recorded');
+  eq(sStage.constellationNext.haste, 2, 'staging starts from the ACTIVE allocation');
+  approx(F.getConstellationLuckBonus(), 0, 'staged change has NO live effect before prestige');
+  approx(F.getConstellationSpawnMul(), Math.pow(0.99, 2), 'active haste unchanged while staged');
+  eq(F.stageConstellationDelta('haste', 99), false, 'overflow beyond T rejected');
+  eq(F.stageConstellationDelta('bogus', 1), false, 'unknown star rejected');
+  eq(F.stageConstellationDelta('wealth', 1), false, 'wealth is remainder-only, not directly editable');
+  eq(F.stageConstellationDelta('fortune', -3), true, 'stage back down accepted');
+  eq(sStage.constellationNext, null, 'staged-equal-to-active normalizes to null (no pending tag)');
+
+  // ── 6) 적용: applyConstellationNext + doPrestige 통합 ──
+  const sApply = withState({ bestLevel: 70, constellation: { haste: 2 }, constellationNext: { haste: 5, fortune: 1 } });
+  eq(F.applyConstellationNext(), true, 'apply consumes the staged allocation');
+  eq(sApply.constellation.haste, 5, 'staged became active');
+  eq(sApply.constellationNext, null, 'staging slot cleared');
+  eq(sApply.stats.constellationAssigns, 1, 'assign stat credited');
+  eq(F.applyConstellationNext(), false, 'no-op without a staged allocation');
+  const sPre = withState({ bestLevel: 70, runBestLevel: 10, constellationNext: { fortune: 2 } });
+  F.doPrestige();
+  eq((sPre.constellation || {}).fortune, 2, 'doPrestige applies the staged reallocation');
+  eq(sPre.constellationNext, null, 'doPrestige clears the staging slot');
+  const sKeep = withState({ bestLevel: 70, runBestLevel: 10, constellation: { haste: 3 } });
+  F.doPrestige();
+  eq((sKeep.constellation || {}).haste, 3, 'active allocation survives prestige when nothing staged');
+
+  // ── 7) 연의 별: 점프 임계 실측 (전역 — 각인 룬과 달리 자동 합성에도 적용) ──
+  const origRandom = Math.random;
+  const wkLuck = (F.weekdayBonus().luckPlus || 0);
+  Math.random = () => 0.05 + wkLuck + 0.005; // fortune 10pt(+1%p) 창 안, 기본 임계 밖
+  try {
+    const sNo = withState({ bestLevel: 70, grid: gridFrom([5, 5, null, null, null, null]) });
+    F.tryMerge(0, 1);
+    eq(sNo.grid[1].level, 6, 'no fortune star → jump 1 at this roll');
+    const sYes = withState({ bestLevel: 70, constellation: { fortune: 10 }, grid: gridFrom([5, 5, null, null, null, null]) });
+    F.tryMerge(0, 1);
+    eq(sYes.grid[1].level, 7, 'fortune star converts the same roll into a +2 jump');
+    const sAuto = withState({ bestLevel: 70, constellation: { fortune: 10 }, grid: gridFrom([5, 5, null, null, null, null]) });
+    F.autoMergeStep();
+    eq(sAuto.grid[0].level, 7, 'fortune star applies to AUTO merges too (global, unlike the cell rune)');
+  } finally { Math.random = origRandom; }
+
+  // ── 8) 세이브 검증 ──
+  const sV1 = withState({ bestLevel: 70, constellation: [1, 2], constellationNext: 'junk' });
+  F.validateAndRepairState();
+  ok(!Array.isArray(sV1.constellation) && typeof sV1.constellation === 'object', 'array constellation reset to {}');
+  eq(sV1.constellationNext, null, 'junk constellationNext reset to null');
+  const sV2 = withState({ bestLevel: 63, constellation: { haste: 99, bogus: 3, fortune: 0 } });
+  F.validateAndRepairState();
+  eq(sV2.constellation.haste, 3, 'validation clamps overflow to T (id order)');
+  ok(!('bogus' in sV2.constellation), 'unknown star keys dropped');
+  ok(!('fortune' in sV2.constellation), 'zero entries not stored');
+  const sV3 = withState({ bestLevel: 65, constellationIntroShown: 'yes', constellationNext: {} });
+  F.validateAndRepairState();
+  eq(sV3.constellationIntroShown, true, 'intro flag coerced to boolean');
+  eq(sV3.constellationNext, null, 'staged equal to active (both empty) normalizes to null');
+  // '전부 부로 되돌리기' 예약(모두 0)은 활성과 다르면 리로드에서 살아남아야 한다 (자체 감사 발견)
+  const sV4 = withState({ bestLevel: 70, constellation: { haste: 5 }, constellationNext: { haste: 0, fortune: 0, mutation: 0 } });
+  F.validateAndRepairState();
+  ok(sV4.constellationNext !== null, 'all-zero staged reallocation survives reload when it differs from active');
+  eq(F.applyConstellationNext(), true, 'and still applies at prestige');
+  eq(F.getConstellationAlloc().wealth, 10, 'returning everything to wealth works end-to-end');
+  const sV5 = withState({ bestLevel: 70, constellation: { haste: 5 }, constellationNext: { haste: 5 } });
+  F.validateAndRepairState();
+  eq(sV5.constellationNext, null, 'staged deep-equal to active normalized to null by validation');
+
+  // ── 9) 패널 섹션 + 실적 + 구조 가드 ──
+  withState({ bestLevel: 50 });
+  eq(F.buildConstellationSection(), '', 'section fully hidden before transcendence (progressive disclosure)');
+  withState({ bestLevel: 70, constellation: { haste: 4 } });
+  const sect = F.buildConstellationSection();
+  ok(/초월 성좌/.test(sect) && /10pt/.test(sect) && /⚡4/.test(sect), 'section shows pt total + allocation summary');
+  ok(C.CONSTELLATION_STARS.length === 4 && C.CONSTELLATION_ALLOC_IDS.length === 3, 'star roster: 4 stars, 3 allocatable (wealth = remainder)');
+  ok(C.ACHIEVEMENTS.some(x => x.id === 'a_constellation'), 'constellation achievement registered');
+  const aC = C.ACHIEVEMENTS.find(x => x.id === 'a_constellation');
+  eq(aC.check({ stats: { constellationAssigns: 1 } }), true, 'a_constellation at first applied reassign');
+  eq(aC.check({}), false, 'a_constellation tolerates missing stats');
+  ok(/getTowerSpawnMul\(\) \* getConstellationSpawnMul\(\)/.test(RAW_HTML), 'haste term inside the spawn base product (floor applies after)');
+  ok(/\+ getConstellationLuckBonus\(\)/.test(RAW_HTML), 'fortune term in tryMerge luckBonus (no isAuto gate — global)');
+  ok(/m \*= getConstellationVariantMul\(\)/.test(RAW_HTML), 'mutation term in getVariantSpontaneousMul (ritual parity automatic)');
+  ok(/if \(applyConstellationNext\(\)\)/.test(RAW_HTML), 'doPrestige applies the staged allocation');
+  ok(/id="constellation-modal"/.test(RAW_HTML), 'constellation modal present');
+  ok((RAW_HTML.match(/buildConstellationSection\(\)/g) || []).length >= 3, 'section rendered in BOTH renderPrestige branches (def + 2 call sites)');
+  ok(/getTranscendence\(\) >= 1 && !state\.constellationIntroShown/.test(RAW_HTML), 'boot-time intro for legacy saves already past Lv 61');
+
+  // ── 10) 감사 132 수정 회귀 ──
+  // 132.2: 비유한 delta는 used > T 가드를 통과해 NaN을 저장했다 → 페일-클로즈
+  const sN = withState({ bestLevel: 70, constellation: {}, constellationNext: null });
+  eq(F.stageConstellationDelta('haste', NaN), false, 'NaN delta rejected (fail closed)');
+  eq(sN.constellationNext, null, 'and nothing staged');
+  eq(F.stageConstellationDelta('haste', Infinity), false, 'Infinity delta rejected');
+  eq(sN.constellationNext, null, 'still nothing staged');
+  eq(F.stageConstellationDelta('haste', 3), true, 'finite delta still works');
+  eq(sN.constellationNext.haste, 3, 'staged normally after rejected garbage');
+
+  // 132.4/132.9: 소수 bestLevel(변조)에서 검증의 T와 읽기 경로의 T가 일치 (정수 pt)
+  withState({ bestLevel: 70.7, constellation: { haste: 3 } });
+  eq(F.getTranscendence(), 10, 'fractional bestLevel floors to integer transcend pts');
+  const aFrac = F.getConstellationAlloc();
+  eq(aFrac.wealth, 7, 'wealth remainder stays an integer (no float leak into UI strings)');
+  eq(aFrac.wealth + aFrac.haste + aFrac.fortune + aFrac.mutation, 10, 'allocation still sums to floored T');
+
+  // 132.1: 신속의 별 inert 판정 — 0.6s 하한에 흡수되면 추가 pt 기여가 0
+  const sH = withState({ bestLevel: 70, constellation: {}, upgrades: Object.assign(defaultUpgrades(), { spawnRate: 0 }) });
+  eq(F.isConstellationHasteInert(), false, 'haste is live at the default spawn interval');
+  ok(F.getSpawnIntervalRaw() > 0.6, 'raw (unfloored) interval exposed for the inert check');
+  sH.upgrades.spawnRate = 80; // 엔드게임: 하한 도달
+  ok(F.getSpawnIntervalRaw() <= 0.6, 'deep spawnRate pins the raw interval under the floor');
+  eq(F.isConstellationHasteInert(), true, 'haste flagged inert once the floor absorbs it');
+  eq(F.getSpawnIntervalBase(), 0.6, 'floored base unchanged by the raw/base split');
+  ok(/isConstellationHasteInert\(\)/.test(RAW_HTML), 'inert warning wired into the modal row');
+
+  // 132.5 / 132.7 / 132.8 / N6: UI 패리티 구조 가드
+  ok(/🌌 성좌 예약/.test(RAW_HTML), 'prestige confirm modal lists the staged reallocation (parity with 🗼 시련 예약)');
+  ok(/closeEngraveModal\(\);\s*\n\s*closeConstellationModal\(\);/.test(RAW_HTML), 'doPrestige closes the constellation modal too (hygiene parity)');
+  ok(/label: '💰 부\(富\)의 별'/.test(RAW_HTML), 'gold breakdown labels the transcend factor as the wealth star');
+  ok(!/✦\$\{(a|cn)\.mutation/.test(RAW_HTML), 'mutation star does not reuse the golden-variant ✦ glyph');
+  ok(/constelModal\._sig/.test(RAW_HTML), 'open modal re-renders when T changes (signature gate)');
+});
+
 // ---- helpers ----
 function defaultUpgrades() {
   return { maxShuriken: 0, spawnRate: 0, spawnBatch: 0, firerate: 0, baseDmg: 0, goldMul: 0, spawnLevel: 0, luckChance: 0 };

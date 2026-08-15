@@ -113,7 +113,7 @@ function loadGame() {
     getTowerSpawnMul, getTowerGoldMul, isTowerAutoBanned, isTowerRitualBanned, isTowerSpawnLv1,
     checkTowerProgress, abandonTower,
     getActiveBuffs, processOfflineReward,
-    isForgeUnlocked, getForgeMode, getForgeSpawnMul, getForgeLevelDelta, getSpawnIntervalBase,
+    isForgeUnlocked, getForgeMode, getForgeSpawnMul, getForgeLevelDelta, getSpawnIntervalBase, getSpawnIntervalRaw,
     getAmbienceParams, startAmbience, stopAmbience, updateAmbience, getAudio,
     getRevealState, applyReveal,
     getUpgradeCost, isUpgradeMaxed, activateFrenzy,
@@ -121,8 +121,10 @@ function loadGame() {
     getGateDef, checkTierGates, claimGate, showGateModal,
     isEngraveUnlocked, engraveCount, getEngraveCost, getEngraving,
     engraveWealthMul, engraveForgeMul, engraveFortuneBonus, applyEngraving, removeEngraving,
+    getConstellationAlloc, getConstellationSpawnMul, getConstellationLuckBonus, getConstellationVariantMul,
+    stageConstellationDelta, applyConstellationNext, buildConstellationSection, isConstellationHasteInert,
   },
-  consts: { FRENZY_MAX, FRENZY_DURATION, TRANSCEND_BASE, DAILY_CHALLENGE_TARGET, SET_DEFS, ACHIEVEMENTS, LEVEL_NAMES, TRANSCEND_NAMES_61_80, EXPEDITION_TIERS, EXPEDITION_UNLOCK_LV, TOWER_FLOORS, TOWER_UNLOCK_PRESTIGE, TOWER_DEEP_PATTERNS, TOWER_MAX_FLOOR, ENGRAVE_RUNES, ENGRAVE_COSTS, ENGRAVE_MAX, ENGRAVE_SWAP_COST, ENGRAVE_UNLOCK_PRESTIGE, FORGE_MODES, FORGE_UNLOCK_LV, UPGRADES, SKILLS, TIER_GATES },
+  consts: { FRENZY_MAX, FRENZY_DURATION, TRANSCEND_BASE, DAILY_CHALLENGE_TARGET, SET_DEFS, ACHIEVEMENTS, LEVEL_NAMES, TRANSCEND_NAMES_61_80, EXPEDITION_TIERS, EXPEDITION_UNLOCK_LV, TOWER_FLOORS, TOWER_UNLOCK_PRESTIGE, TOWER_DEEP_PATTERNS, TOWER_MAX_FLOOR, ENGRAVE_RUNES, ENGRAVE_COSTS, ENGRAVE_MAX, ENGRAVE_SWAP_COST, ENGRAVE_UNLOCK_PRESTIGE, CONSTELLATION_STARS, CONSTELLATION_ALLOC_IDS, FORGE_MODES, FORGE_UNLOCK_LV, UPGRADES, SKILLS, TIER_GATES },
 };
 `;
 
