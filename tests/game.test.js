@@ -3742,7 +3742,7 @@ group('삼재의 결 / grain (Q-Leap 133)', () => {
 
   // ── 12) 감사 133 수정 회귀 ──
   // 133.1: 표식 자리 (기하 충돌은 tests/browser-verify.js가 실측 — 여기선 자리 고정만 지킨다)
-  ok(/\.cell \.grain-mark \{\s*position: absolute; top: 50%; left: 2px;/.test(RAW_SCRIPT),
+  ok(/\.cell \.grain-mark \{\s*position: absolute; top: 50%; left: 1px;/.test(RAW_SCRIPT),
      '결 표식은 좌측 중앙 (상단 중앙은 Lv 라벨을 덮었다 — browser-verify의 충돌 가드와 한 쌍)');
   ok(!/칸 하단 표시/.test(RAW_SCRIPT), '도움말이 표식 위치를 잘못 안내하지 않음');
   // 133.3: 소수 폭주 충전이 오프라인 모달에 부동소수 원문으로 새지 않는다
@@ -3767,14 +3767,107 @@ group('삼재의 결 / grain (Q-Leap 133)', () => {
   ok(/n > 0 && isGrainUnlocked\(\)/.test(RAW_SCRIPT), '결 미해금 구간에선 순/혼 태그를 노출하지 않음 (점진 공개)');
 
   // ── 14) 칸 마크 충돌 스윕 회귀 (기하는 browser-verify가 실측) ──
-  ok(/\.cell \.star-mark \{\s*position: absolute; bottom: 1px; left: 15px;/.test(RAW_SCRIPT),
-     '별 표식이 각인 룬 자리에서 비켜남 (두 글자가 통째로 겹치던 잠복 결함)');
-  ok(/\.cell \.dark-mark \{\s*position: absolute; top: 24px;/.test(RAW_SCRIPT),
-     '검은 표식이 Lv 라벨 띠 아래로 내려감 (6열 3자리 Lv 충돌)');
+  // 하단 마크열은 각인(1) · 시세(13) · ★(27) · ✦(right 1)의 4슬롯으로 고정 — 슬롯을 옮기면
+  // browser-verify의 충돌 가드(애니메이션 전주기 최악 박스)를 먼저 통과시켜야 한다.
+  ok(/\.cell \.star-mark \{\s*position: absolute; bottom: 1px; left: 27px;/.test(RAW_SCRIPT),
+     '별 표식이 각인·시세 슬롯 오른쪽의 전용 슬롯으로 (left 4→15는 룬을 1.7px 남기고 못 비껴났다)');
+  ok(/\.cell \.market-mark \{\s*position: absolute; bottom: 2px; left: 13px;/.test(RAW_SCRIPT),
+     '시세 표식이 각인 룬 자리에서 비켜남 (bottom-left에 둘이 13.7px 통째로 겹쳐 있었다)');
+  ok(/\.cell \.dark-mark \{\s*position: absolute; top: 27px; right: 1px;/.test(RAW_SCRIPT),
+     '검은 표식은 우측 중간 띠 (top 24 = ★ 행과 15px 겹쳤다 — 하단 4슬롯에 자리가 없다)');
+  ok(/#grid\[data-cols="6"\] \.cell \.dark-mark \{ font-size: 8px; \}/.test(RAW_SCRIPT),
+     '6열에서는 마크도 한 단계 축소 (48px 칸에 하단 4슬롯이 들어가지 않는다)');
   ok(/border-radius: 5px; z-index: 4;/.test(RAW_SCRIPT),
      '합성 미리보기 알약이 마크(z-index 3) 위로 — 선택 중 결과 Lv이 갉히지 않음');
   ok(/gridEl\.dataset\.cols = cols;/.test(RAW_SCRIPT) && /#grid\[data-cols="6"\] \.cell \.lv-label/.test(RAW_SCRIPT),
      '6열에서만 Lv 라벨 축소 — 세 자리 표기가 🔒와 겹치던 3.3px 해소 (data-cols 훅)');
+});
+
+group('findRitualGroups — 의식 그룹 탐색 (커버리지 공백 보강)', () => {
+  // 의식 발동과 v3.82.2의 순/혼 태그가 둘 다 이 함수에 의존하는데 단위 테스트가 하나도 없었다.
+  // 비직사각형 그리드(마지막 행이 부분)에서 4방향 BFS를 도는 코드 = 팬텀 칸 위험의 정중앙.
+  const setGrid = (size, spec) => {
+    const s = withState({ upgrades: Object.assign(defaultUpgrades(), { maxShuriken: size - 6 }) });
+    s.grid = new Array(size).fill(null);
+    for (const k of Object.keys(spec)) {
+      const v = spec[k];
+      s.grid[+k] = typeof v === 'number'
+        ? { id: +k + 1, level: v, fireTimer: 0 }
+        : Object.assign({ id: +k + 1, fireTimer: 0 }, v);
+    }
+    return s;
+  };
+  const groupsOf = () => F.findRitualGroups().map(g => ({ lv: g.level, idx: g.indices.slice().sort((a, b) => a - b) }));
+
+  setGrid(6, { 0: 5, 1: 5, 2: 5 });
+  eq(F.getGridCols(), 3, 'size 6 → 3열 (아래 인접 판정의 전제)');
+  eq(JSON.stringify(groupsOf()), JSON.stringify([{ lv: 5, idx: [0, 1, 2] }]), '가로 3연결 = 그룹 1개');
+
+  setGrid(6, { 0: 5, 1: 5 });
+  eq(F.findRitualGroups().length, 0, '2개 연결은 의식 대상이 아님');
+
+  setGrid(6, { 0: 5, 4: 5, 2: 5 });
+  eq(F.findRitualGroups().length, 0, '대각선은 인접으로 치지 않는다');
+
+  setGrid(6, { 0: 5, 3: 5, 4: 5 });
+  eq(JSON.stringify(groupsOf()), JSON.stringify([{ lv: 5, idx: [0, 3, 4] }]), 'L자(세로+가로) 3연결');
+
+  setGrid(6, { 0: 5, 1: { level: 5, locked: true }, 2: 5 });
+  eq(F.findRitualGroups().length, 0, '잠긴 표창이 사이에 있으면 연결이 끊긴다');
+
+  setGrid(6, { 0: 5, 1: 5, 2: 5, 3: 7, 4: 7, 5: 7 });
+  const gLv = groupsOf();
+  ok(gLv.length === 2 && gLv.every(g => g.idx.length === 3), '레벨이 다르면 별개 그룹으로 분리');
+
+  // 행 경계 랩어라운드 금지: 4열에서 3(0행 끝)과 4(1행 처음)는 이어지면 안 된다
+  setGrid(12, { 3: 5, 4: 5, 5: 5 });
+  eq(F.getGridCols(), 4, 'size 12 → 4열');
+  eq(F.findRitualGroups().length, 0, '행 경계에서 가로로 이어붙지 않는다 (4·5는 2개뿐)');
+
+  // 비직사각형: size 7 = 4열 + 마지막 행 3칸. 팬텀 인덱스(>=size)가 그룹에 섞이면 안 된다
+  const s7 = setGrid(7, { 4: 5, 5: 5, 6: 5 });
+  const g7 = groupsOf();
+  eq(g7.length, 1, '부분 행 안의 3연결은 정상 그룹');
+  ok(g7[0].idx.every(i => i < s7.grid.length), '팬텀 인덱스(idx >= size)가 그룹에 들어가지 않는다');
+
+  setGrid(12, { 0: 5, 1: 5, 2: 5, 3: 5, 4: 5 });
+  const flat = groupsOf().flatMap(g => g.idx);
+  eq(new Set(flat).size, flat.length, '한 칸이 두 그룹에 중복 등록되지 않는다 (visited 정확)');
+});
+
+group('isChallenge / levelPoints / getHofRankTitle (커버리지 공백 보강)', () => {
+  // isChallenge는 점프·황금·스폰·시너지 공식의 게이트다 — id 오타 하나로 그날 도전이 통째로 죽는다.
+  withState({ dailyChallengeId: 'jumpBonus' });
+  eq(F.isChallenge('jumpBonus'), true, '활성 도전은 true');
+  eq(F.isChallenge('goldenLuck'), false, '다른 도전은 false');
+  withState({ dailyChallengeId: '' });
+  eq(F.isChallenge('jumpBonus'), false, '도전 없음이면 전부 false');
+  eq(F.isChallenge(undefined), false, 'undefined 조회도 안전');
+  // 코드가 실제로 조회하는 id가 전부 정의 테이블에 있는지 (오타 회귀 가드)
+  const usedIds = [...new Set([...RAW_HTML.matchAll(/isChallenge\('([a-zA-Z0-9_]+)'\)/g)].map(m => m[1]))];
+  const block = RAW_HTML.slice(RAW_HTML.indexOf('DAILY_CHALLENGES'), RAW_HTML.indexOf('DAILY_CHALLENGES') + 2000);
+  const definedIds = [...new Set([...block.matchAll(/id:\s*'([a-zA-Z0-9_]+)'/g)].map(m => m[1]))];
+  ok(usedIds.length >= 5, `isChallenge 조회 id ${usedIds.length}종 발견`);
+  eq(usedIds.filter(id => !definedIds.includes(id)).join(','), '', '조회되는 도전 id가 전부 DAILY_CHALLENGES에 정의됨');
+
+  eq(F.levelPoints(1), 3, 'Lv1 = 3각');
+  eq(F.levelPoints(4), 5, 'Lv4 = 5각');
+  eq(F.levelPoints(100), 12, '꼭짓점 수는 12각에서 포화');
+  let mono = true;
+  for (let lv = 1; lv < 120; lv++) if (F.levelPoints(lv + 1) < F.levelPoints(lv)) mono = false;
+  ok(mono, '레벨이 올라도 꼭짓점 수가 줄지 않는다 (단조)');
+
+  // 칭호 우선순위가 뒤집히면 상위 플레이어가 하위 칭호를 본다
+  withState({ prestigeCount: 10, bestLevel: 5 });
+  eq(F.getHofRankTitle(), '윤회를 거듭한 초월자', '윤회 10회가 최우선');
+  withState({ prestigeCount: 0, bestLevel: 61 });
+  eq(F.getHofRankTitle(), '무한을 넘어선 자', '초월(Lv61+)이 그다음');
+  withState({ prestigeCount: 0, bestLevel: 40 });
+  eq(F.getHofRankTitle(), '도(道)에 이른 표창술사', 'Lv40 경계');
+  withState({ prestigeCount: 0, bestLevel: 39 });
+  eq(F.getHofRankTitle(), '극창의 경지에 선 자', 'Lv39는 한 단계 아래');
+  withState({ prestigeCount: 0, bestLevel: 1 });
+  eq(F.getHofRankTitle(), '수행 중인 표창술사', '기본 칭호');
 });
 
 // ---- helpers ----

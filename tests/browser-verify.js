@@ -210,54 +210,101 @@ function ok(cond, msg) {
   // 상단 중앙 → Lv 라벨과 충돌해 'Lv12'가 'Lv天'으로 읽혔다). 존재 여부가 아니라 기하를 잰다.
   console.log('Q-Leap 133 결 표식 충돌');
   const markCollisions = await page.evaluate(() => {
-    // 6열(최악) 그리드 + 두 자리 Lv + 모든 마크 종류를 한 칸에 몰아넣은 상태를 만든다
+    // 6열(최악) 그리드 + 세 자리 Lv + 모든 마크 종류를 한 칸에 몰아넣은 상태를 만든다.
+    // 각인/시세 마크는 '우연히 남아 있길' 기대하면 안 된다 — 결정적으로 만들어 넣는다
+    // (구 버전 fixture는 engravings를 세팅하지 않고 sellMode도 꺼둬서 .engrave-mark /
+    //  .market-mark가 아예 렌더되지 않았고, 두 마크가 얽힌 충돌을 구조적으로 볼 수 없었다).
     state.bestLevel = 40; state.runBestLevel = 40;
     state.upgrades.maxShuriken = 24;
     state.grid = new Array(getGridSize()).fill(null);
+    const marketLv = getMarketLevel();
     const grains = ['cheon', 'ji', 'in'];
+    const runes = ['wealth', 'forge', 'fortune'];
+    state.engravings = {};
     for (let i = 0; i < state.grid.length; i++) {
       state.grid[i] = {
-        id: 5000 + i, level: 12 + (i % 3) * 44, fireTimer: 0, grain: grains[i % 3],
+        id: 5000 + i, level: (i % 4 === 0) ? marketLv : 12 + (i % 3) * 44, fireTimer: 0, grain: grains[i % 3],
         locked: i % 7 === 0, golden: i % 5 === 0, star: i % 6 === 0, dark: i % 8 === 0,
       };
+      if (i % 3 === 0) state.engravings[i] = runes[(i / 3) % 3];      // 각인 마크가 실제로 그려지게
     }
-    selectedIdx = 1; // .mergeable 미리보기까지 렌더되게
+    state.blessedIdx = 5;         // 🙏 의사요소 (🔒과 같은 자리 — 근사 박스로 커버)
+    sellMode = true;              // .market-mark는 판매 모드에서만 렌더된다
+    selectedIdx = 1;              // .mergeable 미리보기까지 렌더되게
     renderGrid();
     // 결 표식만이 아니라 칸에 얹히는 모든 마크를 서로 대조한다 (감사 133.1의 교훈 일반화:
     // 133 스윕에서 ★×각인 10.6px, Lv라벨×🌑 10.3px 같은 잠복 결함이 이 방식으로만 드러났다).
     // 합성 미리보기(.mergeable::after)는 z-index 4로 마크를 '의도적으로' 덮는 불투명 오버레이라 제외.
     const SEL = ['.lv-label', '.grain-mark', '.golden-mark', '.star-mark', '.dark-mark',
                  '.market-mark', '.synergy-dot', '.engrave-mark'];
+    // ★/✦/🌑/시너지 dot은 transform(scale·rotate) 애니메이션을 달고 있다. getBoundingClientRect는
+    // '지금 이 순간'의 변형된 박스를 돌려주므로, renderGrid 직후(모든 애니메이션 0% 키프레임 =
+    // 모든 박스가 최소)에 한 번만 재면 항상 통과한다 — 실제로 300ms 뒤 같은 보드에서 ★×🌑이
+    // 14.6px 겹쳤다. 애니메이션을 멈추고 한 주기를 균등 샘플해 '최악의 박스'(합집합)를 잰다.
+    const anims = document.getAnimations().filter(a => a.effect && a.effect.target
+      && a.effect.target.closest && a.effect.target.closest('#grid'));
+    anims.forEach(a => a.pause());
+    const PHASES = 24;
+    const union = new Map(); // el -> {left,right,top,bottom}
+    for (let p = 0; p < PHASES; p++) {
+      for (const a of anims) {
+        const d = (a.effect.getComputedTiming() || {}).duration;
+        if (typeof d === 'number' && isFinite(d) && d > 0) a.currentTime = d * (p / PHASES);
+      }
+      for (const cell of document.querySelectorAll('#grid .cell')) {
+        for (const sel of SEL) {
+          const el = cell.querySelector(sel);
+          if (!el) continue;
+          const r = el.getBoundingClientRect();
+          const u = union.get(el);
+          if (!u) union.set(el, { left: r.left, right: r.right, top: r.top, bottom: r.bottom });
+          else {
+            u.left = Math.min(u.left, r.left); u.right = Math.max(u.right, r.right);
+            u.top = Math.min(u.top, r.top);   u.bottom = Math.max(u.bottom, r.bottom);
+          }
+        }
+      }
+    }
+    anims.forEach(a => a.play());
     const hit = (a, b) => !(a.right <= b.left || b.right <= a.left || a.bottom <= b.top || b.bottom <= a.top);
-    let collisions = 0, checked = 0, worst = null;
+    let collisions = 0, checked = 0, worst = null, seenMarks = new Set();
+    const pairWorst = new Map(); // 'a × b' -> px (진단용: 실패 시 전 목록을 뿌린다)
     for (const cell of document.querySelectorAll('#grid .cell')) {
       if (!cell.querySelector('.grain-mark')) continue;
       checked++;
       const found = [];
       for (const sel of SEL) {
         const el = cell.querySelector(sel);
-        if (el) found.push([sel, el.getBoundingClientRect()]);
+        if (el) { found.push([sel, union.get(el)]); seenMarks.add(sel); }
       }
       // 잠금/축복은 의사요소라 rect를 못 잡는다 — 실제 CSS 값(top:2 right:3, 10~11px)으로 근사
       const cr = cell.getBoundingClientRect();
       if (cell.classList.contains('locked-piece') || cell.classList.contains('blessed')) {
         found.push(['::lock', { left: cr.right - 17, right: cr.right - 3, top: cr.top + 2, bottom: cr.top + 15 }]);
+        seenMarks.add('::lock');
       }
       for (let i = 0; i < found.length; i++) {
         for (let j = i + 1; j < found.length; j++) {
           if (hit(found[i][1], found[j][1])) {
             collisions++;
             const ox = Math.min(found[i][1].right, found[j][1].right) - Math.max(found[i][1].left, found[j][1].left);
-            if (!worst || ox > worst.ox) worst = { sel: `${found[i][0]} × ${found[j][0]}`, ox: +ox.toFixed(1) };
+            const key = `${found[i][0]} × ${found[j][0]}`;
+            pairWorst.set(key, Math.max(pairWorst.get(key) || 0, +ox.toFixed(1)));
+            if (!worst || ox > worst.ox) worst = { sel: key, ox: +ox.toFixed(1) };
           }
         }
       }
     }
-    return { collisions, checked, worst, cols: getGridCols() };
+    sellMode = false;
+    const pairs = [...pairWorst.entries()].sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k} ${v}px`);
+    return { collisions, checked, worst, pairs, cols: getGridCols(), marks: [...seenMarks].sort() };
   });
   ok(markCollisions.checked >= 20 && markCollisions.cols === 6, `결: 6열 ${markCollisions.checked}칸에서 표식 렌더`);
+  // fixture 커버리지 자체를 고정한다 — 마크가 렌더되지 않으면 충돌 0은 아무 의미가 없다
+  ok(markCollisions.marks.length >= 9,
+    `마크 9종 전부 렌더 (fixture 커버리지) — ${markCollisions.marks.join(' ')}`);
   ok(markCollisions.collisions === 0,
-    `칸 마크 전수 무충돌 (6열 최악 조건)${markCollisions.worst ? ` — ${markCollisions.worst.sel} ${markCollisions.worst.ox}px 겹침` : ''}`);
+    `칸 마크 전수 무충돌 (6열 최악 조건 · 애니메이션 전주기)${markCollisions.pairs.length ? ` — ${markCollisions.pairs.join(' / ')}` : ''}`);
   await clearOverlays(); await page.waitForTimeout(200); await page.screenshot({ path: path.join(SHOTS, '07-grain-marks.png') });
 
   // ================= console errors =================
