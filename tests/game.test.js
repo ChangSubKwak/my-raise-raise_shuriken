@@ -20,6 +20,8 @@ const C = G.consts;
 
 // Raw HTML for structural guards (button presence + handler wiring survives UI rebuilds).
 const RAW_HTML = require('fs').readFileSync(require('path').join(__dirname, '..', 'index.html'), 'utf8');
+// 페이싱 시뮬레이터 원문 — 커버리지 가드용 (감사 133.2: 결-인지 프로파일이 사라지면 상한 측정이 끊긴다)
+const RAW_SIM = require('fs').readFileSync(require('path').join(__dirname, 'simulate.js'), 'utf8');
 
 // Helper: build a clean state and patch fields, then install it.
 function withState(patch) {
@@ -3582,13 +3584,17 @@ group('삼재의 결 / grain (Q-Leap 133)', () => {
       eq(m, g.channel === ch ? C.GRAIN_PURE_MUL : C.GRAIN_OFF_MUL, `${g.ch}: ${ch} 채널 배수`);
       sum += m;
     }
-    approx(sum, C.GRAIN_PURE_MUL + 2 * C.GRAIN_OFF_MUL, `${g.ch}: 세 채널 합이 동일 (대칭 — 우열 없음)`, 1e-9);
-    ok(sum < 3, `${g.ch}: 합이 혼합(3.0) 미만 — 특화는 세금을 낸다 (제련 모드와 같은 반지배 규칙)`);
+    // 감사 133.4: 이 '합'은 배수 대칭을 고정할 뿐 안티-인플레이션 근거가 아니다 (세 채널은 서로 다른
+    // 자원이고 채널은 매 합성마다 선택되므로 합이 아니라 max가 지배한다). 근거는 아래 ≈0.99와 isAuto 배제.
+    approx(sum, C.GRAIN_PURE_MUL + 2 * C.GRAIN_OFF_MUL, `${g.ch}: 세 채널 합이 동일 (배수 대칭 — 결 사이에 우열 없음)`, 1e-9);
   }
   for (const ch of channels) eq(F.grainChannelMul(null, ch), 1, `혼합 합성은 ${ch} 채널 ×1 (오늘과 동일)`);
-  // 결을 모르고 아무렇게나 합치는 플레이어의 기대값은 사실상 불변 (2/3×1 + 1/3×평균)
+  // 실제 안티-인플레이션 근거 (1): 결을 모르고 아무렇게나 합치는 플레이어의 기대값은 사실상 불변
   const pureAvg = (C.GRAIN_PURE_MUL + 2 * C.GRAIN_OFF_MUL) / 3;
   approx(2 / 3 + (1 / 3) * pureAvg, 1, '무관심 플레이의 기대 채널값 ≈ 1 (인플레이션 없음)', 0.02);
+  ok(/폐기된 논증/.test(RAW_HTML), '"합 2.9 < 3.0" 세금 논증이 폐기됨으로 명시 표시 (감사 133.4)');
+  ok(/max가 지배한다/.test(RAW_HTML), '정정된 안티-인플레이션 근거(합이 아니라 max)가 설계 주석에 명시됨');
+  ok(/흡수 상태/.test(RAW_HTML), '결이 흡수 상태라는 알려진 상한이 설계 주석에 기록됨 (감사 133.2)');
 
   // ── 3) 순(純) 판정 ──
   const P = (grain) => ({ id: 1, level: 5, fireTimer: 0, grain });
@@ -3733,6 +3739,22 @@ group('삼재의 결 / grain (Q-Leap 133)', () => {
   eq((RAW_SCRIPT.match(/takeNextGrain\(\)/g) || []).length, 4, '회전 소비 진입점은 정의 1 + 호출 3 (생성·관문·출석)');
   ok(/level: c\.level, fireTimer: 0, golden: !!c\.golden, star: !!c\.star, dark: !!c\.dark, grain: c\.grain/.test(RAW_SCRIPT),
      '계승 경로가 결을 명시적으로 승계');
+
+  // ── 12) 감사 133 수정 회귀 ──
+  // 133.1: 표식 자리 (기하 충돌은 tests/browser-verify.js가 실측 — 여기선 자리 고정만 지킨다)
+  ok(/\.cell \.grain-mark \{\s*position: absolute; top: 50%; left: 2px;/.test(RAW_SCRIPT),
+     '결 표식은 좌측 중앙 (상단 중앙은 Lv 라벨을 덮었다 — browser-verify의 충돌 가드와 한 쌍)');
+  ok(!/칸 하단 표시/.test(RAW_SCRIPT), '도움말이 표식 위치를 잘못 안내하지 않음');
+  // 133.3: 소수 폭주 충전이 오프라인 모달에 부동소수 원문으로 새지 않는다
+  ok(/const frenzyShown = Math\.round\(frenzyAdded \* 10\) \/ 10;/.test(RAW_SCRIPT),
+     '오프라인 보상 표시가 소수 충전을 반올림 (0.35가 "+0"이 되는 floor는 금지)');
+  const frenzyLeak = 100 - [...Array(279)].reduce((a) => a + 0.35, 0); // 감사가 실측한 누적 경로
+  ok(String(frenzyLeak).length > 6, '전제 확인: 소수 누적은 실제로 긴 부동소수를 만든다');
+  eq(Math.round(frenzyLeak * 10) / 10, 2.4, '표시 규칙이 그 값을 "+2.4"로 다듬는다');
+  // 133.2: 결은 흡수 상태 — 시뮬레이터가 결-인지 상한을 측정하는 프로파일을 갖는다
+  ok(/findGrainSteeredPair/.test(RAW_SIM) && /policy === 'grain'/.test(RAW_SIM),
+     '시뮬레이터에 결-인지(목적지 스티어링) 프로파일 추가 — 수동 최적화 상한 측정');
+  ok(/F\.findNextAutoMergePair\(\)/.test(RAW_SIM), '기존 blind 기준선(승인된 PACING 기준)은 유지');
 });
 
 // ---- helpers ----

@@ -1190,10 +1190,13 @@
     0%,100% { transform: scale(0.92); opacity: 0.85; }
     50%     { transform: scale(1.08); opacity: 1; }
   }
-  /* Q-Leap 133: 삼재의 결 — 상단 중앙. 하단 중앙은 .mergeable::after('→ Lv N' 미리보기)가
-     쓰므로 합성 후보일 때 결 표식이 가려진다 (브라우저 검증에서 실제로 겹침 확인). */
+  /* Q-Leap 133: 삼재의 결 — 좌측 중앙. 감사 133.1: 칸의 네 모서리는 전부 임자가 있다.
+     하단 중앙 = .mergeable::after('→ Lv N'), 상단 중앙 = .lv-label(top-left)과 충돌
+     (6열 48px 셀에서 9.9px 겹쳐 'Lv12'가 'Lv天'으로 읽혔다 — 두 감사 렌즈가 실측).
+     좌측 중앙만 어떤 마크와도 겹치지 않는다 (장식 스프라이트 위에만 얹힘 — 변종 마크와 동일).
+     위치를 다시 옮길 땐 tests/browser-verify.js의 마크 충돌 가드를 먼저 통과시킬 것. */
   .cell .grain-mark {
-    position: absolute; top: 1px; left: 50%; transform: translateX(-50%);
+    position: absolute; top: 50%; left: 2px; transform: translateY(-50%);
     font-size: 11px; font-weight: 800; line-height: 1.1;
     z-index: 3; pointer-events: none; opacity: 0.92;
   }
@@ -1962,7 +1965,7 @@
 <script>
 'use strict';
 // 릴리즈 버전 — package.json version과 동기 (테스트가 불일치를 잡는다). 커밋 시 함께 범프.
-const GAME_VERSION = '3.82.0';
+const GAME_VERSION = '3.82.1';
 // =============================================================
 // 표창키우기 v2 — 합체 게임
 // Concept: 3×3+ grid, drop shuriken (Lv 1), merge same-level → Lv+1
@@ -3851,13 +3854,25 @@ function getVariantSpontaneousMul() {
 // 결(結)은 표창마다 天/地/人 하나를 부여해 (1) 어떤 짝을 붙일지 (2) 어느 칸을 목적지로 삼을지를
 // 매 합성의 선택으로 만든다 — 결과의 결은 '목적지 표창'의 결을 따르므로 방향이 곧 다음 수의 밑돌이다.
 //
-// 안티-인플레이션: 순(純) 합성은 새 보상을 얹지 않는다. 세 채널(골드/폭주/변종) 중 하나를 ×2.2로
-// 키우는 대신 나머지 둘을 ×0.35로 낮추는 '재분배'다 (합 2.9 < 혼합 3.0 — 제련 모드와 같은 소액 세금).
-// 결을 모르고 아무렇게나 합치면 기대값은 2/3×1 + 1/3×(2.2+0.35+0.35)/3 ≈ 0.99 — 즉 무관심한
-// 플레이어의 수익은 사실상 불변이고, 결을 읽고 배치하는 플레이어만 채널을 몰아준다.
+// 안티-인플레이션 — 감사 133.4/133.2가 최초 논증을 반증했으므로 정정한다.
+// (폐기된 논증: "채널 합 2.9 < 혼합 3.0이므로 제련 모드와 같은 세금". 성립하지 않는다. 제련은
+//  같은 자원(생성 가치율) 안의 교환이라 합 비교가 유효하지만, 삼재의 세 채널은 서로 다른 자원이고
+//  채널은 매 합성마다 새로 선택되므로 합이 아니라 max가 지배한다. 게다가 골드는 레벨 가중
+//  (레벨 k 합성 수 2^(N-k) × 보상 2^k = 레벨마다 균등)인데 폭주·변종은 합성 '개수' 가중이라
+//  최저 두 층이 3/4를 차지한다 — 낮은 층을 혼합(세금 0)으로 굴려 결을 세탁하면 비대칭을 딸 수 있다.)
 //
-// 페이싱 안전장치: 손 합성 전용(자동합치기/⚡모두/자동 의식은 isAuto → 항상 혼합). 연의 각인과 같은
-// 문서화된 예외 클래스이며, 시뮬레이터의 자동 경로 기준선이 비트 단위로 그대로 유지된다.
+// 실제로 성립하는 두 가지 근거:
+//  (1) 결을 읽지 않는 플레이어의 기대 채널값 ≈ 0.99 — 무관심한 플레이의 경제는 불변이다
+//      (실측: 맹목 정책 4h × 4런, 평균 골드 배수 0.982~1.001).
+//  (2) 자동 경로 전면 배제(isAuto) — 자동합치기/⚡모두/자동 의식은 항상 혼합이라 방치 기준선이
+//      비트 단위로 보존된다 (연의 각인과 같은 문서화된 예외 클래스).
+//
+// 알려진 상한 (감사 실측, 의도적으로 남겨둔 수동 플레이 보상): 결은 합성으로 생기지도 사라지지도
+// 않고 목적지 선택만으로 전파되는 '흡수 상태'라, 손으로 방향을 조종하면 보드를 단일 결로 수렴시켜
+// 순 합성률을 60~80%까지 올릴 수 있다. 해석적 상한은 합성 골드 ×2.1 내외, 그리디 봇 실측은
+// ×1.38~1.42이며 그 대가로 개수 가중 채널(폭주·변종)을 ×0.78로 치른다. 합성 골드는 심층에서
+// 패시브 수입에 밀리고 이 수치는 상시 조작을 요구하므로 수용한다 — 계수를 바꾸려면 PACING 규칙대로
+// npm run simulate의 grain 프로파일(결-인지)로 전후를 비교하고 사용자 승인을 받을 것.
 const GRAINS = [
   { id: 'cheon', ch: '天', name: '천(天)', color: '#ffd28a', channel: 'gold',    desc: '순(純) 합성 시 합성 골드 ×2.2' },
   { id: 'ji',    ch: '地', name: '지(地)', color: '#7fd6a0', channel: 'frenzy',  desc: '순(純) 합성 시 폭주 충전 ×2.2' },
@@ -5455,7 +5470,7 @@ function renderGrid() {
       lvLabel.textContent = 'Lv' + c.level;
       lvLabel.style.color = levelColor(c.level);
       cell.appendChild(lvLabel);
-      // Q-Leap 133: 결 표식 (하단 중앙 — 다른 마크와 겹치지 않는 유일한 자리). 해금 전엔 감춘다.
+      // Q-Leap 133: 결 표식 (좌측 중앙 — 감사 133.1 실측으로 확정된 유일한 무충돌 자리). 해금 전엔 감춘다.
       const gd = isGrainUnlocked() ? getGrainDef(c.grain) : null;
       if (gd) {
         const gmk = document.createElement('div');
@@ -8355,7 +8370,7 @@ const HELP_SECTIONS = {
     { title: '📖 도감', body: '첫 도달한 Lv 영구 기록. 신규 등록 시 <span class="hk">깨달음 +1</span>. 윤회를 거쳐도 보존.' },
     { title: '🔗 인접 시너지', body: '같은 Lv 표창이 4방향 인접 시 <span class="hk">골드 생성 +20%/인접</span> (max +80%). 색상 dot으로 표시.' },
     { title: '✨ 의식 합성', body: '같은 Lv 4방향 연결 그룹 3+ 시 자동 활성화. 발동 시 <span class="hk">한꺼번에 합쳐 큰 점프</span> (3개→+1, 4개→+2 ...).' },
-    { title: '三 삼재의 결', body: `Lv ${GRAIN_UNLOCK_LV} 해금. 표창마다 <span class="hk">天(천)·地(지)·人(인)</span> 중 하나의 결이 붙습니다 (칸 하단 표시, 생성 순서는 <span class="hk">회전 — 다음 결 예고</span>). 결이 같은 표창끼리 <span class="hk">손으로</span> 합치면 순(純) 합성: <span class="hk">天 합성 골드 ×2.2 / 地 폭주 충전 ×2.2 / 人 변종 자연발생 ×2.2</span>, 대신 나머지 두 채널은 ×0.35. 결과 표창의 결은 <span class="hk">목적지(나중에 탭한 칸)</span>를 따르므로 방향이 다음 수를 만듭니다. 다른 결끼리의 합성(혼합)은 기존과 완전히 동일 — 무작정 합쳐도 손해가 없고, 결을 읽는 만큼만 이득. 자동합치기·⚡모두·자동 의식은 항상 혼합입니다.` },
+    { title: '三 삼재의 결', body: `Lv ${GRAIN_UNLOCK_LV} 해금. 표창마다 <span class="hk">天(천)·地(지)·人(인)</span> 중 하나의 결이 붙습니다 (칸 왼쪽 표시, 생성 순서는 <span class="hk">회전 — 다음 결 예고</span>). 결이 같은 표창끼리 <span class="hk">손으로</span> 합치면 순(純) 합성: <span class="hk">天 합성 골드 ×2.2 / 地 폭주 충전 ×2.2 / 人 변종 자연발생 ×2.2</span>, 대신 나머지 두 채널은 ×0.35. 결과 표창의 결은 <span class="hk">목적지(나중에 탭한 칸)</span>를 따르므로 방향이 다음 수를 만듭니다. 다른 결끼리의 합성(혼합)은 기존과 완전히 동일 — 무작정 합쳐도 손해가 없고, 결을 읽는 만큼만 이득. 자동합치기·⚡모두·자동 의식은 항상 혼합입니다.` },
     { title: '🌟 콤보', body: '2.5초 안 chain merge 시 콤보 ×N. 콤보당 +20% 골드. 5/10/15/20/30/50 마일스톤 보너스.' },
     { title: '🔺 세트 효과', body: '그리드 구성으로 패시브 발동 (그리드 위 배지 표시): <span class="hk">삼위일체</span>(같은 Lv 3+·골드+15%) / <span class="hk">황금 진형</span>(황금 2+·변종×1.5) / <span class="hk">만재</span>(90%+·폭주충전×2) / <span class="hk">승천</span>(Lv20+ 3개·콤보+1s) / <span class="hk">무지개</span>(황금·별·검은 동시·골드+25%) / <span class="hk">정예 진형</span>(5+ 표창 전부 최고Lv−3↑·생성+10%) / <span class="hk">완전 진형</span>(삼위일체·만재·승천·정예 동시·골드+50%).' },
     { title: '🌌 초월', body: 'Lv 60 초과 최고기록 = 초월 포인트(별빛). 초월 5/10/15/20에 보석 마일스톤. Lv 61~80 고유 명명.' },
@@ -8779,7 +8794,13 @@ function processOfflineReward() {
   document.getElementById('offline-time').textContent = '자리비움: ' + fmtPlaytime(Math.floor(elapsedMs / 1000));
   const extras = [];
   if (goldEarned >= 1) extras.push('💰 ' + fmt(goldEarned));
-  if (frenzyAdded > 0) extras.push(`⚡ 폭주 +${frenzyAdded}`);
+  // 감사 133.3: 결 채널로 충전이 소수라 남은 용량(FRENZY_MAX − charge)이 부동소수 원문으로 새어나갔다
+  // ("⚡ 폭주 +2.350000000000364"). HUD·토스트와 같은 규칙으로 다듬되, 0.35 충전이 "+0"으로
+  // 보이지 않게 소수 1자리 반올림을 쓴다 (floor 금지 — 가드는 원값으로 판정하기 때문).
+  if (frenzyAdded > 0) {
+    const frenzyShown = Math.round(frenzyAdded * 10) / 10;
+    if (frenzyShown > 0) extras.push(`⚡ 폭주 +${frenzyShown}`);
+  }
   if (spawnAdded)      extras.push('✨ 표창 준비');
   document.getElementById('offline-gold').textContent = extras.join(' · ') || '—';
   document.getElementById('offline-cap-note').textContent =

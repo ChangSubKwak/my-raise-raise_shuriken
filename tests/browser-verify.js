@@ -205,6 +205,50 @@ function ok(cond, msg) {
   await $id('sell-btn'); // sell off again
   await clearOverlays(); await page.waitForTimeout(250); await page.screenshot({ path: path.join(SHOTS, '06-final.png') });
 
+  // ================= Q-Leap 133: 칸 마크 충돌 가드 (감사 133.1) =================
+  // 결 표식을 '겹치지 않는 자리'로 옮겼다는 주장은 두 번 틀렸다 (하단 중앙 → 미리보기와 충돌,
+  // 상단 중앙 → Lv 라벨과 충돌해 'Lv12'가 'Lv天'으로 읽혔다). 존재 여부가 아니라 기하를 잰다.
+  console.log('Q-Leap 133 결 표식 충돌');
+  const markCollisions = await page.evaluate(() => {
+    // 6열(최악) 그리드 + 두 자리 Lv + 모든 마크 종류를 한 칸에 몰아넣은 상태를 만든다
+    state.bestLevel = 40; state.runBestLevel = 40;
+    state.upgrades.maxShuriken = 24;
+    state.grid = new Array(getGridSize()).fill(null);
+    const grains = ['cheon', 'ji', 'in'];
+    for (let i = 0; i < state.grid.length; i++) {
+      state.grid[i] = {
+        id: 5000 + i, level: 12 + (i % 3) * 44, fireTimer: 0, grain: grains[i % 3],
+        locked: i % 7 === 0, golden: i % 5 === 0, star: i % 6 === 0, dark: i % 8 === 0,
+      };
+    }
+    selectedIdx = 1; // .mergeable 미리보기까지 렌더되게
+    renderGrid();
+    const SEL = ['.lv-label', '.golden-mark', '.star-mark', '.dark-mark', '.market-mark', '.synergy-dot', '.engrave-mark'];
+    const hit = (a, b) => !(a.right <= b.left || b.right <= a.left || a.bottom <= b.top || b.bottom <= a.top);
+    let collisions = 0, checked = 0, worst = null;
+    for (const cell of document.querySelectorAll('#grid .cell')) {
+      const gm = cell.querySelector('.grain-mark');
+      if (!gm) continue;
+      checked++;
+      const gr = gm.getBoundingClientRect();
+      for (const sel of SEL) {
+        const el = cell.querySelector(sel);
+        if (!el) continue;
+        const r = el.getBoundingClientRect();
+        if (hit(gr, r)) {
+          collisions++;
+          const ox = Math.min(gr.right, r.right) - Math.max(gr.left, r.left);
+          if (!worst || ox > worst.ox) worst = { sel, ox: +ox.toFixed(1) };
+        }
+      }
+    }
+    return { collisions, checked, worst, cols: getGridCols() };
+  });
+  ok(markCollisions.checked >= 20 && markCollisions.cols === 6, `결: 6열 ${markCollisions.checked}칸에서 표식 렌더`);
+  ok(markCollisions.collisions === 0,
+    `결: 표식이 어떤 칸 마크와도 겹치지 않음${markCollisions.worst ? ` — ${markCollisions.worst.sel}와 ${markCollisions.worst.ox}px 겹침` : ''}`);
+  await clearOverlays(); await page.waitForTimeout(200); await page.screenshot({ path: path.join(SHOTS, '07-grain-marks.png') });
+
   // ================= console errors =================
   const errs = consoleErrors.filter(e => !/favicon/i.test(e));
   ok(errs.length === 0, `콘솔 에러 0건${errs.length ? ' — ' + errs.slice(0, 3).join(' | ') : ''}`);
