@@ -1063,7 +1063,10 @@
     position: absolute; bottom: 2px; left: 50%; transform: translateX(-50%);
     font-size: 9px; font-weight: 800; color: #66ff99;
     text-shadow: 0 1px 2px rgba(0,0,0,0.9);
-    background: rgba(10,20,15,0.7); padding: 1px 5px; border-radius: 5px;
+    /* 스윕 결과: 48~59px 셀에서 이 알약이 하단 마크열(★ 9~11px, ✦ 9px)과 겹친다. 마크는 z-index 3이라
+       반투명 배경 위로 글자가 떠 결과 Lv 숫자를 갉아먹었다. 선택 중엔 '이 합성의 결과'가 최우선 정보이므로
+       알약을 마크보다 위로 올려 불투명하게 덮는다 (마크는 선택 해제 즉시 복귀 · 결 표식은 좌측 중앙이라 무관). */
+    background: rgba(10,20,15,0.92); padding: 1px 5px; border-radius: 5px; z-index: 4;
     pointer-events: none;
     white-space: nowrap;
   }
@@ -1122,8 +1125,10 @@
     box-shadow: 0 0 16px #cc66ffcc, inset 0 0 12px #cc66ff44 !important;
     animation: starShimmer 2.2s linear infinite;
   }
+  /* 감사 133.1 후속 스윕: left 4px는 .engrave-mark(bottom:2 left:3)와 10.6px 겹쳐
+     각인 칸의 별 표창에서 두 글자가 통째로 뭉갰다 (Q-Leap 127부터 잠복). 한 칸 오른쪽으로. */
   .cell .star-mark {
-    position: absolute; bottom: 1px; left: 4px;
+    position: absolute; bottom: 1px; left: 15px;
     font-size: 11px; color: #ddaaff;
     text-shadow: 0 0 5px #cc66ff, 0 1px 2px rgba(0,0,0,0.9);
     z-index: 3; pointer-events: none;
@@ -1144,8 +1149,10 @@
     box-shadow: 0 0 14px #aa44ffcc, inset 0 0 12px #553388aa !important;
     animation: darkPulse 1.8s ease-in-out infinite;
   }
+  /* 같은 스윕: top 14px는 6열(48px) 셀에서 .lv-label의 세 자리 표기(Lv100)와 10.3px 겹쳤다.
+     시너지 dot(top:14)과 하단 마크열(bottom) 사이의 빈 띠로 내린다. */
   .cell .dark-mark {
-    position: absolute; top: 14px; right: 14px;
+    position: absolute; top: 24px; right: 14px;
     font-size: 11px;
     text-shadow: 0 0 6px #aa44ff, 0 1px 2px rgba(0,0,0,0.9);
     z-index: 3; pointer-events: none;
@@ -1220,6 +1227,9 @@
     color: rgba(255,255,255,0.85); text-shadow: 0 1px 2px rgba(0,0,0,0.9);
     z-index: 2;
   }
+  /* 마크 충돌 스윕: 6열(48px)에서 'Lv100' 같은 세 자리 표기가 🔒/🙏(top:2 right:3)와 3.3px 겹친다.
+     그리드가 가장 좁아지는 구간에서만 라벨을 줄여 상단 띠를 비운다 (data-cols는 renderGrid가 세팅). */
+  #grid[data-cols="6"] .cell .lv-label { font-size: 9px; letter-spacing: -0.4px; }
   .cell .shuriken {
     width: 70%; height: 70%; display: flex; align-items: center; justify-content: center;
     transition: transform 0.05s;
@@ -1965,7 +1975,7 @@
 <script>
 'use strict';
 // 릴리즈 버전 — package.json version과 동기 (테스트가 불일치를 잡는다). 커밋 시 함께 범프.
-const GAME_VERSION = '3.82.1';
+const GAME_VERSION = '3.82.2';
 // =============================================================
 // 표창키우기 v2 — 합체 게임
 // Concept: 3×3+ grid, drop shuriken (Lv 1), merge same-level → Lv+1
@@ -3016,9 +3026,25 @@ function refreshRitualBadge() {
     btn.disabled = true;
     return;
   }
-  const n = findRitualGroups().length;
+  const groups = findRitualGroups();
+  const n = groups.length;
   btn.classList.toggle('has-reward', n > 0);
-  btn.textContent = n > 0 ? `✨ 의식 (${n})` : '✨ 의식';
+  // Q-Leap 133.1: 의식은 '가장 큰 그룹'이 자동으로 뽑히므로 플레이어가 방향을 고를 수 없다.
+  // 그래서 유일하게 남는 결정은 '지금 터뜨릴까, 결을 맞춰 순(純)으로 만들고 터뜨릴까'인데,
+  // 그걸 판단할 정보가 어디에도 없었다 (감사에서 지적된 결정 surface 공백). 발동될 그룹의
+  // 순 여부를 버튼에 그대로 노출한다 — 자동 의식은 항상 혼합이므로 표시하지 않는다.
+  let tag = '', hint = '같은 Lv 4방향 연결 3개 이상이면 발동';
+  if (n > 0 && isGrainUnlocked()) {
+    // doRitualMerge와 같은 정렬 규칙으로 '실제로 발동될 그룹'을 고른다 (표시와 동작이 어긋나면 안 됨)
+    const g = groups.slice().sort((a, b) => b.indices.length - a.indices.length || b.level - a.level)[0];
+    const gd = getGrainDef(grainPureId(g.indices.map(i => state.grid[i]), false));
+    tag = gd ? ` ${gd.ch}純` : ' 混';
+    hint = gd
+      ? `발동 그룹의 결이 모두 ${gd.name} — 순(純) 의식 (${gd.desc})`
+      : '발동 그룹의 결이 섞임 — 혼합 의식 (결을 맞추면 한 채널 ×2.2)';
+  }
+  btn.textContent = n > 0 ? `✨ 의식 (${n})${tag}` : '✨ 의식';
+  btn.title = hint;
   btn.disabled = n === 0;
 }
 
@@ -5357,6 +5383,7 @@ function renderGrid() {
   // resize state.grid if needed
   while (state.grid.length < size) state.grid.push(null);
   gridEl.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
+  gridEl.dataset.cols = cols; // 좁은 칸에서만 Lv 라벨을 줄이기 위한 CSS 훅 (아래 #grid[data-cols] 규칙)
   gridEl.style.gridTemplateRows = `repeat(${Math.ceil(size / cols)}, 1fr)`;
   // Hint mode: pre-compute set of indexes that have at least one same-level twin
   // Q-Leap 62: also identify the BEST pair via value scoring (highest Lv + variant bonus)

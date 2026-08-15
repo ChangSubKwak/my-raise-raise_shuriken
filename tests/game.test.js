@@ -3755,6 +3755,26 @@ group('삼재의 결 / grain (Q-Leap 133)', () => {
   ok(/findGrainSteeredPair/.test(RAW_SIM) && /policy === 'grain'/.test(RAW_SIM),
      '시뮬레이터에 결-인지(목적지 스티어링) 프로파일 추가 — 수동 최적화 상한 측정');
   ok(/F\.findNextAutoMergePair\(\)/.test(RAW_SIM), '기존 blind 기준선(승인된 PACING 기준)은 유지');
+
+  // ── 13) 의식의 순(純) 결정 surface (133.1 후속) ──
+  // 의식은 그룹이 자동 선택되므로 유일한 결정은 '지금 터뜨릴까 / 결을 맞추고 터뜨릴까'다.
+  // 버튼이 발동될 그룹의 순 여부를 알려주지 않으면 그 결정을 내릴 수 없다.
+  ok(/tag = gd \? ` \$\{gd\.ch\}純` : ' 混'/.test(RAW_SCRIPT), '의식 버튼이 발동 그룹의 순/혼을 표시');
+  ok(/groups\.slice\(\)\.sort\(\(a, b\) => b\.indices\.length - a\.indices\.length \|\| b\.level - a\.level\)\[0\]/.test(RAW_SCRIPT),
+     '표시가 doRitualMerge와 같은 정렬로 실제 발동 그룹을 고른다 (표시-동작 불일치 방지)');
+  eq((RAW_SCRIPT.match(/b\.indices\.length - a\.indices\.length \|\| b\.level - a\.level/g) || []).length, 2,
+     '그룹 선택 규칙은 발동부와 표시부 두 곳뿐 (세 번째가 생기면 드리프트 위험)');
+  ok(/n > 0 && isGrainUnlocked\(\)/.test(RAW_SCRIPT), '결 미해금 구간에선 순/혼 태그를 노출하지 않음 (점진 공개)');
+
+  // ── 14) 칸 마크 충돌 스윕 회귀 (기하는 browser-verify가 실측) ──
+  ok(/\.cell \.star-mark \{\s*position: absolute; bottom: 1px; left: 15px;/.test(RAW_SCRIPT),
+     '별 표식이 각인 룬 자리에서 비켜남 (두 글자가 통째로 겹치던 잠복 결함)');
+  ok(/\.cell \.dark-mark \{\s*position: absolute; top: 24px;/.test(RAW_SCRIPT),
+     '검은 표식이 Lv 라벨 띠 아래로 내려감 (6열 3자리 Lv 충돌)');
+  ok(/border-radius: 5px; z-index: 4;/.test(RAW_SCRIPT),
+     '합성 미리보기 알약이 마크(z-index 3) 위로 — 선택 중 결과 Lv이 갉히지 않음');
+  ok(/gridEl\.dataset\.cols = cols;/.test(RAW_SCRIPT) && /#grid\[data-cols="6"\] \.cell \.lv-label/.test(RAW_SCRIPT),
+     '6열에서만 Lv 라벨 축소 — 세 자리 표기가 🔒와 겹치던 3.3px 해소 (data-cols 훅)');
 });
 
 // ---- helpers ----

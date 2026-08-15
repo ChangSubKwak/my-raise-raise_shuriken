@@ -223,22 +223,33 @@ function ok(cond, msg) {
     }
     selectedIdx = 1; // .mergeable 미리보기까지 렌더되게
     renderGrid();
-    const SEL = ['.lv-label', '.golden-mark', '.star-mark', '.dark-mark', '.market-mark', '.synergy-dot', '.engrave-mark'];
+    // 결 표식만이 아니라 칸에 얹히는 모든 마크를 서로 대조한다 (감사 133.1의 교훈 일반화:
+    // 133 스윕에서 ★×각인 10.6px, Lv라벨×🌑 10.3px 같은 잠복 결함이 이 방식으로만 드러났다).
+    // 합성 미리보기(.mergeable::after)는 z-index 4로 마크를 '의도적으로' 덮는 불투명 오버레이라 제외.
+    const SEL = ['.lv-label', '.grain-mark', '.golden-mark', '.star-mark', '.dark-mark',
+                 '.market-mark', '.synergy-dot', '.engrave-mark'];
     const hit = (a, b) => !(a.right <= b.left || b.right <= a.left || a.bottom <= b.top || b.bottom <= a.top);
     let collisions = 0, checked = 0, worst = null;
     for (const cell of document.querySelectorAll('#grid .cell')) {
-      const gm = cell.querySelector('.grain-mark');
-      if (!gm) continue;
+      if (!cell.querySelector('.grain-mark')) continue;
       checked++;
-      const gr = gm.getBoundingClientRect();
+      const found = [];
       for (const sel of SEL) {
         const el = cell.querySelector(sel);
-        if (!el) continue;
-        const r = el.getBoundingClientRect();
-        if (hit(gr, r)) {
-          collisions++;
-          const ox = Math.min(gr.right, r.right) - Math.max(gr.left, r.left);
-          if (!worst || ox > worst.ox) worst = { sel, ox: +ox.toFixed(1) };
+        if (el) found.push([sel, el.getBoundingClientRect()]);
+      }
+      // 잠금/축복은 의사요소라 rect를 못 잡는다 — 실제 CSS 값(top:2 right:3, 10~11px)으로 근사
+      const cr = cell.getBoundingClientRect();
+      if (cell.classList.contains('locked-piece') || cell.classList.contains('blessed')) {
+        found.push(['::lock', { left: cr.right - 17, right: cr.right - 3, top: cr.top + 2, bottom: cr.top + 15 }]);
+      }
+      for (let i = 0; i < found.length; i++) {
+        for (let j = i + 1; j < found.length; j++) {
+          if (hit(found[i][1], found[j][1])) {
+            collisions++;
+            const ox = Math.min(found[i][1].right, found[j][1].right) - Math.max(found[i][1].left, found[j][1].left);
+            if (!worst || ox > worst.ox) worst = { sel: `${found[i][0]} × ${found[j][0]}`, ox: +ox.toFixed(1) };
+          }
         }
       }
     }
@@ -246,7 +257,7 @@ function ok(cond, msg) {
   });
   ok(markCollisions.checked >= 20 && markCollisions.cols === 6, `결: 6열 ${markCollisions.checked}칸에서 표식 렌더`);
   ok(markCollisions.collisions === 0,
-    `결: 표식이 어떤 칸 마크와도 겹치지 않음${markCollisions.worst ? ` — ${markCollisions.worst.sel}와 ${markCollisions.worst.ox}px 겹침` : ''}`);
+    `칸 마크 전수 무충돌 (6열 최악 조건)${markCollisions.worst ? ` — ${markCollisions.worst.sel} ${markCollisions.worst.ox}px 겹침` : ''}`);
   await clearOverlays(); await page.waitForTimeout(200); await page.screenshot({ path: path.join(SHOTS, '07-grain-marks.png') });
 
   // ================= console errors =================
