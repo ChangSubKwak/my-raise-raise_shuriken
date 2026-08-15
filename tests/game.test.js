@@ -3835,11 +3835,10 @@ group('삼재의 결 / grain (Q-Leap 133)', () => {
   // 의식은 그룹이 자동 선택되므로 유일한 결정은 '지금 터뜨릴까 / 결을 맞추고 터뜨릴까'다.
   // 버튼이 발동될 그룹의 순 여부를 알려주지 않으면 그 결정을 내릴 수 없다.
   ok(/tag = gd \? ` \$\{gd\.ch\}純` : ' 混'/.test(RAW_SCRIPT), '의식 버튼이 발동 그룹의 순/혼을 표시');
-  ok(/groups\.slice\(\)\.sort\(\(a, b\) => b\.indices\.length - a\.indices\.length \|\| b\.level - a\.level\)\[0\]/.test(RAW_SCRIPT),
-     '표시가 doRitualMerge와 같은 정렬로 실제 발동 그룹을 고른다 (표시-동작 불일치 방지)');
-  eq((RAW_SCRIPT.match(/b\.indices\.length - a\.indices\.length \|\| b\.level - a\.level/g) || []).length, 2,
-     '그룹 선택 규칙은 발동부와 표시부 두 곳뿐 (세 번째가 생기면 드리프트 위험)');
-  ok(/n > 0 && isGrainUnlocked\(\)/.test(RAW_SCRIPT), '결 미해금 구간에선 순/혼 태그를 노출하지 않음 (점진 공개)');
+  // Q-Leap 134: 그룹 선택 규칙이 pickRitualGroup 한 곳으로 모였다 (v3.82.2에는 발동부·표시부 2곳이었다).
+  eq((RAW_SCRIPT.match(/b\.indices\.length - a\.indices\.length \|\| b\.level - a\.level/g) || []).length, 1,
+     '그룹 선택 비교자는 pickRitualGroup 안에만 존재 (복붙이 생기면 표시-동작이 어긋난다)');
+  ok(/if \(isGrainUnlocked\(\) && !state\.autoRitualEnabled\)/.test(RAW_SCRIPT), '결 미해금·자동 의식 중엔 순/혼 태그를 노출하지 않음 (점진 공개)');
 
   // ── 14) 칸 마크 충돌 스윕 회귀 (기하는 browser-verify가 실측) ──
   // 하단 마크열은 각인(1) · 시세(13) · ★(27) · ✦(right 1)의 4슬롯으로 고정 — 슬롯을 옮기면
@@ -3908,6 +3907,106 @@ group('findRitualGroups — 의식 그룹 탐색 (커버리지 공백 보강)', 
   setGrid(12, { 0: 5, 1: 5, 2: 5, 3: 5, 4: 5 });
   const flat = groupsOf().flatMap(g => g.idx);
   eq(new Set(flat).size, flat.length, '한 칸이 두 그룹에 중복 등록되지 않는다 (visited 정확)');
+});
+
+group('pickRitualGroup — 진안(陣眼) (Q-Leap 134)', () => {
+  // 의식은 '가장 큰 무리'가 자동으로 뽑히고 결과는 최저 인덱스에 앉았다 = 플레이어 결정 0개.
+  // 진안은 선택한 표창의 무리를 그 칸에서 터뜨린다. 새 계수는 0 — 결정만 추가된다.
+  const setGrid = (size, spec) => {
+    const s = withState({ upgrades: Object.assign(defaultUpgrades(), { maxShuriken: size - 6 }) });
+    s.grid = new Array(size).fill(null);
+    for (const k of Object.keys(spec)) {
+      const v = spec[k];
+      s.grid[+k] = typeof v === 'number'
+        ? { id: +k + 1, level: v, fireTimer: 0 }
+        : Object.assign({ id: +k + 1, fireTimer: 0 }, v);
+    }
+    return s;
+  };
+
+  // 1) 조준이 무리 안이면 그 무리 + 그 칸
+  setGrid(12, { 0: 5, 1: 5, 2: 5, 4: 7, 5: 7, 6: 7 });
+  const gs = F.findRitualGroups();
+  eq(gs.length, 2, '전제: 무리 2개');
+  const p1 = F.pickRitualGroup(gs, 2);
+  eq(p1.aimed, true, '조준 성립');
+  eq(p1.toIdx, 2, '결과 칸 = 조준한 칸');
+  ok(p1.group.indices.includes(2), '조준한 칸이 속한 무리가 선택된다');
+
+  // 2) 크기가 작은 쪽을 조준해도 그쪽이 선택된다 (크기 정렬을 이기는 것이 결정의 핵심)
+  setGrid(20, { 0: 5, 1: 5, 2: 5, 3: 5, 4: 5, 10: 9, 11: 9, 12: 9 });
+  const gs2 = F.findRitualGroups();
+  const big = F.pickRitualGroup(gs2, -1);
+  eq(big.aimed, false, '무조준이면 자동 선택');
+  eq(big.group.indices.length, 5, '무조준은 가장 큰 무리 (기존 규칙 불변)');
+  const small = F.pickRitualGroup(gs2, 11);
+  eq(small.aimed, true, '작은 무리 조준 성립');
+  eq(small.group.indices.length, 3, '작은 무리를 태울 수 있다 (Lv9×3 → Lv11 vs Lv5×5 → Lv9)');
+  eq(small.group.level, 9, '조준한 무리의 레벨');
+
+  // 3) 빈 칸 / 단독 조각 / 잠긴 조각 조준 → 폴백 (throw 없음)
+  setGrid(12, { 0: 5, 1: 5, 2: 5, 8: 4, 9: { level: 5, locked: true } });
+  const gs3 = F.findRitualGroups();
+  for (const [t, why] of [[7, '빈 칸'], [8, '단독 조각'], [9, '잠긴 조각']]) {
+    const p = F.pickRitualGroup(gs3, t);
+    eq(p.aimed, false, `${why} 조준은 폴백`);
+    eq(p.toIdx, p.group.indices[0], `${why} 폴백은 최저 인덱스에 앉는다`);
+  }
+  for (const t of [-1, undefined, null, NaN]) {
+    eq(F.pickRitualGroup(gs3, t).aimed, false, `조준값 ${String(t)}은 폴백 (자동 경로 패리티)`);
+  }
+  eq(F.pickRitualGroup([], 0), null, '무리가 없으면 null (throw 금지)');
+  eq(F.pickRitualGroup(null, 0), null, '비배열도 null');
+
+  // 4) 통합: doRitualMerge가 조준 칸에 결과를 앉힌다 + 결 세탁이 실제로 작동
+  const REAL = Math.random;
+  const quiet = (fn) => { Math.random = () => 0.999999; try { return fn(); } finally { Math.random = REAL; } };
+  const gGold = C.GRAINS.find(x => x.channel === 'gold').id;
+  const gFren = C.GRAINS.find(x => x.channel === 'frenzy').id;
+  const sI = setGrid(12, {
+    0: { level: 5, grain: gGold }, 1: { level: 5, grain: gFren }, 2: { level: 5, grain: gFren },
+  });
+  Object.assign(sI, { bestLevel: 20, runBestLevel: 20, codex: {}, dailyQuests: [], lastFirstMergeDate: F.todayString() });
+  sI.stats = {};
+  quiet(() => F.doRitualMerge(false, 2));
+  const st = G.getState();
+  ok(st.grid[2] && st.grid[2].level === 7, '결과가 조준한 칸(2)에 앉는다');
+  eq(st.grid[0], null, '나머지 칸은 소거');
+  eq(st.grid[2].grain, gFren, '결과의 결 = 조준 칸의 결 (혼합 무리에서 결 세탁이 성립)');
+
+  // 5) 자동 경로는 조준을 무시한다 (방치 기준선 불변)
+  const sA = setGrid(12, { 0: 5, 1: 5, 2: 5 });
+  Object.assign(sA, { bestLevel: 20, runBestLevel: 20, codex: {}, dailyQuests: [], lastFirstMergeDate: F.todayString() });
+  sA.stats = {};
+  quiet(() => F.doRitualMerge(true, 2));
+  const stA = G.getState();
+  ok(stA.grid[0] && stA.grid[0].level === 7, '자동 의식은 조준을 무시하고 최저 인덱스에 앉힌다');
+  eq(stA.grid[2], null, '조준했던 칸은 그냥 소거된다');
+
+  // 6) 純 판정은 조준과 무관 (같은 무리를 어느 구성원으로 조준하든 동일)
+  setGrid(12, { 0: { level: 5, grain: gGold }, 1: { level: 5, grain: gGold }, 2: { level: 5, grain: gGold } });
+  withState({ bestLevel: 20 });
+  G.getState().grid = setGrid(12, { 0: { level: 5, grain: gGold }, 1: { level: 5, grain: gGold }, 2: { level: 5, grain: gGold } }).grid;
+  G.getState().bestLevel = 20;
+  const gs6 = F.findRitualGroups();
+  const pa = F.pickRitualGroup(gs6, 0), pb = F.pickRitualGroup(gs6, 2);
+  eq(F.grainPureId(pa.group.indices.map(i => G.getState().grid[i]), false),
+     F.grainPureId(pb.group.indices.map(i => G.getState().grid[i]), false), '조준 위치가 純 판정을 바꾸지 않는다');
+
+  // 7) 구조 가드
+  ok(/function pickRitualGroup\(groups, targetIdx\)/.test(RAW_HTML), 'pickRitualGroup 정의 존재');
+  eq((RAW_HTML.match(/pickRitualGroup\(/g) || []).length, 4,
+     '정의 1 + 호출부 3 (doRitualMerge·refreshRitualBadge·renderGrid) — 네 번째가 생기면 의도적으로 갱신할 것');
+  ok(/isAuto \? -1 : targetIdx/.test(RAW_HTML), '자동 경로는 함수 안에서 조준이 하드 게이트된다');
+  ok(/if \(state\.autoRitualEnabled\) return -1;/.test(RAW_HTML), '자동 의식 중엔 조준 비활성 (표시-동작 일치)');
+  ok(/if \(sellMode \|\| infoMode \|\| engraveMode\) return -1;/.test(RAW_HTML), '탭 선점 3모드에서는 조준 없음');
+  ok(/\.cell\.pure-pair\.ritual-group \{/.test(RAW_HTML), '결 링이 진안 윤곽에 지워지지 않는다 (특정도 가드)');
+  ok(/cell\.classList\.add\('ritual-group'\)/.test(RAW_HTML), '무리 윤곽이 renderGrid에 배선됨');
+  // 접목분: 미리보기 알약이 결과의 결을 말한다
+  ok(/content: attr\(data-preview\);/.test(RAW_HTML), '알약이 dataset 문자열을 그대로 표시');
+  ok(/`→ \$\{_pg\.ch\}\$\{c\.level \+ 1\}`/.test(RAW_HTML), '해금 후엔 결과의 결을 함께 표시');
+  ok(/`→ Lv \$\{c\.level \+ 1\}`/.test(RAW_HTML), '미해금 폴백은 기존 문구 유지');
+  ok(/selectedIdx = -1; \/\/ Q-Leap 134/.test(RAW_HTML), '윤회가 스테일 조준을 남기지 않는다');
 });
 
 group('isChallenge / levelPoints / getHofRankTitle (커버리지 공백 보강)', () => {

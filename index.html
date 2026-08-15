@@ -1063,7 +1063,7 @@
     animation: mergePulse 1.2s ease-in-out infinite;
   }
   .cell.mergeable::after {
-    content: '→ Lv ' attr(data-preview);
+    content: attr(data-preview); /* Q-Leap 134: 접두사는 renderGrid가 만든다 — 결 해금 시 '→ 地12' */
     position: absolute; bottom: 2px; left: 50%; transform: translateX(-50%);
     font-size: 9px; font-weight: 800; color: #66ff99;
     text-shadow: 0 1px 2px rgba(0,0,0,0.9);
@@ -1223,6 +1223,13 @@
   .cell.mergeable.pure-pair {
     animation: mergePulse 1.2s ease-in-out infinite, purePairPulse 1.1s ease-in-out infinite;
   }
+  /* Q-Leap 134: 진안 — 발동될 무리의 윤곽. outline만 쓰므로 새 셀 마크(rect)를 만들지 않아
+     browser-verify의 마크 충돌 가드(9종·애니메이션 전주기 최악 박스)와 무관하다. */
+  .cell.ritual-group { outline: 2px dashed rgba(200,150,255,0.6); outline-offset: -2px; }
+  /* .cell.pure-pair와 특정도가 같고 뒤에 오므로 그냥 두면 순 짝의 결 링을 지운다
+     (.cell.mergeable.pure-pair가 animation에서 밟은 것과 정확히 같은 함정).
+     겹칠 땐 정보량이 큰 결 링이 이긴다 — 무리 소속은 나머지 칸들이 이미 말해준다. */
+  .cell.pure-pair.ritual-group { outline: 2px solid rgba(255,225,150,0.85); outline-offset: -4px; }
   @keyframes purePairPulse {
     0%,100% { outline-color: rgba(255,225,150,0.45); }
     50%     { outline-color: rgba(255,235,190,1); }
@@ -1998,7 +2005,7 @@
 <script>
 'use strict';
 // 릴리즈 버전 — package.json version과 동기 (테스트가 불일치를 잡는다). 커밋 시 함께 범프.
-const GAME_VERSION = '3.83.0';
+const GAME_VERSION = '3.84.0';
 // =============================================================
 // 표창키우기 v2 — 합체 게임
 // Concept: 3×3+ grid, drop shuriken (Lv 1), merge same-level → Lv+1
@@ -2276,6 +2283,7 @@ function defaultState() {
     storage: [],
     // Q-Leap 124: 표창 원정 — 표창 1개를 실시간 파견 (그리드 이탈), 완료 후 수령
     expedition: null,   // null | { piece, tier, startedAt, endsAt }
+    ritualEyeHintShown: false, // Q-Leap 134: 진안 1회성 안내 (조준이 처음 성립할 때)
     expedHintShown: false, // 원정 해금 1회성 안내 (기존 Lv10+ 세이브에도 새 기능 공지로 1회 발화)
     // Q-Leap 125: 시련의 탑 — 윤회 시 선택하는 제약 런 사다리 (층당 1회성 보상)
     towerFloor: 0,      // 최고 돌파 층 (영구, 윤회 보존)
@@ -2935,13 +2943,41 @@ function rollMergeProcs(units, newLv) {
     }
   }
 }
-function doRitualMerge(isAuto) {
-  // isAuto: 자동 의식(update 루프) 표시 — Q-Leap 133의 결 보너스만 여기에 게이트된다 (tryMerge와 같은 규칙)
+// ---------- Q-Leap 134: 진안(陣眼) — 의식의 유일한 결정 표면 ----------
+// 오늘 의식에는 플레이어 결정이 문자 그대로 0개다: 무리는 크기순 정렬이 고르고 결과는 최저
+// 인덱스(좌상단)에 앉는다. 게임에서 가장 큰 단발 이벤트가 완전 자동 선택이었다.
+// 진안은 두 결정을 넣는다 — (1) 어느 무리를 태울까 (Lv4×5→Lv8 vs Lv7×3→Lv9는 방향이 다르다)
+// (2) 결과를 어느 칸에 앉힐까 (다음 純 짝·정련 각인 칸·중앙 보너스·줄 보너스의 밑돌).
+// 새 조작·새 버튼·새 배수는 0 — 이미 있는 selectedIdx와 이미 있는 ✨의식 버튼의 곱이다.
+// 발동부·표시부·하이라이트가 전부 이 함수를 거친다 (비교자를 복붙하면 표시와 동작이 어긋난다).
+// 순수 함수: state를 읽지 않고 인자만 본다 → 하네스에서 단위 테스트 가능.
+function pickRitualGroup(groups, targetIdx) {
+  if (!Array.isArray(groups) || groups.length === 0) return null;
+  const sorted = groups.slice().sort((a, b) => b.indices.length - a.indices.length || b.level - a.level);
+  if (typeof targetIdx === 'number' && targetIdx >= 0) {
+    const hit = sorted.find(g => g.indices.indexOf(targetIdx) >= 0);
+    if (hit) return { group: hit, toIdx: targetIdx, aimed: true };
+  }
+  const g = sorted[0];
+  return { group: g, toIdx: g.indices[0], aimed: false };
+}
+// 조준 게이트 (비순수 — 모듈 레벨 모드 플래그를 읽는다). 순수 로직은 전부 pickRitualGroup에 있다.
+function currentRitualAim() {
+  // 자동 의식 중에는 조준을 끈다: update 루프가 1.5초 안에 doRitualMerge(true)로 최대 무리를
+  // 먹으므로 조준 표시가 동작과 어긋난다 (133.1이 純 태그를 감춘 것과 같은 이유이며,
+  // '자동화를 포기해야 얻는 손-플레이 보상'이라는 문서화된 예외 클래스와 동일).
+  if (state.autoRitualEnabled) return -1;
+  if (sellMode || infoMode || engraveMode) return -1; // 탭을 선점하는 세 모드에서는 조준 없음
+  return selectedIdx;
+}
+function doRitualMerge(isAuto, targetIdx) {
+  // isAuto: 자동 의식(update 루프) 표시 — Q-Leap 133의 결 보너스와 134의 조준이 여기에 게이트된다
   if (isTowerRitualBanned()) { const tf = getActiveTowerFloor(); toast(`🗼 ${tf ? tf.name : '시련'} — 의식 합성 금지`); sfx('move'); return false; } // Q-Leap 125
   const groups = findRitualGroups();
   if (groups.length === 0) { toast('의식 발동 가능한 같은 Lv 3+ 연결 그룹이 없음'); sfx('move'); return false; }
-  groups.sort((a, b) => b.indices.length - a.indices.length || b.level - a.level);
-  const g = groups[0];
+  // 자동 경로는 절대 조준하지 않는다 — 호출부 실수로도 방치 기준선이 움직일 수 없게 함수 안에서 하드 게이트
+  const _pick = pickRitualGroup(groups, isAuto ? -1 : targetIdx);
+  const g = _pick.group;
   const bonus = g.indices.length - 2; // 3→+1, 4→+2, 5→+3
   // Q-Leap 54: "점프의 날" promises +1 to ALL merges — ritual must honor it too.
   const newLv = g.level + 1 + bonus + (isChallenge('jumpBonus') ? 1 : 0);
@@ -2951,7 +2987,7 @@ function doRitualMerge(isAuto) {
     if (state.grid[idx].star) starsIn++;
     if (state.grid[idx].dark) darksIn++; // Q-Leap: dark was dropped by ritual (asymmetry bug)
   }
-  const toIdx = g.indices[0];
+  const toIdx = _pick.toIdx; // Q-Leap 134: 진안 — 조준했으면 그 칸, 아니면 기존대로 최저 인덱스
   // Q-Leap 133: 의식-패리티 — 그룹 전원의 결이 같으면 순(純) 의식. 결과 결은 결과 칸(최저 인덱스)의 결을 따른다.
   const pureGrain = grainPureId(g.indices.map(i => state.grid[i]), isAuto);
   const resultGrain = (state.grid[toIdx] && state.grid[toIdx].grain)
@@ -3056,19 +3092,29 @@ function refreshRitualBadge() {
   // 그래서 유일하게 남는 결정은 '지금 터뜨릴까, 결을 맞춰 순(純)으로 만들고 터뜨릴까'인데,
   // 그걸 판단할 정보가 어디에도 없었다 (감사에서 지적된 결정 surface 공백). 발동될 그룹의
   // 순 여부를 버튼에 그대로 노출한다 — 자동 의식은 항상 혼합이므로 표시하지 않는다.
-  let tag = '', hint = '같은 Lv 4방향 연결 3개 이상이면 발동';
-  // 자동 의식이 켜져 있으면 이 그룹은 1.5초 안에 update 루프가 doRitualMerge(true)로 먹는다 —
-  // 그 경로는 항상 혼합이라 純 태그는 받을 수 없는 보너스를 광고하는 셈이 된다 (주석의 의도대로 감춘다).
-  if (n > 0 && isGrainUnlocked() && !state.autoRitualEnabled) {
-    // doRitualMerge와 같은 정렬 규칙으로 '실제로 발동될 그룹'을 고른다 (표시와 동작이 어긋나면 안 됨)
-    const g = groups.slice().sort((a, b) => b.indices.length - a.indices.length || b.level - a.level)[0];
-    const gd = getGrainDef(grainPureId(g.indices.map(i => state.grid[i]), false));
-    tag = gd ? ` ${gd.ch}純` : ' 混';
-    hint = gd
-      ? `발동 그룹의 결이 모두 ${gd.name} — 순(純) 의식 (${gd.desc})`
-      : '발동 그룹의 결이 섞임 — 혼합 의식 (결을 맞추면 한 채널 ×2.2)';
+  let tag = '', aim = '', hint = '같은 Lv 4방향 연결 3개 이상이면 발동';
+  if (n > 0) {
+    // Q-Leap 134: 발동부와 같은 함수로 '실제로 터질 무리'를 고른다 (표시-동작 불일치 원천 차단)
+    const pick = pickRitualGroup(groups, currentRitualAim());
+    if (pick.aimed) {
+      aim = ' ◎';
+      hint = `진안 — 선택한 무리 ${pick.group.indices.length}개 → Lv ${pick.group.level + pick.group.indices.length - 1} · 결과는 선택한 칸에 앉습니다`;
+      if (!state.ritualEyeHintShown) {
+        state.ritualEyeHintShown = true;
+        setTimeout(() => toast('◎ 진안 — 선택한 무리가 발동되고 결과가 그 칸에 앉습니다'), 420);
+      }
+    }
+    // 자동 의식이 켜져 있으면 이 그룹은 1.5초 안에 update 루프가 doRitualMerge(true)로 먹는다 —
+    // 그 경로는 항상 혼합이라 純 태그는 받을 수 없는 보너스를 광고하는 셈이 된다.
+    if (isGrainUnlocked() && !state.autoRitualEnabled) {
+      const gd = getGrainDef(grainPureId(pick.group.indices.map(i => state.grid[i]), false));
+      tag = gd ? ` ${gd.ch}純` : ' 混';
+      hint = gd
+        ? `${pick.aimed ? '진안 — ' : ''}발동 그룹의 결이 모두 ${gd.name} — 순(純) 의식 (${gd.desc})`
+        : `${pick.aimed ? '진안 — ' : ''}발동 그룹의 결이 섞임 — 혼합 의식 (결을 맞추면 한 채널 ×2.2)`;
+    }
   }
-  btn.textContent = n > 0 ? `✨ 의식 (${n})${tag}` : '✨ 의식';
+  btn.textContent = n > 0 ? `✨ 의식${aim} (${n})${tag}` : '✨ 의식';
   btn.title = hint;
   btn.disabled = n === 0;
 }
@@ -3397,6 +3443,7 @@ function validateAndRepairState() {
       }
     }
     state.constellationIntroShown = !!state.constellationIntroShown;
+  state.ritualEyeHintShown = !!state.ritualEyeHintShown; // Q-Leap 134
   }
   // lifetime stat counters must be finite ≥ 0 — a corrupt NaN here would poison
   // displays (playtime, totals) and accumulation forever.
@@ -5485,6 +5532,13 @@ function renderGrid() {
     if (p) { autoPairSet.add(p[0]); autoPairSet.add(p[1]); }
   }
   // Q-Leap 107: center cell index (golden-weighted gold)
+  // Q-Leap 134: 진안 — 선택한 표창이 3+ 연결 무리에 속하면 그 무리 전체를 윤곽으로 예고한다.
+  // 결과가 앉을 칸은 selectedIdx 자신이라 이미 .selected가 표시한다 (새 클래스 불필요).
+  const ritualEyeSet = new Set();
+  if (selectedIdx >= 0 && !isTowerRitualBanned()) {
+    const pk = pickRitualGroup(findRitualGroups(), currentRitualAim());
+    if (pk && pk.aimed) for (const k of pk.group.indices) ritualEyeSet.add(k);
+  }
   const centerIdx = getCenterIndex();
   // 오늘의 시세 — only relevant while deciding what to sell; computed once per render.
   const marketLv = sellMode ? getMarketLevel() : -1;
@@ -5515,11 +5569,15 @@ function renderGrid() {
       const selCell = state.grid[selectedIdx];
       if (selCell && c && c.level === selCell.level) {
         cell.classList.add('mergeable');
-        cell.dataset.preview = (c.level + 1);
+        // Q-Leap 134 (접목): 결과의 결은 목적지(= 지금 이 칸)를 따른다 — 진안이 의식에 심은
+        // 문법을 탭-탭 경로에도. '→ 地12'(6자)가 '→ Lv 12'(7자)보다 짧아 좁은 칸에서 유리하다.
+        const _pg = isGrainUnlocked() ? getGrainDef(c.grain) : null;
+        cell.dataset.preview = _pg ? `→ ${_pg.ch}${c.level + 1}` : `→ Lv ${c.level + 1}`;
         // Q-Leap 133: 결이 같은 짝은 순(純) 합성 — 결정이 내려지는 바로 그 순간에 보이게 표시
         if (isGrainUnlocked() && c.grain && c.grain === selCell.grain) cell.classList.add('pure-pair');
       }
     }
+    if (ritualEyeSet.has(i)) cell.classList.add('ritual-group'); // Q-Leap 134: 발동될 무리 예고
     // Hint mode (only when nothing selected, to avoid overlap with mergeable highlight)
     if (state.hintMode && selectedIdx < 0 && hintPairSet.has(i)) {
       cell.classList.add('hint-pair');
@@ -7129,6 +7187,7 @@ function doPrestige() {
   document.body.classList.remove('frenzy-active');
   // Q-Leap 127.1: 각인 모드/모달은 런타임 UI — 윤회를 넘겨 남으면 점선·묵은 모달이 스테일
   if (engraveMode) setEngraveMode(false);
+  selectedIdx = -1; // Q-Leap 134: 그리드가 재생성되므로 스테일 선택(진안 조준)을 남기지 않는다
   closeEngraveModal();
   closeConstellationModal(); // 감사 132.7: 성좌 모달도 같은 위생 블록 — 열린 채 넘기면 예약이 소비된 스테일 표시가 남는다
   // Q-Leap 125: 시련의 탑 — 진행 중이던 시련은 런과 함께 끝난다 (미돌파 = 실패, 보상 없음).
@@ -7770,7 +7829,12 @@ document.querySelectorAll('.trophy-tab').forEach(tab => {
 // Q-Leap 51: ritual button
 document.getElementById('ritual-btn').addEventListener('click', () => {
   getAudio();
-  doRitualMerge();
+  // Q-Leap 134: 진안 — 선택한 표창이 속한 무리를 그 칸에서 터뜨린다 (선택 없으면 오늘과 동일)
+  const aim = currentRitualAim();
+  selectedIdx = -1; // 소비될 칸이 선택으로 남으면 발동 직후 유령 윤곽이 한 프레임 남는다
+  const ok = doRitualMerge(false, aim);
+  if (!ok) selectedIdx = aim; // 금지층/무그룹이면 조준을 되돌려준다 (다시 고르게 만들지 않음)
+  renderGrid();
   refreshRitualBadge();
 });
 // Q-Leap 52: log modal wiring
@@ -8455,7 +8519,7 @@ const HELP_SECTIONS = {
     { title: '🙏 축복 칸', body: '30초마다 그리드 한 칸이 축복 상태. 그 칸에서 합성 시 <span class="hk">+1 점프 + 콤보 가속</span>. 깨달음 스킬 "축복 지속"으로 +5s/Lv.' },
     { title: '📖 도감', body: '첫 도달한 Lv 영구 기록. 신규 등록 시 <span class="hk">깨달음 +1</span>. 윤회를 거쳐도 보존.' },
     { title: '🔗 인접 시너지', body: '같은 Lv 표창이 4방향 인접 시 <span class="hk">골드 생성 +20%/인접</span> (max +80%). 색상 dot으로 표시.' },
-    { title: '✨ 의식 합성', body: '같은 Lv 4방향 연결 그룹 3+ 시 자동 활성화. 발동 시 <span class="hk">한꺼번에 합쳐 큰 점프</span> (3개→+1, 4개→+2 ...).' },
+    { title: '✨ 의식 합성', body: '같은 Lv 4방향 연결 그룹 3+ 시 자동 활성화. 발동 시 <span class="hk">한꺼번에 합쳐 큰 점프</span> (3개→+1, 4개→+2 ...). <span class="hk">◎ 진안</span>: 표창을 고르고 누르면 <span class="hk">그 표창이 속한 무리</span>가 발동되고 결과가 <span class="hk">고른 칸에 앉습니다</span> — 큰 무리(골드·전선)와 순(純) 무리(폭주·변종) 중 무엇을 태울지, 결과를 어느 칸에 둘지가 선택입니다. 아무것도 고르지 않으면 가장 큰 무리가 자동 선택 (기존과 동일).' },
     { title: '三 삼재의 결', body: `Lv ${GRAIN_UNLOCK_LV} 해금. 표창마다 <span class="hk">天(천)·地(지)·人(인)</span> 중 하나의 결이 붙습니다 (칸 왼쪽 표시, 생성 순서는 <span class="hk">회전 — 다음 결 예고</span>). 결이 같은 표창끼리 <span class="hk">손으로</span> 합치면 순(純) 합성: <span class="hk">天 합성 골드 ×2.2 / 地 폭주 충전 ×2.2 / 人 변종 자연발생 ×2.2</span>, 대신 나머지 두 채널은 ×0.35. 결과 표창의 결은 <span class="hk">목적지(나중에 탭한 칸)</span>를 따르므로 방향이 다음 수를 만듭니다. 다른 결끼리의 합성(혼합)은 기존과 완전히 동일 — 무작정 합쳐도 손해가 없고, 결을 읽는 만큼만 이득. 자동합치기·⚡모두·자동 의식은 항상 혼합입니다.` },
     { title: '🌟 콤보', body: '2.5초 안 chain merge 시 콤보 ×N. 콤보당 +20% 골드. 5/10/15/20/30/50 마일스톤 보너스.' },
     { title: '🔺 세트 효과', body: '그리드 구성으로 패시브 발동 (그리드 위 배지 표시): <span class="hk">삼위일체</span>(같은 Lv 3+·골드+15%) / <span class="hk">황금 진형</span>(황금 2+·변종×1.5) / <span class="hk">만재</span>(90%+·폭주충전×2) / <span class="hk">승천</span>(Lv20+ 3개·콤보+1s) / <span class="hk">무지개</span>(황금·별·검은 동시·골드+25%) / <span class="hk">정예 진형</span>(5+ 표창 전부 최고Lv−3↑·생성+10%) / <span class="hk">완전 진형</span>(삼위일체·만재·승천·정예 동시·골드+50%).' },
@@ -8487,7 +8551,7 @@ const HELP_SECTIONS = {
     { title: '🗼 시련의 탑', body: '윤회 2회 해금. 윤회 패널에서 <span class="hk">다음 층 도전을 예약</span>하면 다음 윤회 런이 그 층의 제약과 함께 시작 — 단 <span class="hk">계승 없이 맨손 입장</span>. 목표 Lv 도달 시 돌파 — <span class="hk">층당 1회성 💎+깨달음</span> 보상. 6층: 생성 느림/자동·일괄 합치기 금지/골드 감소/의식 금지/생성 Lv1 고정/복합. 포기하면 다음 윤회에 재도전. 전략 모드와 중첩 가능 — 자발적 핸디캡의 명예 사다리. <span class="hk">6층 완주 후엔 무한 심층</span>: 심연/나락/무저/공허/적멸 5패턴이 순환하며 깊어질수록 제약이 강해지고 목표 Lv +2/층 — 끝없는 명예 기록.' },
     { title: '⛩ 미드게임 관문', body: 'Lv <span class="hk">15 / 25 / 35</span> 최초 도달 시 관문이 열립니다 — <span class="hk">보석 다발 / 깨달음(悟) / 변종 표창</span> 중 하나를 선택 (전 생애 1회). 지금 어느 자원이 필요한지 고르는 결정이며, 선택을 미루면 보존됩니다. 점프 합성으로 여러 관문을 한 번에 넘으면 차례로 묻습니다.' },
     { title: '⚖ 제련 모드', body: '최고 Lv 6 해금. 생성 게이지 옆 <span class="hk">제련 버튼</span>으로 순환: <span class="hk">표준</span> / <span class="hk">🔥 정밀</span>(생성 120% 느림 · 시작 Lv +1 — 슬롯·손 절약) / <span class="hk">🌪 속성</span>(생성 45% 빠름 · 시작 Lv −1 — 합성 횟수↑, 콤보·폭주·미션에 유리). 두 특화 모두 원시 효율은 표준의 ~91% — 상황이 선택을 만든다. 시작 Lv 1이거나 고행의 층에선 무효(🚫). 전략 모드가 런의 방침이라면 제련은 <span class="hk">언제든 바꾸는 전술 다이얼</span>.' },
-    { title: '🧿 성소 각인', body: '윤회 1회 해금. 깨달음(悟) 패널의 <span class="hk">🧿 각인 버튼</span> → 그리드 칸을 탭해 룬을 새김 (최대 3칸, 悟 15/30/50). <span class="hk">💰 부</span>(그 칸 패시브 ×1.5) / <span class="hk">⚒ 정련</span>(그 칸에서 완성된 합성·의식 골드 ×1.35) / <span class="hk">🍀 연</span>(그 칸으로의 손 합성 행운 +4%p). 효과는 칸 조건부 — 합성 동선을 각인 칸으로 유도하는 공간 전략. 팁: <span class="hk">의식 결과는 그룹의 가장 낮은 번호 칸에 생성</span>되므로 정련 각인으로 노릴 수 있음. 연의 각인은 손 합성에만 발동 (자동 합치기 제외). 윤회에도 보존, 제거는 무료(환불 없음). 스킬트리와 悟를 두고 경쟁하는 선택.' },
+    { title: '🧿 성소 각인', body: '윤회 1회 해금. 깨달음(悟) 패널의 <span class="hk">🧿 각인 버튼</span> → 그리드 칸을 탭해 룬을 새김 (최대 3칸, 悟 15/30/50). <span class="hk">💰 부</span>(그 칸 패시브 ×1.5) / <span class="hk">⚒ 정련</span>(그 칸에서 완성된 합성·의식 골드 ×1.35) / <span class="hk">🍀 연</span>(그 칸으로의 손 합성 행운 +4%p). 효과는 칸 조건부 — 합성 동선을 각인 칸으로 유도하는 공간 전략. 팁: <span class="hk">의식 결과 칸은 ◎ 진안으로 직접 고를 수 있으므로</span> 정련 각인 칸을 노리세요. 연의 각인은 손 합성에만 발동 (자동 합치기 제외). 윤회에도 보존, 제거는 무료(환불 없음). 스킬트리와 悟를 두고 경쟁하는 선택.' },
     { title: '🎵 정취 (생성 음악)', body: '진행이 소리가 됩니다 — <span class="hk">최고 Lv가 음높이</span>(5Lv마다 반음↑), 콤보·폭주가 선율의 밀도를, 골드러시가 하모니를 정하는 <span class="hk">상태 반응형 배경 음악</span>. 하단 🎵 버튼으로 켜고 끄기 (음소거와 별개, 효과·보상 무관한 순수 감상 계층).' },
     { title: '🏛 명예의 전당', body: '평생 기록 + 🎯다음 목표 + 💰골드 배수 분해 + 📈성장 스파크라인을 한눈에. <span class="hk">🏆 명예 모달의 전당 탭</span>에 있습니다 (활동 로그도 로그 탭으로 통합).' },
   ],

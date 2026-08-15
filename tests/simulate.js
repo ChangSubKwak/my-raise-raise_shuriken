@@ -98,7 +98,27 @@ function runSim(mergeEvery, policy) {
         }
         F.tryMerge(p[0], p[1], false);
       }
-      try { F.doRitualMerge(); } catch (e) {}
+      // Q-Leap 134: 'aim' 프로파일은 진안으로 무리와 결과 칸을 고른다 — 純 무리 우선,
+      // 없으면 각인 칸이 포함된 무리의 그 칸, 그 외에는 기존 자동 선택과 같다.
+      // blind/grain 기준선은 인자 없는 호출 그대로라 수학적으로 불변이다.
+      if (policy === 'aim') {
+        try {
+          const groups = F.findRitualGroups();
+          let target = -1;
+          for (const g of groups) {
+            if (F.grainPureId(g.indices.map(i => S().grid[i]), false)) { target = g.indices[0]; break; }
+          }
+          if (target < 0) {
+            for (const g of groups) {
+              const eng = g.indices.find(i => F.getEngraving(i));
+              if (eng !== undefined) { target = eng; break; }
+            }
+          }
+          if (groups.length) F.doRitualMerge(false, target);
+        } catch (e) {}
+      } else {
+        try { F.doRitualMerge(); } catch (e) {}
+      }
       if ((S().frenzyCharge || 0) >= 100) try { F.activateFrenzy(true); } catch (e) {}
       buyUpgrades();
       buySkills();
@@ -132,6 +152,8 @@ const casual = median3(15);
 // 감사 133.2: 결-인지(목적지 스티어링) 프로파일 — Q-Leap 133의 수동 최적화 상한을 재는 축.
 // blind 프로파일과 나란히 두어 계수 조정 시 상한이 어디로 움직이는지 보이게 한다.
 const grain = median3(2, 'grain');
+// Q-Leap 134: 진안 프로파일 — 의식의 무리·결과 칸을 손으로 고르는 상한 (PACING 규칙 전후 비교용)
+const aim = median3(2, 'aim');
 console.log('\n  Lv    active(2s개입)  casual(15s개입)   구간 배율(active)');
 let prev = null;
 for (const m of MILESTONES) {
@@ -144,10 +166,11 @@ for (const m of MILESTONES) {
 }
 console.log(`\n  윤회 횟수 (3회 런): active ${active.prestiges.join('/')} · casual ${casual.prestiges.join('/')}`);
 console.log(`  종료 시 Lv: active ${active.finalLv.join('/')} · casual ${casual.finalLv.join('/')}`);
-console.log('\n  결(三才) 프로파일 — 목적지 스티어링으로 순 합성률을 올리는 수동 최적화 상한 (감사 133.2)');
-console.log('   Lv    blind(active)   결-인지(active)');
+console.log('\n  결(三才)·진안 프로파일 — 손 플레이 최적화 상한 (감사 133.2 / Q-Leap 134)');
+console.log('   Lv    blind(active)   결-인지(active)   진안(active)');
 for (const m of MILESTONES) {
-  console.log(`  ${String(m).padStart(2)}    ${fmtT(active.med[m])}        ${fmtT(grain.med[m])}`);
+  console.log(`  ${String(m).padStart(2)}    ${fmtT(active.med[m])}        ${fmtT(grain.med[m])}        ${fmtT(aim.med[m])}`);
 }
+console.log(`  진안 종료 Lv: ${aim.finalLv.join('/')} · 윤회 ${aim.prestiges.join('/')}`);
 console.log(`  순 합성률: blind ${(active.pureRate * 100).toFixed(1)}% → 결-인지 ${(grain.pureRate * 100).toFixed(1)}%`);
 console.log(`  종료 시 Lv: 결-인지 ${grain.finalLv.join('/')} · 윤회 ${grain.prestiges.join('/')}`);

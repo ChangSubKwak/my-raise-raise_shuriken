@@ -363,6 +363,60 @@ function ok(cond, msg) {
   await page.setViewportSize({ width: 480, height: 960 });
   await page.waitForTimeout(150);
 
+  // ================= Q-Leap 134: 진안(陣眼) 표적 의식 =================
+  // 신뢰 클릭으로만 검증한다 (el.click()은 숨겨진 요소에서도 발화해 v3.09~3.76 ☰ 사건을 가렸다).
+  console.log('Q-Leap 134 진안');
+  await page.evaluate(() => {
+    state.bestLevel = 20; state.runBestLevel = 20; state.autoRitualEnabled = false;
+    state.upgrades.maxShuriken = 6; // 4열
+    state.grid = new Array(getGridSize()).fill(null);
+    // 무리 A(작음): 0,1,2 = Lv5 · 무리 B(큼): 4,5,6,8 = Lv7  → 무조준이면 B가 뽑힌다
+    [0, 1, 2].forEach((i, k) => { state.grid[i] = { id: 300 + k, level: 5, fireTimer: 0, grain: 'cheon' }; });
+    [4, 5, 6, 8].forEach((i, k) => { state.grid[i] = { id: 310 + k, level: 7, fireTimer: 0, grain: 'ji' }; });
+    selectedIdx = -1; sellMode = false; infoMode = false;
+    refreshUI();
+  });
+  const noAim = await page.evaluate(() => document.getElementById('ritual-btn').textContent);
+  ok(!/◎/.test(noAim), `진안: 무조준이면 ◎ 없음 — "${noAim}"`);
+  await clearOverlays(); await page.waitForTimeout(150);
+  await page.click('#grid .cell[data-idx="2"]');           // 작은 무리의 구성원을 신뢰 클릭
+  await page.waitForTimeout(200);
+  const aimed = await page.evaluate(() => ({
+    txt: document.getElementById('ritual-btn').textContent,
+    outlined: [...document.querySelectorAll('#grid .cell')].filter(c => c.classList.contains('ritual-group')).map(c => +c.dataset.idx),
+    sel: selectedIdx,
+  }));
+  ok(/◎/.test(aimed.txt), `진안: 조준 시 ◎ 표시 — "${aimed.txt}"`);
+  ok(JSON.stringify(aimed.outlined.sort((a, b) => a - b)) === '[0,1,2]',
+    `진안: 발동될 무리만 윤곽 — ${JSON.stringify(aimed.outlined)}`);
+  await page.screenshot({ path: path.join(SHOTS, '08-ritual-eye.png') });
+  await page.click('#ritual-btn');                          // 신뢰 클릭으로 발동
+  await page.waitForTimeout(300);
+  const after = await page.evaluate(() => ({
+    at2: state.grid[2] ? state.grid[2].level : null,
+    at0: state.grid[0] ? state.grid[0].level : null,
+    bigIntact: [4, 5, 6, 8].every(i => state.grid[i] && state.grid[i].level === 7),
+    sel: selectedIdx,
+    outlines: document.querySelectorAll('#grid .cell.ritual-group').length,
+  }));
+  ok(after.at2 === 7, `진안: 결과가 클릭한 칸(2)에 앉음 (Lv ${after.at2})`);
+  ok(after.at0 === null, '진안: 기존 기본 칸(0)은 비었다 — 크기 정렬을 이겼다');
+  ok(after.bigIntact, '진안: 더 큰 무리는 손대지 않았다');
+  ok(after.sel === -1 && after.outlines === 0, '진안: 발동 후 조준·윤곽이 남지 않는다');
+  // 새 마크 rect를 만들지 않았음을 구조적으로 증명 (마크 충돌 가드와 독립)
+  const childParity = await page.evaluate(() => {
+    state.grid = new Array(getGridSize()).fill(null);
+    [0, 1, 2].forEach((i, k) => { state.grid[i] = { id: 400 + k, level: 5, fireTimer: 0, grain: 'cheon' }; });
+    selectedIdx = -1; renderGrid();
+    const before = document.querySelector('#grid .cell[data-idx="1"]').childElementCount;
+    selectedIdx = 1; renderGrid();
+    const cell = document.querySelector('#grid .cell[data-idx="1"]');
+    return { before, after: cell.childElementCount, hasClass: cell.classList.contains('ritual-group') };
+  });
+  ok(childParity.hasClass && childParity.after === childParity.before,
+    `진안: 윤곽은 outline만 — 셀 자식 노드 수 불변 (${childParity.before} → ${childParity.after})`);
+  await page.evaluate(() => { selectedIdx = -1; renderGrid(); });
+
   // ================= console errors =================
   const errs = consoleErrors.filter(e => !/favicon/i.test(e));
   ok(errs.length === 0, `콘솔 에러 0건${errs.length ? ' — ' + errs.slice(0, 3).join(' | ') : ''}`);
