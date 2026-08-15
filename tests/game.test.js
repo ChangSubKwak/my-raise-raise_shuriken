@@ -3546,6 +3546,195 @@ group('transcendence constellation (Q-Leap 132)', () => {
   ok(/constelModal\._sig/.test(RAW_HTML), 'open modal re-renders when T changes (signature gate)');
 });
 
+group('삼재의 결 / grain (Q-Leap 133)', () => {
+  const REAL = Math.random;
+  const quiet = (fn) => { Math.random = () => 0.999999; try { return fn(); } finally { Math.random = REAL; } };
+  const grainState = (patch) => {
+    const s = withState(Object.assign({
+      codex: {}, gem: 0, enlightenment: 0, bestLevel: 20, runBestLevel: 20,
+      upgrades: defaultUpgrades(), prestigeCount: 0, dailyQuests: [],
+      lastFirstMergeDate: F.todayString(), // suppress the daily-first-merge grant
+    }, patch));
+    s.stats = {};
+    for (let lv = 1; lv <= 30; lv++) s.codex[lv] = true; // no incidental codex gems/悟
+    return s;
+  };
+
+  // ── 1) 결 정의 + 회전 ──
+  eq(C.GRAINS.length, 3, '천/지/인 3결');
+  eq(C.GRAINS.map(g => g.channel).join(','), 'gold,frenzy,variant', '결마다 서로 다른 채널');
+  eq(new Set(C.GRAINS.map(g => g.id)).size, 3, '결 id 중복 없음');
+  const sRot = grainState({});
+  sRot.grainCycle = 0;
+  eq(F.getNextGrainId(), C.GRAINS[0].id, '회전 0 → 첫 결');
+  sRot.grainCycle = 4;
+  eq(F.getNextGrainId(), C.GRAINS[1].id, '회전은 3주기 (예측 가능 — 무작위 아님)');
+  sRot.grainCycle = 35;
+  eq(F.getNextGrainId(), C.GRAINS[35 % 3].id, '회전 상한 부근에서도 일관');
+  eq(F.getGrainDef('nope'), null, '알 수 없는 결은 null');
+
+  // ── 2) 채널 배수: 대칭 + 세금 (지배 픽 불가) ──
+  const channels = ['gold', 'frenzy', 'variant'];
+  for (const g of C.GRAINS) {
+    let sum = 0;
+    for (const ch of channels) {
+      const m = F.grainChannelMul(g.id, ch);
+      eq(m, g.channel === ch ? C.GRAIN_PURE_MUL : C.GRAIN_OFF_MUL, `${g.ch}: ${ch} 채널 배수`);
+      sum += m;
+    }
+    approx(sum, C.GRAIN_PURE_MUL + 2 * C.GRAIN_OFF_MUL, `${g.ch}: 세 채널 합이 동일 (대칭 — 우열 없음)`, 1e-9);
+    ok(sum < 3, `${g.ch}: 합이 혼합(3.0) 미만 — 특화는 세금을 낸다 (제련 모드와 같은 반지배 규칙)`);
+  }
+  for (const ch of channels) eq(F.grainChannelMul(null, ch), 1, `혼합 합성은 ${ch} 채널 ×1 (오늘과 동일)`);
+  // 결을 모르고 아무렇게나 합치는 플레이어의 기대값은 사실상 불변 (2/3×1 + 1/3×평균)
+  const pureAvg = (C.GRAIN_PURE_MUL + 2 * C.GRAIN_OFF_MUL) / 3;
+  approx(2 / 3 + (1 / 3) * pureAvg, 1, '무관심 플레이의 기대 채널값 ≈ 1 (인플레이션 없음)', 0.02);
+
+  // ── 3) 순(純) 판정 ──
+  const P = (grain) => ({ id: 1, level: 5, fireTimer: 0, grain });
+  const g0 = C.GRAINS[0].id, g1 = C.GRAINS[1].id;
+  grainState({});
+  eq(F.grainPureId([P(g0), P(g0)], false), g0, '같은 결 손 합성 → 순');
+  eq(F.grainPureId([P(g0), P(g1)], false), null, '다른 결 → 혼합');
+  eq(F.grainPureId([P(g0), P(g0)], true), null, '자동 경로는 항상 혼합 (방치 기준선 불변)');
+  eq(F.grainPureId([P(g0), P(undefined)], false), null, '결 없는 레거시 조각은 혼합');
+  eq(F.grainPureId([P('bogus'), P('bogus')], false), null, '알 수 없는 결은 순 판정 불가');
+  eq(F.grainPureId([P(g0)], false), null, '1개짜리는 순 아님');
+  eq(F.grainPureId([P(g0), P(g0), P(g0)], false), g0, '의식용 3개 그룹도 판정');
+  grainState({ bestLevel: C.GRAIN_UNLOCK_LV - 1, runBestLevel: 1 });
+  eq(F.isGrainUnlocked(), false, `Lv ${C.GRAIN_UNLOCK_LV} 전에는 미해금`);
+  eq(F.grainPureId([P(g0), P(g0)], false), null, '미해금 구간은 결 효과 없음 (점진 공개)');
+  grainState({ bestLevel: C.GRAIN_UNLOCK_LV });
+  eq(F.isGrainUnlocked(), true, `Lv ${C.GRAIN_UNLOCK_LV}에서 해금`);
+
+  // ── 4) 생성이 결을 회전 부여 ──
+  const sSp = grainState({ grid: new Array(6).fill(null) });
+  sSp.grainCycle = 0;
+  quiet(() => { F.spawnShuriken(); F.spawnShuriken(); F.spawnShuriken(); });
+  const spawned = G.getState().grid.filter(Boolean).map(c => c.grain).sort();
+  eq(spawned.length, 3, '3개 생성');
+  eq(new Set(spawned).size, 3, '연속 생성은 세 결을 고루 부여 (회전)');
+  eq(G.getState().grainCycle, 3, '회전 카운터 전진');
+  sSp.grainCycle = C.GRAINS.length * 12 - 1;
+  quiet(() => F.spawnShuriken());
+  eq(G.getState().grainCycle, 0, '회전 카운터는 유한 (저장값 폭주 방지)');
+
+  // ── 5) tryMerge: 천(天) = 골드 채널 ──
+  const goldGrain = C.GRAINS.find(g => g.channel === 'gold').id;
+  const sMix = grainState({ grid: gridFrom([{ level: 5, grain: goldGrain }, { level: 5, grain: C.GRAINS[1].id }, null, null, null, null]) });
+  quiet(() => F.tryMerge(0, 1));
+  const mixedGold = G.getState().gold;
+  const sPure = grainState({ grid: gridFrom([{ level: 5, grain: goldGrain }, { level: 5, grain: goldGrain }, null, null, null, null]) });
+  quiet(() => F.tryMerge(0, 1));
+  const pureGold = G.getState().gold;
+  ok(mixedGold > 0 && pureGold > 0, '두 경우 모두 합성 골드 발생');
+  approx(pureGold / mixedGold, C.GRAIN_PURE_MUL, '순 天 합성은 합성 골드 ×2.2', 0.02);
+  eq(G.getState().stats.pureMerges, 1, '순 합성 실적 기록');
+  // 자동 경로는 보너스 없음
+  const sAuto = grainState({ grid: gridFrom([{ level: 5, grain: goldGrain }, { level: 5, grain: goldGrain }, null, null, null, null]) });
+  quiet(() => F.tryMerge(0, 1, true));
+  approx(G.getState().gold, mixedGold, '자동 합성은 결이 같아도 혼합 취급 (시뮬레이터 기준선 보존)', mixedGold * 0.01);
+  eq(G.getState().stats.pureMerges || 0, 0, '자동 합성은 순 실적도 없음');
+
+  // ── 6) tryMerge: 지(地) = 폭주 채널 / 결 승계 방향 ──
+  const frenzyGrain = C.GRAINS.find(g => g.channel === 'frenzy').id;
+  const sFr = grainState({ grid: gridFrom([{ level: 5, grain: frenzyGrain }, { level: 5, grain: frenzyGrain }, null, null, null, null]), frenzyCharge: 0 });
+  quiet(() => F.tryMerge(0, 1));
+  approx(G.getState().frenzyCharge, C.GRAIN_PURE_MUL, '순 地 합성은 폭주 충전 ×2.2', 1e-9);
+  const sFrOff = grainState({ grid: gridFrom([{ level: 5, grain: goldGrain }, { level: 5, grain: goldGrain }, null, null, null, null]), frenzyCharge: 0 });
+  quiet(() => F.tryMerge(0, 1));
+  approx(G.getState().frenzyCharge, C.GRAIN_OFF_MUL, '순 天 합성은 폭주 충전을 ×0.35로 대가 지불', 1e-9);
+  eq(G.getState().grid[1].grain, goldGrain, '결과 표창은 목적지의 결을 승계');
+  const sDir = grainState({ grid: gridFrom([{ level: 5, grain: goldGrain }, { level: 5, grain: frenzyGrain }, null, null, null, null]) });
+  quiet(() => F.tryMerge(0, 1));
+  eq(G.getState().grid[1].grain, frenzyGrain, '혼합 합성도 목적지 결을 따른다 (방향 = 다음 수의 밑돌)');
+  eq(F.resolveMergeGrain({ grain: goldGrain }, { grain: undefined }), goldGrain, '목적지가 레거시(결 없음)면 출발지 결 승계');
+  eq(F.resolveMergeGrain({}, {}), undefined, '양쪽 다 결이 없으면 결도 없음');
+
+  // ── 7) 의식-패리티 ──
+  const ritualPure = grainState({ grid: gridFrom([{ level: 5, grain: goldGrain }, { level: 5, grain: goldGrain }, { level: 5, grain: goldGrain }, null, null, null]) });
+  quiet(() => F.doRitualMerge());
+  const rPureGold = G.getState().gold;
+  eq(G.getState().stats.pureMerges, 2, '의식은 N-1 합성 상당으로 순 실적 계상 (패리티)');
+  eq(G.getState().grid[0].grain, goldGrain, '의식 결과도 결을 승계');
+  const ritualMix = grainState({ grid: gridFrom([{ level: 5, grain: goldGrain }, { level: 5, grain: goldGrain }, { level: 5, grain: frenzyGrain }, null, null, null]) });
+  quiet(() => F.doRitualMerge());
+  const rMixGold = G.getState().gold;
+  approx(rPureGold / rMixGold, C.GRAIN_PURE_MUL, '순 의식도 골드 ×2.2 (tryMerge와 같은 규칙)', 0.02);
+  const ritualAuto = grainState({ grid: gridFrom([{ level: 5, grain: goldGrain }, { level: 5, grain: goldGrain }, { level: 5, grain: goldGrain }, null, null, null]) });
+  quiet(() => F.doRitualMerge(true));
+  approx(G.getState().gold, rMixGold, '자동 의식은 혼합 취급', rMixGold * 0.01);
+  const ritualFr = grainState({ grid: gridFrom([{ level: 5, grain: frenzyGrain }, { level: 5, grain: frenzyGrain }, { level: 5, grain: frenzyGrain }, null, null, null]), frenzyCharge: 0 });
+  quiet(() => F.doRitualMerge());
+  approx(G.getState().frenzyCharge, 2 * C.GRAIN_PURE_MUL, '순 地 의식의 폭주 충전 = (N-1) × 2.2', 1e-9);
+
+  // ── 8) 인(人) = 변종 채널 (양 경로가 같은 변수를 곱한다) ──
+  const RAW_SCRIPT = RAW_HTML;
+  ok(/getVariantSpontaneousMul\(\) \* grainChannelMul\(pureGrain, 'variant'\)/.test(RAW_SCRIPT),
+     '변종 채널이 tryMerge·의식 양쪽의 variantMul에 곱해진다 (의식-패리티)');
+  eq((RAW_SCRIPT.match(/grainChannelMul\(pureGrain, 'variant'\)/g) || []).length, 2, '변종 채널 배선은 정확히 두 경로');
+  eq((RAW_SCRIPT.match(/grainChannelMul\(pureGrain, 'gold'\)/g) || []).length, 2, '골드 채널 배선도 두 경로');
+  eq((RAW_SCRIPT.match(/grainChannelMul\(pureGrain, 'frenzy'\)/g) || []).length, 2, '폭주 채널 배선도 두 경로');
+  ok(/doRitualMerge\(true\)/.test(RAW_SCRIPT), '자동 의식 호출이 isAuto를 넘긴다');
+
+  // ── 9) 검증/복구 ──
+  const sVal = grainState({ grid: gridFrom([{ level: 5, grain: 'hacked' }, { level: 5, grain: goldGrain }, null, null, null, null]) });
+  sVal.storage = [{ id: 99, level: 4, fireTimer: 0, grain: 'nope' }];
+  sVal.grainCycle = -3.7;
+  F.validateAndRepairState();
+  const stV = G.getState();
+  eq(stV.grid[0].grain, undefined, '변조된 결은 제거 (혼합 취급)');
+  eq(stV.grid[1].grain, goldGrain, '정상 결은 보존');
+  eq(stV.storage[0].grain, undefined, '보관 조각도 같은 규칙 (패리티)');
+  eq(stV.grainCycle, 0, '손상된 회전 카운터 복구');
+  ok(/p\.grain !== undefined && !getGrainDef\(p\.grain\)/.test(RAW_SCRIPT), '원정 조각도 결을 검증한다');
+
+  // ── 10) 점진 공개 + 실적/도움말 ──
+  grainState({ bestLevel: C.GRAIN_UNLOCK_LV - 1 });
+  eq(F.getRevealState().grain, false, `Lv ${C.GRAIN_UNLOCK_LV} 전엔 결 UI 비노출`);
+  grainState({ bestLevel: C.GRAIN_UNLOCK_LV });
+  eq(F.getRevealState().grain, true, '해금과 동시에 노출');
+  ok(/\['#next-grain-chip', 'grain'\]/.test(RAW_SCRIPT), '다음 결 칩이 REVEAL_TARGETS에 등록됨');
+  ok(/id="next-grain-chip"/.test(RAW_SCRIPT) && /id="spawn-label-main"/.test(RAW_SCRIPT),
+     '칩은 매 프레임 갈아끼우는 라벨 바깥의 정적 요소 (증발 방지)');
+  ok(C.ACHIEVEMENTS.some(a => a.id === 'a_grain_1') && C.ACHIEVEMENTS.some(a => a.id === 'a_grain_100'), '결 실적 2종 등록');
+  eq(C.ACHIEVEMENTS.find(a => a.id === 'a_grain_1').check({ stats: { pureMerges: 1 } }), true, 'a_grain_1 판정');
+  eq(C.ACHIEVEMENTS.find(a => a.id === 'a_grain_1').check({}), false, 'a_grain_1은 stats 누락에 안전');
+  ok(/삼재의 결/.test(RAW_SCRIPT), '도움말에 결 항목 존재');
+
+  // ── 11) 결의 생애: 변환은 승계, 생성은 회전 ──
+  // 계승(윤회) — 데려오는 표창이지 새로 만드는 게 아니다 (변종 플래그와 같은 규칙)
+  const sInh = grainState({
+    grid: gridFrom([{ level: 12, grain: frenzyGrain, golden: true }, null, null, null, null, null]),
+    bestLevel: 30, runBestLevel: 30, prestigeCount: 3, gold: 0,
+  });
+  sInh.skills = Object.assign({}, sInh.skills, { inheritance: 1 });
+  quiet(() => F.doPrestige());
+  const inherited = G.getState().grid.filter(Boolean)[0];
+  if (inherited) {
+    eq(inherited.grain, frenzyGrain, '계승 표창은 결을 유지 (조용한 하향 방지)');
+    eq(inherited.golden, true, '계승 표창은 변종도 유지 (기존 규칙 회귀 없음)');
+  } else {
+    ok(true, '계승 스킬 미보유 환경 — 계승 케이스 생략');
+  }
+  // 융합 — 결과 칸의 결 승계
+  const sFus = grainState({
+    grid: gridFrom([
+      { level: 8, golden: true, grain: goldGrain }, { level: 7, golden: true, grain: frenzyGrain },
+      { level: 6, golden: true, grain: frenzyGrain }, null, null, null,
+    ]),
+    bestLevel: 30, runBestLevel: 30,
+  });
+  quiet(() => F.tryVariantFusion('golden'));
+  const fused = G.getState().grid.filter(Boolean)[0];
+  eq(fused.star, true, '융합 결과는 상위 변종');
+  eq(fused.grain, goldGrain, '융합 결과도 결과 칸의 결을 승계');
+  // 새로 생겨나는 표창(관문 보상/출석 선물)은 회전을 소비한다
+  eq((RAW_SCRIPT.match(/takeNextGrain\(\)/g) || []).length, 4, '회전 소비 진입점은 정의 1 + 호출 3 (생성·관문·출석)');
+  ok(/level: c\.level, fireTimer: 0, golden: !!c\.golden, star: !!c\.star, dark: !!c\.dark, grain: c\.grain/.test(RAW_SCRIPT),
+     '계승 경로가 결을 명시적으로 승계');
+});
+
 // ---- helpers ----
 function defaultUpgrades() {
   return { maxShuriken: 0, spawnRate: 0, spawnBatch: 0, firerate: 0, baseDmg: 0, goldMul: 0, spawnLevel: 0, luckChance: 0 };

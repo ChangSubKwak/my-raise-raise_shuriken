@@ -1190,6 +1190,27 @@
     0%,100% { transform: scale(0.92); opacity: 0.85; }
     50%     { transform: scale(1.08); opacity: 1; }
   }
+  /* Q-Leap 133: 삼재의 결 — 상단 중앙. 하단 중앙은 .mergeable::after('→ Lv N' 미리보기)가
+     쓰므로 합성 후보일 때 결 표식이 가려진다 (브라우저 검증에서 실제로 겹침 확인). */
+  .cell .grain-mark {
+    position: absolute; top: 1px; left: 50%; transform: translateX(-50%);
+    font-size: 11px; font-weight: 800; line-height: 1.1;
+    z-index: 3; pointer-events: none; opacity: 0.92;
+  }
+  /* 선택한 표창과 결이 같은 후보 = 순(純) 합성 가능 — 초록 mergeable 위에 결 색 링을 덧댄다 */
+  .cell.pure-pair {
+    outline: 2px solid rgba(255,225,150,0.85); outline-offset: -4px;
+    animation: purePairPulse 1.1s ease-in-out infinite;
+  }
+  @keyframes purePairPulse {
+    0%,100% { outline-color: rgba(255,225,150,0.45); }
+    50%     { outline-color: rgba(255,235,190,1); }
+  }
+  #next-grain-chip {
+    display: inline-block; margin-left: 6px; font-size: 10px; font-weight: 800;
+    padding: 1px 5px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.18);
+    background: rgba(255,255,255,0.06); vertical-align: middle;
+  }
   .cell:active { transform: scale(0.97); }
   .cell .lv-label {
     position: absolute; top: 2px; left: 4px; font-size: 10px; font-weight: 800;
@@ -1569,7 +1590,7 @@
     </div>
     <div id="spawn-bar">
       <div id="spawn-progress-wrap">
-        <div id="spawn-progress-label">생성중 · <span>—</span></div>
+        <div id="spawn-progress-label"><span id="spawn-label-main">생성중 · —</span><span id="next-grain-chip" style="display:none;" title="다음에 생성될 표창의 결 (三才) — 결이 같은 표창끼리 손으로 합치면 순(純) 합성">—</span></div>
         <div id="spawn-progress-bar">
           <div id="spawn-progress-fill"></div>
           <div id="spawn-progress-pct">0%</div>
@@ -1941,7 +1962,7 @@
 <script>
 'use strict';
 // 릴리즈 버전 — package.json version과 동기 (테스트가 불일치를 잡는다). 커밋 시 함께 범프.
-const GAME_VERSION = '3.81.0';
+const GAME_VERSION = '3.82.0';
 // =============================================================
 // 표창키우기 v2 — 합체 게임
 // Concept: 3×3+ grid, drop shuriken (Lv 1), merge same-level → Lv+1
@@ -2259,6 +2280,8 @@ function defaultState() {
     constellation: {},
     constellationNext: null,
     constellationIntroShown: false,
+    // Q-Leap 133: 삼재의 결 — 생성 결 회전 카운터 (다음 결이 예측 가능해야 배치가 계획이 된다)
+    grainCycle: 0,
     // Q-Leap 59: 자동 매도 — auto-sell shuriken at or below threshold
     autoSellEnabled: false,
     autoSellThreshold: 1,     // Lv ≤ this → auto-sell (golden/star/dark/locked excluded)
@@ -2460,6 +2483,8 @@ const ACHIEVEMENTS = [
   { id: 'a_engrave_1',    name: '첫 각인',          icon: '🧿', desc: '성소 각인 1칸 새기기',        check: (s) => Object.keys(s.engravings || {}).length >= 1 },
   { id: 'a_engrave_3',    name: '성소의 완성',      icon: '🛕', desc: '성소 각인 3칸 모두 새기기',   check: (s) => Object.keys(s.engravings || {}).length >= 3, gem: 10 },
   { id: 'a_constellation', name: '별을 잇는 자',    icon: '🌌', desc: '초월 성좌 재배분 첫 적용 (윤회)', check: (s) => ((s.stats || {}).constellationAssigns || 0) >= 1, gem: 5 },
+  { id: 'a_grain_1',       name: '결을 읽다',       icon: '三', desc: '순(純) 합성 첫 성공 (같은 결끼리 손 합성)', check: (s) => ((s.stats || {}).pureMerges || 0) >= 1, gem: 3 },
+  { id: 'a_grain_100',     name: '삼재의 장인',     icon: '三', desc: '순(純) 합성 100회', check: (s) => ((s.stats || {}).pureMerges || 0) >= 100, gem: 12 },
   { id: 'a_tower_deep10', name: '적멸의 끝',        icon: '☄', desc: '무한 심층 10층 돌파 (탑 16층)', check: (s) => (s.towerFloor || 0) >= TOWER_FLOORS.length + 10, gem: 40 },
 ];
 
@@ -2874,7 +2899,8 @@ function rollMergeProcs(units, newLv) {
     }
   }
 }
-function doRitualMerge() {
+function doRitualMerge(isAuto) {
+  // isAuto: 자동 의식(update 루프) 표시 — Q-Leap 133의 결 보너스만 여기에 게이트된다 (tryMerge와 같은 규칙)
   if (isTowerRitualBanned()) { const tf = getActiveTowerFloor(); toast(`🗼 ${tf ? tf.name : '시련'} — 의식 합성 금지`); sfx('move'); return false; } // Q-Leap 125
   const groups = findRitualGroups();
   if (groups.length === 0) { toast('의식 발동 가능한 같은 Lv 3+ 연결 그룹이 없음'); sfx('move'); return false; }
@@ -2890,13 +2916,17 @@ function doRitualMerge() {
     if (state.grid[idx].dark) darksIn++; // Q-Leap: dark was dropped by ritual (asymmetry bug)
   }
   const toIdx = g.indices[0];
+  // Q-Leap 133: 의식-패리티 — 그룹 전원의 결이 같으면 순(純) 의식. 결과 결은 결과 칸(최저 인덱스)의 결을 따른다.
+  const pureGrain = grainPureId(g.indices.map(i => state.grid[i]), isAuto);
+  const resultGrain = (state.grid[toIdx] && state.grid[toIdx].grain)
+    || (g.indices.map(i => state.grid[i]).find(p => p && p.grain) || {}).grain;
   for (const idx of g.indices) state.grid[idx] = null;
   // Spontaneous variant generation parity with tryMerge: a ritual is N-1 merge-equivalents,
   // so a group with 0 variant parents still gets a spontaneous chance equal to (N-1)
   // independent merge rolls (1-(1-p)^(N-1)) at the SAME rates tryMerge uses (variantMul +
   // goldenLuck skill/challenge + frenzy). Previously ritual rolled 0% when no parent carried
   // the variant — silently penalizing variant farming via ritual/auto-ritual.
-  const variantMul = getVariantSpontaneousMul();
+  const variantMul = getVariantSpontaneousMul() * grainChannelMul(pureGrain, 'variant'); // Q-Leap 133: 인(人) 채널 (패리티)
   const mergeEquiv = g.indices.length - 1;
   const spontaneousOnce = (p) => Math.random() < (1 - Math.pow(1 - Math.max(0, p), mergeEquiv));
   let childGolden = false;
@@ -2916,7 +2946,7 @@ function doRitualMerge() {
   if (darksIn >= 2) childDark = true;
   else if (darksIn === 1) childDark = Math.random() < 0.7;
   else childDark = spontaneousOnce(0.0015 * variantMul);
-  state.grid[toIdx] = { id: state.nextShurikenId++, level: newLv, fireTimer: 0, golden: childGolden, star: childStar, dark: childDark };
+  state.grid[toIdx] = { id: state.nextShurikenId++, level: newLv, fireTimer: 0, golden: childGolden, star: childStar, dark: childDark, grain: resultGrain };
   if (childGolden) state.stats.goldenSpawned = (state.stats.goldenSpawned || 0) + 1;
   if (childStar)   state.stats.starSpawned   = (state.stats.starSpawned || 0) + 1;
   if (childDark)   state.stats.darkSpawned   = (state.stats.darkSpawned || 0) + 1;
@@ -2937,12 +2967,13 @@ function doRitualMerge() {
   if (state.trialActive) checkTrialProgress(); // Q-Leap: ritual jumps can complete a trial goal too
   if (state.towerActive) checkTowerProgress(); // Q-Leap 125: ritual jumps can clear a tower floor too (parity)
   registerCodex(newLv); // Q-Leap 116: shared — ritual now grants codex milestones + weekday bonus
-  const ritualGold = Math.floor(Math.pow(2, newLv) * getGoldMul() * g.indices.length * 2 * getMergeGoldBonus() * engraveForgeMul(toIdx)); // Q-Leap 127: 정련의 각인 — 의식 결과 칸 (패리티)
+  const ritualGold = Math.floor(Math.pow(2, newLv) * getGoldMul() * g.indices.length * 2 * getMergeGoldBonus() * engraveForgeMul(toIdx) * grainChannelMul(pureGrain, 'gold')); // Q-Leap 127: 정련의 각인 — 의식 결과 칸 (패리티) / 133: 천(天) 채널
   state.gold += ritualGold;
   state.stats.totalGoldEarned = (state.stats.totalGoldEarned || 0) + ritualGold;
   state.stats.ritualsPerformed = (state.stats.ritualsPerformed || 0) + 1;
   creditMerges(g.indices.length - 1); // Q-Leap 76/89: ritual now grants merge milestones + charms
-  addFrenzyCharge(g.indices.length - 1); // ritual charges frenzy like (N-1) merges (was missing — drift fix)
+  addFrenzyCharge((g.indices.length - 1) * grainChannelMul(pureGrain, 'frenzy')); // ritual charges frenzy like (N-1) merges (was missing — drift fix) / Q-Leap 133: 지(地) 채널
+  if (pureGrain) noteGrainPure(pureGrain, toIdx, g.indices.length - 1); // 의식-패리티: N-1 합성 상당
   rollMergeProcs(g.indices.length - 1, newLv); // ritual rolls gem-drop/gold-rush like (N-1) merges (was missing — drift fix)
   // Q-Leap 116: ritual merges also progress daily merge tiers + line bonus
   for (let k = 0; k < g.indices.length - 1; k++) { addDailyMergeCount(); addChallengeProgress(); } // daily challenge counts ritual as N-1 merges (was missing — drift fix)
@@ -3168,7 +3199,12 @@ function validateAndRepairState() {
     c.level = Math.floor(c.level);
     if (typeof c.id !== 'number' || !isFinite(c.id)) { c.id = state.nextShurikenId++; repairs++; }
     if (typeof c.fireTimer !== 'number' || !isFinite(c.fireTimer)) { c.fireTimer = 0; repairs++; }
+    // Q-Leap 133: 알 수 없는 결은 제거 (혼합 취급) — 변조된 결이 순 판정을 통과하면 채널 배수가 새어나간다
+    if (c.grain !== undefined && !getGrainDef(c.grain)) { delete c.grain; repairs++; }
   }
+  // 생성 회전 카운터도 정수 유한값으로 (NaN이면 getNextGrainId가 undefined를 뱉어 결 부여가 멈춘다)
+  if (typeof state.grainCycle !== 'number' || !isFinite(state.grainCycle) || state.grainCycle < 0
+      || state.grainCycle !== Math.floor(state.grainCycle)) { state.grainCycle = 0; repairs++; }
   // storage (v2.75) is an off-grid array of ≤3 pieces. Sanitize each entry the same way
   // as grid cells — otherwise a corrupt entry survives load and gets taken back onto the
   // board via takeFromStorage, poisoning the grid after validation already ran.
@@ -3179,6 +3215,7 @@ function validateAndRepairState() {
     c.level = Math.floor(c.level);
     if (typeof c.id !== 'number' || !isFinite(c.id)) { c.id = state.nextShurikenId++; repairs++; }
     if (typeof c.fireTimer !== 'number' || !isFinite(c.fireTimer)) c.fireTimer = 0;
+    if (c.grain !== undefined && !getGrainDef(c.grain)) { delete c.grain; repairs++; } // Q-Leap 133 (보관 패리티)
     return true;
   });
   // expedition (Q-Leap 124) — null or { piece, tier, endsAt }. A corrupt entry would crash
@@ -3196,6 +3233,7 @@ function validateAndRepairState() {
       p.level = Math.floor(p.level);
       if (typeof p.id !== 'number' || !isFinite(p.id)) { p.id = state.nextShurikenId++; repairs++; }
       if (typeof p.fireTimer !== 'number' || !isFinite(p.fireTimer)) p.fireTimer = 0;
+      if (p.grain !== undefined && !getGrainDef(p.grain)) { delete p.grain; repairs++; } // Q-Leap 133 (원정 패리티)
     }
   }
   // tower (Q-Leap 125) — towerFloor: 0..N int; towerActive: valid floor id or 0; armed: bool.
@@ -3807,6 +3845,72 @@ function getVariantSpontaneousMul() {
   return m;
 }
 
+// ---------- Q-Leap 133: 삼재의 결(三才) — 표창 개체성 ----------
+// 이 게임의 가장 깊은 사각지대는 "같은 Lv 표창은 완전히 서로 같다"는 것이었다. 어느 짝을
+// 어느 방향으로 합치든 결과가 동일하니 핵심 루프에 결정이 없고, 깊이는 전부 메타 패널에 있었다.
+// 결(結)은 표창마다 天/地/人 하나를 부여해 (1) 어떤 짝을 붙일지 (2) 어느 칸을 목적지로 삼을지를
+// 매 합성의 선택으로 만든다 — 결과의 결은 '목적지 표창'의 결을 따르므로 방향이 곧 다음 수의 밑돌이다.
+//
+// 안티-인플레이션: 순(純) 합성은 새 보상을 얹지 않는다. 세 채널(골드/폭주/변종) 중 하나를 ×2.2로
+// 키우는 대신 나머지 둘을 ×0.35로 낮추는 '재분배'다 (합 2.9 < 혼합 3.0 — 제련 모드와 같은 소액 세금).
+// 결을 모르고 아무렇게나 합치면 기대값은 2/3×1 + 1/3×(2.2+0.35+0.35)/3 ≈ 0.99 — 즉 무관심한
+// 플레이어의 수익은 사실상 불변이고, 결을 읽고 배치하는 플레이어만 채널을 몰아준다.
+//
+// 페이싱 안전장치: 손 합성 전용(자동합치기/⚡모두/자동 의식은 isAuto → 항상 혼합). 연의 각인과 같은
+// 문서화된 예외 클래스이며, 시뮬레이터의 자동 경로 기준선이 비트 단위로 그대로 유지된다.
+const GRAINS = [
+  { id: 'cheon', ch: '天', name: '천(天)', color: '#ffd28a', channel: 'gold',    desc: '순(純) 합성 시 합성 골드 ×2.2' },
+  { id: 'ji',    ch: '地', name: '지(地)', color: '#7fd6a0', channel: 'frenzy',  desc: '순(純) 합성 시 폭주 충전 ×2.2' },
+  { id: 'in',    ch: '人', name: '인(人)', color: '#a8b6ff', channel: 'variant', desc: '순(純) 합성 시 변종 자연발생 ×2.2' },
+];
+const GRAIN_PURE_MUL = 2.2;   // 순 합성이 고른 채널
+const GRAIN_OFF_MUL = 0.35;   // 나머지 두 채널이 치르는 대가
+const GRAIN_UNLOCK_LV = 7;    // 점진 공개: 의식(5)·폭주(5) 다음 칸 — 세 채널이 모두 의미를 갖는 시점
+function isGrainUnlocked() { return (state.bestLevel || 1) >= GRAIN_UNLOCK_LV; }
+function getGrainDef(id) { return GRAINS.find(g => g.id === id) || null; }
+// 생성 결은 무작위가 아니라 회전한다 — 다음 결을 알 수 있어야 '배치'가 계획이 된다.
+function getNextGrainId() { return GRAINS[((state.grainCycle || 0) % GRAINS.length + GRAINS.length) % GRAINS.length].id; }
+// 새로 '생겨나는' 표창(생성·선물·관문 보상)의 단일 진입점 — 회전을 소비한다.
+// 변환되는 표창(계승·융합)은 이 함수를 쓰지 않고 원본의 결을 승계한다.
+function takeNextGrain() {
+  const g = getNextGrainId();
+  state.grainCycle = ((state.grainCycle || 0) + 1) % (GRAINS.length * 12); // 유한 회전 (저장값 폭주 방지)
+  return g;
+}
+// 순(純) 판정: 참여 표창의 결이 모두 같을 때만 그 결을 반환. 자동 경로·미해금은 항상 null(=혼합).
+function grainPureId(pieces, isAuto) {
+  if (isAuto || !isGrainUnlocked()) return null;
+  if (!Array.isArray(pieces) || pieces.length < 2) return null;
+  const g = pieces[0] && pieces[0].grain;
+  if (!g || !getGrainDef(g)) return null;
+  for (const p of pieces) { if (!p || p.grain !== g) return null; }
+  return g;
+}
+// 채널 배수: 순 합성이면 고른 채널 ×2.2 / 나머지 ×0.35, 혼합이면 전부 ×1 (오늘과 동일).
+function grainChannelMul(pureId, channel) {
+  if (!pureId) return 1;
+  const d = getGrainDef(pureId);
+  if (!d) return 1;
+  return d.channel === channel ? GRAIN_PURE_MUL : GRAIN_OFF_MUL;
+}
+// 결과 표창의 결 = 목적지(to) 표창의 결. 방향이 곧 결정 — 목적지가 결을 잃은 레거시 조각이면 출발지 결을 승계.
+function resolveMergeGrain(from, to) {
+  return (to && to.grain) || (from && from.grain) || undefined;
+}
+// 순 합성 연출 + 실적 (tryMerge·의식 공용 — 의식은 N-1 합성 상당으로 계상: 의식-패리티 불변식)
+function noteGrainPure(grainId, idx, mergeEquiv) {
+  const d = getGrainDef(grainId);
+  if (!d) return;
+  const prev = state.stats.pureMerges || 0;
+  state.stats.pureMerges = prev + Math.max(1, mergeEquiv || 1);
+  spawnCellBurst(idx, d.color, 10);
+  sfx('mergeGold');
+  if (prev === 0) {
+    setTimeout(() => toast(`${d.ch} 순(純) 합성! ${d.desc.replace('순(純) 합성 시 ', '')} — 결이 같은 표창끼리 붙였습니다`), 420);
+    addEvent('milestone', `순(純) 합성 첫 성공 (${d.name})`);
+  }
+}
+
 // Q-Leap 111: 진형 등급 — 그리드 평균 레벨이 최고기록에 얼마나 근접한지로 S/A/B/C/—.
 // 높은 표창만 유지할수록 평균이 best에 근접 → 좋은 등급. 빈 그리드는 '—'.
 function getFormationGrade() {
@@ -4231,7 +4335,8 @@ function spawnShuriken() {
   const id = state.nextShurikenId++;
   const startLv = getNextSpawnLevel(); // includes the post-prestige +2 boost while active
   if ((state.postPrestigeSpawns || 0) > 0) state.postPrestigeSpawns -= 1; // Q-Leap 91: consume one boost
-  state.grid[idx] = { id, level: startLv, fireTimer: 0 };
+  // Q-Leap 133: 결은 회전 부여 — 해금 전에도 붙여둔다 (해금 순간 보드가 빈 결로 시작하지 않도록)
+  state.grid[idx] = { id, level: startLv, fireTimer: 0, grain: takeNextGrain() };
   freshSpawnIds.add(id);
   // 감사 128.1: 생성이 역대 최고를 넘을 수 있다 (masterSmith+부스트+정밀이 낮은 bestLevel 추월).
   // 기록 경로를 안 태우면 리로드 시 validate가 조용히 bestLevel만 올려 그 레벨의 1회성
@@ -4287,6 +4392,9 @@ function tryMerge(fromIdx, toIdx, isAuto) {
     return 'move';
   }
   if (a.level === b.level) {
+    // Q-Leap 133: 삼재의 결 — 두 표창의 결이 같은 손 합성(純)이면 한 채널이 ×2.2, 나머지 둘이 ×0.35.
+    // 자동 경로는 항상 혼합(×1)이라 방치 기준선은 불변 — 손으로 고른 짝에만 방향성이 생긴다.
+    const pureGrain = grainPureId([a, b], isAuto);
     // Jump merge — small chance of +N levels (원작 패턴)
     // Lucky-chance upgrade adds +1% per Lv (cap 10) to the +2 threshold.
     // 폭주 중엔 모든 점프 확률 ×2 (T1b: 버닝에서 흡수).
@@ -4346,7 +4454,7 @@ function tryMerge(fromIdx, toIdx, isAuto) {
     // Q-Leap 54: goldenLuck challenge — ×3 spontaneous rate
     // All-variant spontaneous multiplier (these bonuses say "변종"/variant, so apply to
     // golden, star AND dark — previously only golden got them, contradicting the labels).
-    const variantMul = getVariantSpontaneousMul();
+    const variantMul = getVariantSpontaneousMul() * grainChannelMul(pureGrain, 'variant'); // Q-Leap 133: 인(人)의 채널
     let childGolden = false;
     let goldenSpontaneous = (0.005 + getSkillLv('goldenLuck') * 0.002) * variantMul;
     if (isChallenge('goldenLuck')) goldenSpontaneous *= 3;       // golden-specific challenge (황금의 날)
@@ -4368,7 +4476,7 @@ function tryMerge(fromIdx, toIdx, isAuto) {
     if (darksIn === 2) childDark = true;
     else if (darksIn === 1) childDark = Math.random() < 0.5;
     else childDark = Math.random() < (0.0015 * variantMul);
-    state.grid[toIdx] = { id: state.nextShurikenId++, level: newLv, fireTimer: 0, golden: childGolden, star: childStar, dark: childDark };
+    state.grid[toIdx] = { id: state.nextShurikenId++, level: newLv, fireTimer: 0, golden: childGolden, star: childStar, dark: childDark, grain: resolveMergeGrain(a, b) }; // Q-Leap 133: 결은 목적지를 따른다
     state.grid[fromIdx] = null;
     if (childGolden) {
       state.stats.goldenSpawned = (state.stats.goldenSpawned || 0) + 1;
@@ -4439,12 +4547,13 @@ function tryMerge(fromIdx, toIdx, isAuto) {
     if (blessed) {
       state.comboCount = (state.comboCount || 0) + 1; // extra combo step from blessing
     }
-    const mergeGold = Math.floor(Math.pow(2, newLv) * getGoldMul() * comboMult * jumpMult * getMergeGoldBonus() * engraveForgeMul(toIdx)); // Q-Leap 127: 정련의 각인
+    const mergeGold = Math.floor(Math.pow(2, newLv) * getGoldMul() * comboMult * jumpMult * getMergeGoldBonus() * engraveForgeMul(toIdx) * grainChannelMul(pureGrain, 'gold')); // Q-Leap 127: 정련의 각인 / 133: 천(天)의 채널
     state.gold += mergeGold;
     creditMerges(1); // Q-Leap 76/89: totalMerges + milestone + charm (shared, range-based)
     state.stats.totalGoldEarned = (state.stats.totalGoldEarned || 0) + mergeGold;
     // Q-Leap 77/80/95: 폭주 게이지 충전 (만재 진형 ×2, 캡 도달 시 알림/auto-fire) — shared helper
-    addFrenzyCharge(1);
+    addFrenzyCharge(1 * grainChannelMul(pureGrain, 'frenzy')); // Q-Leap 133: 지(地)의 채널
+    if (pureGrain) noteGrainPure(pureGrain, toIdx, 1); // 순 합성 연출 + 실적
     // Q-Leap 78: divine proc toast (after merge effects)
     if (divineProc) {
       setTimeout(() => toast(`✨ 신성 합체! Lv ${newLv} (+1 도약)`), 320);
@@ -4969,7 +5078,7 @@ function update(dt) {
     if (autoRitualTimer <= 0) {
       autoRitualTimer = 1.5; // throttle
       const groups = findRitualGroups();
-      if (groups.length > 0) doRitualMerge();
+      if (groups.length > 0) doRitualMerge(true); // Q-Leap 133: 자동 의식은 혼합 — 결 보너스는 손 의식 전용
     }
   }
 }
@@ -5128,7 +5237,7 @@ function updateHUD() {
   if (frCountEl) {
     const af = state.autoFrenzyEnabled ? ' 🔁' : '';
     if (ft > 0) frCountEl.textContent = `${Math.ceil(ft)}s${af}`;
-    else        frCountEl.textContent = `${fc}/${FRENZY_MAX}${af}`;
+    else        frCountEl.textContent = `${Math.floor(fc)}/${FRENZY_MAX}${af}`; // Q-Leap 133: 결 채널로 충전이 소수가 될 수 있다
   }
   if (frBtn) {
     frBtn.classList.toggle('ready', fc >= FRENZY_MAX && ft <= 0 && !state.autoFrenzyEnabled);
@@ -5167,9 +5276,22 @@ function updateHUD() {
   // (spawn-time-label is rendered inside the spawn-progress-label innerHTML below, which is
   // rebuilt every frame — a separate textContent write here was always immediately overwritten.)
   document.getElementById('spawn-progress-bar').classList.toggle('full', isFull);
-  document.getElementById('spawn-progress-label').innerHTML = isFull
+  // 주의: 결 칩(#next-grain-chip)은 이 라벨의 형제로 유지된다 — 라벨 전체를 innerHTML로 갈아끼우면
+  // 매 프레임 칩이 사라져 applyReveal의 정적 타깃이 증발한다. 동적 부분만 안쪽 span에 쓴다.
+  document.getElementById('spawn-label-main').innerHTML = isFull
     ? '<span style="color:#ffaa44">⏸ 가득참 — 합쳐서 공간을 확보하세요 (게이지 일시정지)</span>'
     : `다음 표창 <b style="color:#a8e6ff">Lv ${getNextSpawnLevel()}</b>${(state.postPrestigeSpawns || 0) > 0 ? ` <span style="color:#cc88ff">⚡부스트 ${state.postPrestigeSpawns}</span>` : ''} · <span id="spawn-time-label">${remaining.toFixed(1)}s</span> · <span style="color:#ffd966">탭하여 가속</span>`;
+  // Q-Leap 133: 다음 결 예고 — 무작위가 아니라 회전이므로 '무엇이 올지 알고 배치'가 가능하다
+  const grainChip = document.getElementById('next-grain-chip');
+  if (grainChip && isGrainUnlocked()) {
+    const ng = getGrainDef(getNextGrainId());
+    if (ng && grainChip._sig !== ng.id) {
+      grainChip._sig = ng.id;
+      grainChip.textContent = `다음 ${ng.ch}`;
+      grainChip.style.color = ng.color;
+      grainChip.style.borderColor = ng.color + '66';
+    }
+  }
   const instBtn = document.getElementById('instant-spawn-btn');
   instBtn.disabled = state.gem < 1 || isFull;
   const amBtn = document.getElementById('auto-merge-btn');
@@ -5294,6 +5416,8 @@ function renderGrid() {
       if (selCell && c && c.level === selCell.level) {
         cell.classList.add('mergeable');
         cell.dataset.preview = (c.level + 1);
+        // Q-Leap 133: 결이 같은 짝은 순(純) 합성 — 결정이 내려지는 바로 그 순간에 보이게 표시
+        if (isGrainUnlocked() && c.grain && c.grain === selCell.grain) cell.classList.add('pure-pair');
       }
     }
     // Hint mode (only when nothing selected, to avoid overlap with mergeable highlight)
@@ -5331,6 +5455,16 @@ function renderGrid() {
       lvLabel.textContent = 'Lv' + c.level;
       lvLabel.style.color = levelColor(c.level);
       cell.appendChild(lvLabel);
+      // Q-Leap 133: 결 표식 (하단 중앙 — 다른 마크와 겹치지 않는 유일한 자리). 해금 전엔 감춘다.
+      const gd = isGrainUnlocked() ? getGrainDef(c.grain) : null;
+      if (gd) {
+        const gmk = document.createElement('div');
+        gmk.className = 'grain-mark';
+        gmk.textContent = gd.ch;
+        gmk.style.color = gd.color;
+        gmk.style.textShadow = `0 0 5px ${gd.color}, 0 1px 2px rgba(0,0,0,0.9)`;
+        cell.appendChild(gmk);
+      }
       if (c.golden) {
         const gm = document.createElement('div');
         gm.className = 'golden-mark';
@@ -5377,7 +5511,7 @@ function renderGrid() {
           cell.appendChild(dot);
         }
       }
-      cell.title = `Lv ${c.level} · ${levelName(c.level)}${c.locked ? ' 🔒' : ''}${c.golden ? ' ✦ 황금 (판매 5x · 합성 +1 점프)' : ''}${c.star ? ' ★ 별 (그리드에 있으면 spawn ×1.43)' : ''}${c.dark ? ' 🌑 검은 (합성 시 인접 흡수)' : ''}`;
+      cell.title = `Lv ${c.level} · ${levelName(c.level)}${c.locked ? ' 🔒' : ''}${c.golden ? ' ✦ 황금 (판매 5x · 합성 +1 점프)' : ''}${c.star ? ' ★ 별 (그리드에 있으면 spawn ×1.43)' : ''}${c.dark ? ' 🌑 검은 (합성 시 인접 흡수)' : ''}${gd ? ` · ${gd.ch} ${gd.name} — ${gd.desc}` : ''}`;
       // Tier-scaled ambient halo around the cell (subtle for low Lv, strong for high)
       const tier = levelTier(c.level);
       const cellGlow = c.level < 4 ? 0
@@ -6392,6 +6526,7 @@ function getRevealState() {
     autoMerge: b >= 5,                    // 자동합치기 해금 제안
     instant:   b >= 3,                    // 💎 즉시 — 보석 경제 시작
     forge:     isForgeUnlocked(),         // 제련 (Lv 6) — 🔒 노출 대신 등장으로
+    grain:     isGrainUnlocked(),         // 삼재의 결 (Lv 7) — 합성 자체에 방향성이 생기는 층
     daily:     b >= 3,                    // 도전/요일 배너 + 오늘 허브 — 기본 루프 이후
     shop:      b >= 3,
     codex:     b >= 4,
@@ -6409,6 +6544,7 @@ const REVEAL_TARGETS = [
   ['#merge-all-btn', 'gridTools'], ['#sort-btn', 'gridTools'], ['#compact-btn', 'gridTools'],
   ['#ritual-btn', 'ritual'], ['#frenzy-btn', 'frenzy'],
   ['#instant-spawn-btn', 'instant'], ['.auto-merge-group', 'autoMerge'], ['#forge-btn', 'forge'],
+  ['#next-grain-chip', 'grain'],
   ['#daily-challenge-banner', 'daily'], ['#weekday-banner', 'daily'],
   ['#quest-btn', 'daily'], ['#shop-btn', 'shop'], ['#codex-btn', 'codex'],
   ['#storage-btn', 'storage'], ['#automation-btn', 'autoMerge'], ['#meditation-btn', 'autoMerge'],
@@ -6421,7 +6557,8 @@ const REVEAL_TARGETS = [
 const REVEAL_ANNOUNCE = { ritual: '✨ 의식 합성 해금 — 같은 Lv 3개를 이어 붙이면 큰 점프!',
                           frenzy: '⚡ 폭주 게이지 해금 — 합성으로 채워 터뜨리세요',
                           prestige: '☯ 환생의 길이 열립니다 — Lv 8에서 윤회 가능',
-                          autoMerge: '⚙ 자동화 해금 — 자동합치기를 살펴보세요' };
+                          autoMerge: '⚙ 자동화 해금 — 자동합치기를 살펴보세요',
+                          grain: '三 삼재의 결 해금 — 표창마다 天/地/人. 같은 결끼리 손으로 합치면 순(純) 합성!' };
 let _revealCache = null;
 function applyReveal() {
   const r = getRevealState();
@@ -6867,7 +7004,9 @@ function doPrestige() {
   // Preserve variant flags (golden/star/dark) on inherited pieces — they carry real value
   // (passive-gold multiplier, ×5 sell, variant-inheritance on future merges). Dropping them
   // silently downgraded a paid 계승 inheritance of a rare piece into a plain one.
-  kept.forEach((c, i) => { state.grid[i] = { id: state.nextShurikenId++, level: c.level, fireTimer: 0, golden: !!c.golden, star: !!c.star, dark: !!c.dark }; });
+  // Q-Leap 133: 결도 변종 플래그와 같은 이유로 승계한다 — 계승은 '같은 표창을 데려오는' 것이지
+  // 새로 만드는 게 아니다 (결을 떨구면 계승 표창만 순 합성에서 배제되는 조용한 하향).
+  kept.forEach((c, i) => { state.grid[i] = { id: state.nextShurikenId++, level: c.level, fireTimer: 0, golden: !!c.golden, star: !!c.star, dark: !!c.dark, grain: c.grain }; });
   // Storage is an off-grid extension of the board → must reset with the grid, otherwise it
   // bypasses the prestige wipe and undermines the paid 계승(inheritance) skill.
   state.storage = [];
@@ -7466,6 +7605,7 @@ function renderTrophy() {
       ['💰 누적 골드',       fmt(s.totalGoldEarned || 0)],
       ['⚡ 최고 콤보',       s.bestCombo || 0],
       ['🍀 행운 합성',       s.luckyMerges || 0],
+      ['三 순(純) 합성',      s.pureMerges || 0],
       ['🙏 축복 합성',       s.blessedMerges || 0],
       ['✦ 황금 표창 획득',   s.goldenSpawned || 0],
       ['📋 미션 완료',       s.questsCompleted || 0],
@@ -7598,8 +7738,10 @@ function tryVariantFusion(kind, anchorIdx) {
   const RARITY = { golden: 1, star: 2, dark: 3 };
   const keepDark = consume.some(i => state.grid[i].dark) && RARITY.dark > RARITY[next];
   const keepStar = consume.some(i => state.grid[i].star) && RARITY.star > RARITY[next];
+  const keepGrain = (state.grid[targetIdx] || {}).grain
+    || (consume.map(i => state.grid[i]).find(p => p && p.grain) || {}).grain; // Q-Leap 133: 융합도 결과 칸의 결을 승계 (합성과 같은 규칙)
   for (const i of consume) state.grid[i] = null;
-  const piece = { id: state.nextShurikenId++, level: resultLv, fireTimer: 0 };
+  const piece = { id: state.nextShurikenId++, level: resultLv, fireTimer: 0, grain: keepGrain };
   piece[next] = true;
   if (keepStar) piece.star = true;
   if (keepDark) piece.dark = true;
@@ -7651,6 +7793,9 @@ function showShurikenInfo(idx) {
   if (c.star)   traits += '<span class="info-trait star">★ 별</span>';
   if (c.dark)   traits += '<span class="info-trait dark">🌑 검은</span>';
   if (c.locked) traits += '<span class="info-trait locked">🔒 잠금</span>';
+  // Q-Leap 133: 결도 개체 특성이므로 정보 모달에 노출 (해금 후에만 — 점진 공개)
+  const infoGrain = isGrainUnlocked() ? getGrainDef(c.grain) : null;
+  if (infoGrain) traits += `<span class="info-trait" style="color:${infoGrain.color};border-color:${infoGrain.color}66;">${infoGrain.ch} ${infoGrain.name}</span>`;
   const canStore = !c.locked && (state.storage || []).length < 3;
   // Variant fusion: offer if this (non-locked) piece carries a fusable variant with 3+ available.
   let fuseKind = null;
@@ -8050,7 +8195,7 @@ function claimGate(lv, choice) {
     if ((state.towerActive || 0) > 0) { toast('🗼 시련 중엔 표창을 반입할 수 없습니다 — 관문은 보존됩니다'); return false; }
     const empties = emptySlots();
     if (empties.length === 0) { toast('그리드 가득 — 공간을 비우고 선택하세요'); return false; }
-    const piece = { id: state.nextShurikenId++, level: Math.max(2, g.lv - 4), fireTimer: 0 };
+    const piece = { id: state.nextShurikenId++, level: Math.max(2, g.lv - 4), fireTimer: 0, grain: takeNextGrain() }; // Q-Leap 133: 새로 생겨나는 표창은 회전 결
     piece[g.variant] = true;
     state.grid[empties[0]] = piece;
     if (g.variant === 'golden') state.stats.goldenSpawned = (state.stats.goldenSpawned || 0) + 1;
@@ -8158,7 +8303,7 @@ document.getElementById('frenzy-btn').addEventListener('click', (e) => {
     return;
   }
   if ((state.frenzyCharge || 0) < FRENZY_MAX) {
-    toast(`⚡ 게이지 ${state.frenzyCharge || 0}/${FRENZY_MAX} · Shift+클릭 = 자동 토글`);
+    toast(`⚡ 게이지 ${Math.floor(state.frenzyCharge || 0)}/${FRENZY_MAX} · Shift+클릭 = 자동 토글`);
     return;
   }
   activateFrenzy(false);
@@ -8210,6 +8355,7 @@ const HELP_SECTIONS = {
     { title: '📖 도감', body: '첫 도달한 Lv 영구 기록. 신규 등록 시 <span class="hk">깨달음 +1</span>. 윤회를 거쳐도 보존.' },
     { title: '🔗 인접 시너지', body: '같은 Lv 표창이 4방향 인접 시 <span class="hk">골드 생성 +20%/인접</span> (max +80%). 색상 dot으로 표시.' },
     { title: '✨ 의식 합성', body: '같은 Lv 4방향 연결 그룹 3+ 시 자동 활성화. 발동 시 <span class="hk">한꺼번에 합쳐 큰 점프</span> (3개→+1, 4개→+2 ...).' },
+    { title: '三 삼재의 결', body: `Lv ${GRAIN_UNLOCK_LV} 해금. 표창마다 <span class="hk">天(천)·地(지)·人(인)</span> 중 하나의 결이 붙습니다 (칸 하단 표시, 생성 순서는 <span class="hk">회전 — 다음 결 예고</span>). 결이 같은 표창끼리 <span class="hk">손으로</span> 합치면 순(純) 합성: <span class="hk">天 합성 골드 ×2.2 / 地 폭주 충전 ×2.2 / 人 변종 자연발생 ×2.2</span>, 대신 나머지 두 채널은 ×0.35. 결과 표창의 결은 <span class="hk">목적지(나중에 탭한 칸)</span>를 따르므로 방향이 다음 수를 만듭니다. 다른 결끼리의 합성(혼합)은 기존과 완전히 동일 — 무작정 합쳐도 손해가 없고, 결을 읽는 만큼만 이득. 자동합치기·⚡모두·자동 의식은 항상 혼합입니다.` },
     { title: '🌟 콤보', body: '2.5초 안 chain merge 시 콤보 ×N. 콤보당 +20% 골드. 5/10/15/20/30/50 마일스톤 보너스.' },
     { title: '🔺 세트 효과', body: '그리드 구성으로 패시브 발동 (그리드 위 배지 표시): <span class="hk">삼위일체</span>(같은 Lv 3+·골드+15%) / <span class="hk">황금 진형</span>(황금 2+·변종×1.5) / <span class="hk">만재</span>(90%+·폭주충전×2) / <span class="hk">승천</span>(Lv20+ 3개·콤보+1s) / <span class="hk">무지개</span>(황금·별·검은 동시·골드+25%) / <span class="hk">정예 진형</span>(5+ 표창 전부 최고Lv−3↑·생성+10%) / <span class="hk">완전 진형</span>(삼위일체·만재·승천·정예 동시·골드+50%).' },
     { title: '🌌 초월', body: 'Lv 60 초과 최고기록 = 초월 포인트(별빛). 초월 5/10/15/20에 보석 마일스톤. Lv 61~80 고유 명명.' },
@@ -8554,7 +8700,7 @@ function processAttendance() {
     state.stats.attendVariants[streak] = true;
     const empties = emptySlots();
     const lvl = isTowerSpawnLv1() ? 1 : Math.max(1, Math.min(state.bestLevel || 1, 5)); // Q-Leap 125.1: 고행의 층 — 선물도 Lv 1
-    const piece = { id: state.nextShurikenId++, level: lvl, fireTimer: 0 };
+    const piece = { id: state.nextShurikenId++, level: lvl, fireTimer: 0, grain: takeNextGrain() }; // Q-Leap 133 (출석 선물도 결 부여)
     piece[variantGift.kind] = true;
     if (empties.length > 0) {
       state.grid[empties[Math.floor(Math.random() * empties.length)]] = piece;
