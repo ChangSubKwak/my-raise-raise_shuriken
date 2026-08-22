@@ -11,6 +11,7 @@
     "verify:browser": "node tests/browser-verify.js",
     "verify:gameplay": "node tests/browser-gameplay.js",
     "verify:journey": "node tests/browser-journey.js",
-    "simulate": "node tests/simulate.js"
+    "simulate": "node tests/simulate.js",
+    "traps": "node tests/trap-scan.js"
   }
 }

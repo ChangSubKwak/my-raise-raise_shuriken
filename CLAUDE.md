@@ -44,6 +44,14 @@ formulas, transcendence, set bonuses, auto-merge priority, line bonus, daily-spi
 level naming, spawn interval. DOM-rendering paths are intentionally out of scope. Add a test
 whenever you add a deterministic formula or a new derived stat.
 
+## Trap scan (`npm run traps`)
+
+`tests/trap-scan.js` hunts one specific class of defect: **an option the UI offers that delivers zero in a reachable state**. It has bitten four times — constellation ⚡haste at the 0.6s spawn floor, forge 🌪swift at the same floor, the charm ⚔frontier v1 rule (0 fires / 10.7 wasted per hour), and the charm 三pure policy while grain is locked. Every one of them passed the unit suite, because the tests asserted *shape* (the option exists, the formula returns a number) rather than *delivered value*.
+
+The scan runs each option ON vs a same-seeded baseline across three canonical states (초반 Lv8 / 중반 Lv22 / 엔드 Lv45 with the spawn interval pinned at the floor) and compares the option's own channel — spawns for haste/swift, jumps for 연, variants for 변화, charm fires for the charm policies. Two verdict rules: **(1)** an output ratio of exactly 0 in ANY state is a trap (that state's players get nothing), **(2)** a ratio of 1.000 in ALL states is a trap unless the code carries an inert marker (🚫 gate or policy fallback) that tells the player. Options with a `valueChannel` also report value-weighted output, so "fires less often but each fire is worth 17×" reads as the intended trade rather than a regression.
+
+Self-check: reverting `frontier` to its discarded record-anchored rule makes the scan exit 1 with `함정(일부 구간 0)`; the shipped rule exits 0. Keep that property — a trap scan that cannot fail is exactly the mistake it exists to catch (the same one the v3.82.2 mark-collision guard made by sampling animations at frame 0).
+
 ## Architecture (v2 merge)
 
 **Layout, by design**:
