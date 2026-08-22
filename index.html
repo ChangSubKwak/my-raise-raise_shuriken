@@ -2014,7 +2014,7 @@
 <script>
 'use strict';
 // 릴리즈 버전 — package.json version과 동기 (테스트가 불일치를 잡는다). 커밋 시 함께 범프.
-const GAME_VERSION = '3.86.0';
+const GAME_VERSION = '3.87.0';
 // =============================================================
 // 표창키우기 v2 — 합체 게임
 // Concept: 3×3+ grid, drop shuriken (Lv 1), merge same-level → Lv+1
@@ -2989,8 +2989,15 @@ function doRitualMerge(isAuto, targetIdx) {
   const _pick = pickRitualGroup(groups, isAuto ? -1 : targetIdx);
   const g = _pick.group;
   const bonus = g.indices.length - 2; // 3→+1, 4→+2, 5→+3
+  // 감사 C8 (사용자 승인, v3.87.0): 의식이 축복 칸을 '소비'하면서 축복의 유일한 효과(+1 도약)는
+  // 주지 않아 순손실이었다 — 도움말은 '그 칸에서 합성 시 +1 점프'라고 명시하는데, 축복만 사라지고
+  // 30초 재생성 타이머까지 리셋됐다 (v3.52의 '드리프트 수정'이 소비만 추가하고 효과를 빠뜨렸다).
+  // 판정은 소거 루프 前에 해야 한다 (아래에서 g.indices의 칸들이 null이 된다).
+  // isAuto 게이트는 걸지 않는다: tryMerge의 consumeBlessing에도 없고 autoMergeStep도 +1을 받으므로
+  // 의식만 자동 제외하면 새 비대칭이 생긴다 (축복은 문서화된 손-합성 전용 예외 목록에 없다).
+  const ritualBlessed = state.blessedIdx >= 0 && g.indices.includes(state.blessedIdx);
   // Q-Leap 54: "점프의 날" promises +1 to ALL merges — ritual must honor it too.
-  const newLv = g.level + 1 + bonus + (isChallenge('jumpBonus') ? 1 : 0);
+  const newLv = g.level + 1 + bonus + (isChallenge('jumpBonus') ? 1 : 0) + (ritualBlessed ? 1 : 0);
   let goldensIn = 0, starsIn = 0, darksIn = 0;
   for (const idx of g.indices) {
     if (state.grid[idx].golden) goldensIn++;
@@ -3070,11 +3077,12 @@ function doRitualMerge(isAuto, targetIdx) {
   flashCell(toIdx);
   // A ritual that consumes the blessed cell counts as a blessed merge — parity with tryMerge's
   // consumeBlessing (feeds blessedMerges achievements + weekly/daily blessed quests). Was missing.
-  if (state.blessedIdx >= 0 && g.indices.includes(state.blessedIdx)) {
+  if (ritualBlessed) { // 위에서 이미 판정했다 (소거 후에는 g.indices의 칸이 비어 있다)
     state.blessedIdx = -1;
     state.blessedTimer = blessedDuration();
     state.stats.blessedMerges = (state.stats.blessedMerges || 0) + 1;
     addQuestProgress('blessed', 1);
+    setTimeout(() => toast('🙏 축복 효과 발동 (+1 도약)'), 280); // tryMerge와 같은 피드백 — 없으면 소멸만 보인다
   }
   addQuestProgress('merges', g.indices.length - 1);
   addQuestProgress('ritual', 1); // ritual-specific daily quest (one ritual action = 1 progress)
@@ -8627,7 +8635,7 @@ const HELP_SECTIONS = {
     { title: '⚗ 변종 융합', body: '같은 변종 <span class="hk">3개 → 다음 등급 1개</span>로 융합 (황금→별→검은). 결과는 소비한 3개 중 최고 Lv 유지. <span class="hk">ℹ 정보 모드</span>로 변종 표창을 탭하면 융합 버튼 표시. 운에만 의존하지 않는 희귀 변종 획득 경로.' },
   ],
   systems: [
-    { title: '🙏 축복 칸', body: '30초마다 그리드 한 칸이 축복 상태. 그 칸에서 합성 시 <span class="hk">+1 점프 + 콤보 가속</span>. 깨달음 스킬 "축복 지속"으로 +5s/Lv.' },
+    { title: '🙏 축복 칸', body: '30초마다 그리드 한 칸이 축복 상태. 그 칸에서 합성 시 <span class="hk">+1 점프 + 콤보 가속</span>. <span class="hk">✨의식</span>도 축복 칸을 포함하면 +1 도약이 붙습니다. 깨달음 스킬 "축복 지속"으로 +5s/Lv.' },
     { title: '📖 도감', body: '첫 도달한 Lv 영구 기록. 신규 등록 시 <span class="hk">깨달음 +1</span>. 윤회를 거쳐도 보존.' },
     { title: '🔗 인접 시너지', body: '같은 Lv 표창이 4방향 인접 시 <span class="hk">골드 생성 +20%/인접</span> (max +80%). 색상 dot으로 표시.' },
     { title: '✨ 의식 합성', body: '같은 Lv 4방향 연결 그룹 3+ 시 자동 활성화. 발동 시 <span class="hk">한꺼번에 합쳐 큰 점프</span> (3개→+1, 4개→+2 ...). <span class="hk">◎ 진안</span>: 표창을 고르고 누르면 <span class="hk">그 표창이 속한 무리</span>가 발동되고 결과가 <span class="hk">고른 칸에 앉습니다</span> — 큰 무리(골드·전선)와 순(純) 무리(폭주·변종) 중 무엇을 태울지, 결과를 어느 칸에 둘지가 선택입니다. 아무것도 고르지 않으면 가장 큰 무리가 자동 선택 (기존과 동일).' },

@@ -3909,6 +3909,51 @@ group('findRitualGroups — 의식 그룹 탐색 (커버리지 공백 보강)', 
   eq(new Set(flat).size, flat.length, '한 칸이 두 그룹에 중복 등록되지 않는다 (visited 정확)');
 });
 
+group('의식의 축복 +1 도약 (감사 C8 · 사용자 승인)', () => {
+  // 의식이 축복 칸을 소비하면서 축복의 유일한 효과(+1 도약)는 주지 않아 순손실이었다.
+  // 도움말은 '그 칸에서 합성 시 +1 점프'라고 명시하는데 축복만 사라지고 타이머까지 리셋됐다.
+  const REAL = Math.random;
+  const quiet = (fn) => { Math.random = () => 0.999999; try { return fn(); } finally { Math.random = REAL; } };
+  const mk = (blessedIdx) => {
+    const s = withState({
+      bestLevel: 30, runBestLevel: 30, codex: {}, gold: 0, gem: 0, upgrades: defaultUpgrades(),
+      dailyQuests: [], lastFirstMergeDate: F.todayString(), blessedIdx, blessedTimer: 12,
+      grid: gridFrom([5, 5, 5, null, null, null]),
+    });
+    s.stats = {};
+    for (let lv = 1; lv <= 40; lv++) s.codex[lv] = true;
+    return s;
+  };
+  // 축복 칸이 그룹 밖 → 기존과 동일 (Lv5 ×3 → 5+1+1 = 7)
+  mk(5);
+  quiet(() => F.doRitualMerge());
+  const plain = G.getState().grid[0].level;
+  eq(plain, 7, '축복 밖: 의식 결과 Lv 7 (기존 공식)');
+  eq(G.getState().blessedIdx, 5, '축복 밖: 축복이 소비되지 않는다');
+  // 축복 칸이 그룹 안 → +1
+  const sB = mk(1);
+  quiet(() => F.doRitualMerge());
+  const blessed = G.getState().grid[0].level;
+  eq(blessed, plain + 1, '축복 안: 결과 Lv이 정확히 +1 (소비만 하고 효과가 없던 순손실 해소)');
+  eq(G.getState().blessedIdx, -1, '축복 안: 축복이 소비된다');
+  eq(G.getState().stats.blessedMerges, 1, '축복 합성 실적 적립');
+  ok((G.getState().blessedTimer || 0) > 0, '재생성 타이머가 걸린다');
+  // 자동 의식도 동일 (isAuto 게이트 없음 — tryMerge/autoMergeStep과 같은 규칙)
+  const sA = mk(2);
+  quiet(() => F.doRitualMerge(true));
+  eq(G.getState().grid[0].level, plain + 1, '자동 의식도 축복 +1 (의식만 제외하면 새 비대칭)');
+  // 진안으로 결과 칸을 골라도 판정은 그룹 소속 기준
+  const sAim = mk(1);
+  quiet(() => F.doRitualMerge(false, 2));
+  eq(G.getState().grid[2].level, plain + 1, '진안 조준 + 축복도 함께 적용');
+  // 구조 가드
+  ok(RAW_HTML.indexOf('const ritualBlessed = state.blessedIdx >= 0 && g.indices.includes(state.blessedIdx);') >= 0,
+     '판정이 소거 루프 앞에서 이뤄진다');
+  ok(RAW_HTML.indexOf('(ritualBlessed ? 1 : 0)') >= 0, 'newLv에 축복 +1이 들어간다');
+  eq(RAW_HTML.split('ritualBlessed').length - 1, 3, '판정 1 + newLv 1 + 소비 블록 1 (중복 계산 없음)');
+  ok(RAW_HTML.indexOf('🙏 축복 효과 발동 (+1 도약)') >= 0, '피드백 토스트 — 소멸만 보이던 문제 해소');
+});
+
 group('콤보 배수 상한 (감사 C7 · 사용자 승인)', () => {
   // 생성 간격이 콤보 타이머(2.5s)보다 짧아지는 구간부터 자동 체인이 끊기지 않아 배수가
   // 시간에 선형으로 발산했다 — 실측 2시간 방치에서 콤보 14,470 (배수 ×2,895), 끊김 0회.
