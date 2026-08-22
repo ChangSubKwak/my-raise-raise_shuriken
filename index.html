@@ -2014,7 +2014,7 @@
 <script>
 'use strict';
 // 릴리즈 버전 — package.json version과 동기 (테스트가 불일치를 잡는다). 커밋 시 함께 범프.
-const GAME_VERSION = '3.87.0';
+const GAME_VERSION = '3.87.1';
 // =============================================================
 // 표창키우기 v2 — 합체 게임
 // Concept: 3×3+ grid, drop shuriken (Lv 1), merge same-level → Lv+1
@@ -7680,7 +7680,7 @@ function refreshAutoSellUI() {
       ? '순(純) 정책은 삼재의 결 해금 후 작동합니다 — 지금은 즉시로 처리'
       : pol.desc;
   }
-  document.querySelectorAll('[data-charm]').forEach(b => {
+  document.querySelectorAll('#charm-policy-box [data-charm]').forEach(b => {
     b.classList.toggle('active', b.dataset.charm === activeCharm);
     b.onclick = () => {
       getAudio();
@@ -7748,7 +7748,11 @@ function refreshAutoLockUI() {
   const val = document.getElementById('auto-lock-val');
   if (tog) { tog.textContent = state.autoLockEnabled ? 'ON' : 'OFF'; tog.classList.toggle('on', state.autoLockEnabled); }
   if (val) val.textContent = state.autoLockThreshold || 15;
-  document.querySelectorAll('.prio-btn').forEach(btn => {
+  // 감사 C0/C1: 셀렉터는 클래스(.prio-btn)가 아니라 data 속성으로 좁힌다 — 부적 정책 행이
+  // 스타일 때문에 같은 클래스를 쓰는데, 클래스로 잡으면 (1) 클릭 시 state.autoMergePriority가
+  // btn.dataset.prio(undefined)로 덮여 '변종 보존' 설정이 조용히 파괴되고 (2) 이 리프레시가
+  // 부적 버튼의 .active를 지워 아무것도 선택 안 된 것처럼 보인다. 둘 다 실측으로 확인됨.
+  document.querySelectorAll('#automation-modal [data-prio]').forEach(btn => {
     btn.classList.toggle('active', btn.dataset.prio === (state.autoMergePriority || 'low'));
   });
   // Q-Leap 72: auto-ritual
@@ -7769,7 +7773,7 @@ function refreshAutoLockUI() {
       : `(윤회 5회+ 시 해금 — 현재 ${state.prestigeCount || 0}회)`;
   }
 }
-document.querySelectorAll('.prio-btn').forEach(btn => {
+document.querySelectorAll('#automation-modal [data-prio]').forEach(btn => {
   btn.addEventListener('click', () => {
     getAudio();
     state.autoMergePriority = btn.dataset.prio;

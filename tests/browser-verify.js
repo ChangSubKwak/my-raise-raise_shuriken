@@ -118,6 +118,10 @@ function ok(cond, msg) {
   ok(await page.evaluate(() => state.autoRitualEnabled === true), 'T2: 자동 의식 토글 ON');
   ok(await page.evaluate(() => document.getElementById('prestige-speed-toggle').disabled === true),
     'T2: 윤회 가속은 윤회 5회 전 잠금');
+  // 감사 C0/C1 회귀 가드: 부적 정책 버튼이 .prio-btn을 공유해 (1) 클릭이 자동 합치기 우선순위를
+  // undefined로 파괴하고 (2) refreshAutoLockUI가 부적 버튼의 .active를 지웠다. 둘 다 DOM 배선
+  // 결함이라 순수 로직 테스트로는 잡을 수 없다 — 브라우저 게이트가 유일한 집이다.
+
   await $id('automation-close');
   ok(!(await shown('automation-modal')), 'T2: 닫기 버튼 동작');
   // backdrop click closes
@@ -452,6 +456,38 @@ function ok(cond, msg) {
   });
   ok(pureFallback.effective === 'now', '부적: 결 미해금이면 순 정책이 즉시로 폴백');
   ok(/해금/.test(pureFallback.desc || ''), '부적: 폴백 상태를 설명으로 알린다');
+
+  // C0 가드는 '설정 → 신뢰 클릭 → 단언' 순서여야 문다. 앞선 테스트가 남긴 값에 기대면
+  // (첫 시도가 그랬다) 버그 코드에서도 통과해버린다 — 직접 프로브로 확인한 함정이다.
+  // 앞의 폴백 테스트가 bestLevel을 3으로 내렸다 — refreshUI로 노출 상태까지 되돌려야 신뢰 클릭이 가능하다
+  await page.evaluate(() => {
+    state.bestLevel = 20; state.runBestLevel = 20; state.stats.totalMerges = 500;
+    state.charmPolicy = 'now'; state.autoMergePriority = 'preserve';
+    refreshUI(); refreshAutoSellUI(); refreshAutoLockUI();
+  });
+  await page.waitForTimeout(150);
+  await page.click('#charm-policy-box [data-charm="now"]');
+  await page.waitForTimeout(180);
+  const prioIntact = await page.evaluate(() => ({
+    prio: String(state.autoMergePriority),
+    effective: state.autoMergePriority || 'low',
+    savedHasKey: (localStorage.getItem('shuriken_merge_v2') || '').indexOf('autoMergePriority') >= 0,
+    prioActive: [...document.querySelectorAll('#automation-modal [data-prio]')].filter(x => x.classList.contains('active')).map(x => x.dataset.prio),
+    charmActive: [...document.querySelectorAll('#charm-policy-box [data-charm]')].filter(x => x.classList.contains('active')).map(x => x.dataset.charm),
+  }));
+  ok(prioIntact.prio === 'preserve', `부적: 정책 클릭이 자동 합치기 우선순위를 파괴하지 않는다 (${prioIntact.prio})`);
+  ok(prioIntact.savedHasKey, '부적: 우선순위 키가 저장본에서 사라지지 않는다 (변종 보존 상실 방지)');
+  ok(prioIntact.prioActive.join(',') === 'preserve', `부적: 우선순위 하이라이트 보존 (${prioIntact.prioActive.join(',') || '없음'})`);
+  ok(prioIntact.charmActive.length === 1, `부적: 현재 정책 버튼이 하이라이트된다 (${prioIntact.charmActive.join(',') || '없음'})`);
+  // 형제 루프(refreshAutoLockUI)가 도는 조작 뒤에도 유지되는가
+  await $id('auto-lock-toggle');
+  await page.waitForTimeout(120);
+  const afterLock = await page.evaluate(() => ({
+    charmActive: [...document.querySelectorAll('#charm-policy-box [data-charm]')].filter(x => x.classList.contains('active')).map(x => x.dataset.charm),
+    prio: String(state.autoMergePriority),
+  }));
+  ok(afterLock.charmActive.length === 1 && afterLock.prio === 'preserve',
+    `부적: 자동 잠금 토글 후에도 양쪽 하이라이트·설정 유지 (${afterLock.charmActive.join(',')} / ${afterLock.prio})`);
   await page.evaluate(() => { state.bestLevel = 20; state.charmPolicy = 'now'; refreshAutoSellUI(); });
   await $id('automation-close');
   await page.waitForTimeout(150);
