@@ -3909,6 +3909,114 @@ group('findRitualGroups — 의식 그룹 탐색 (커버리지 공백 보강)', 
   eq(new Set(flat).size, flat.length, '한 칸이 두 그룹에 중복 등록되지 않는다 (visited 정확)');
 });
 
+group('부적의 때 — 보장 부적 정책 (Q-Leap 135)', () => {
+  // 부적은 100합성당 1개인데 jump===1인 '바로 다음' 합성이 무조건 먹었다 → 배분 100% 무작위,
+  // 들고 있는 것 자체가 불가능. 정책은 개수를 늘리지 않고 '방향'만 고른다 (재분배).
+  const REAL = Math.random;
+  const quiet = (fn) => { Math.random = () => 0.999999; try { return fn(); } finally { Math.random = REAL; } };
+
+  // 1) 순수 판정 표
+  eq(C.CHARM_POLICIES.length, 3, '정책 3종');
+  eq(C.CHARM_POLICIES.map(p => p.id).join(','), 'now,frontier,pure', '정책 id 순서');
+  eq(F.charmPolicyAllows('now', { level: 2, bestLevel: 40 }), true, '즉시: 아무 합성이나');
+  eq(F.charmPolicyAllows('frontier', { level: 2, bestLevel: 40 }), false, '최전선: 낮은 합성은 아낀다');
+  eq(F.charmPolicyAllows('frontier', { level: 40, bestLevel: 40 }), true, '최전선: 기록과 같은 층에서 발동 (+1이 새 기록)');
+  eq(F.charmPolicyAllows('frontier', { level: 39, bestLevel: 40 }), true, '최전선: Lv39 합성도 발동 — 부적 +1이 Lv41을 만들어 기록을 새로 쓴다');
+  eq(F.charmPolicyAllows('frontier', { level: 38, bestLevel: 40 }), false, '최전선: 부적을 써도 기록에 못 미치면 아낀다 (38+1+1 = 40, 동률)');
+  eq(F.charmPolicyAllows('frontier', { level: 1, bestLevel: 1 }), true, '최전선: 초반(기록 1)에는 사실상 즉시와 같다');
+  eq(F.charmPolicyAllows('pure', { level: 9, bestLevel: 40, pureGrain: 'cheon' }), true, '순: 결이 같은 합성');
+  eq(F.charmPolicyAllows('pure', { level: 9, bestLevel: 40, pureGrain: null }), false, '순: 혼합 합성은 아낀다');
+  eq(F.charmPolicyAllows('bogus', { level: 1, bestLevel: 99 }), true, '알 수 없는 정책은 즉시로 취급 (부적 사장 방지)');
+  eq(F.charmPolicyAllows('frontier', {}), true, '빈 ctx도 안전 (0+1 >= 1)');
+
+  // 2) 해금 게이트 — 순 정책은 결 해금 전엔 무력화 (영원히 안 터지는 함정 차단)
+  withState({ bestLevel: 3, charmPolicy: 'pure' });
+  eq(F.getCharmPolicyId(), 'now', '결 미해금이면 순 정책은 즉시로 폴백');
+  withState({ bestLevel: 20, charmPolicy: 'pure' });
+  eq(F.getCharmPolicyId(), 'pure', '해금 후에는 순 정책 유효');
+  withState({ bestLevel: 20, charmPolicy: 'nope' });
+  eq(F.getCharmPolicyId(), 'now', '손상된 정책 id는 즉시');
+  eq(F.getCharmPolicy().id, 'now', 'getCharmPolicy도 같은 규칙');
+
+  // 3) e2e: 최전선 정책이면 낮은 합성에서 부적을 아낀다
+  const mk = (patch) => {
+    const s = withState(Object.assign({
+      codex: {}, gem: 0, upgrades: defaultUpgrades(), prestigeCount: 0, dailyQuests: [],
+      lastFirstMergeDate: F.todayString(), luckyCharms: 1, luckyHandCharges: 0,
+    }, patch));
+    s.stats = {};
+    for (let lv = 1; lv <= 60; lv++) s.codex[lv] = true;
+    return s;
+  };
+  const sHold = mk({ bestLevel: 30, runBestLevel: 30, charmPolicy: 'frontier',
+    grid: gridFrom([5, 5, null, null, null, null]) });
+  quiet(() => F.tryMerge(0, 1));
+  eq(G.getState().luckyCharms, 1, '최전선 정책: Lv5 합성에서는 부적을 쓰지 않는다');
+  eq(G.getState().grid[1].level, 6, '점프 없이 평범하게 합성됐다');
+  // 같은 정책, 최전선 합성 → 발동
+  const sFire = mk({ bestLevel: 30, runBestLevel: 30, charmPolicy: 'frontier',
+    grid: gridFrom([30, 30, null, null, null, null]) });
+  quiet(() => F.tryMerge(0, 1));
+  eq(G.getState().luckyCharms, 0, '최전선 정책: 기록 층 합성에서 부적 발동');
+  eq(G.getState().grid[1].level, 32, '+1 도약이 실제로 적용됐다 (30+1+1)');
+  // 기본 정책은 오늘과 동일
+  const sNow = mk({ bestLevel: 30, runBestLevel: 30, charmPolicy: 'now',
+    grid: gridFrom([5, 5, null, null, null, null]) });
+  quiet(() => F.tryMerge(0, 1));
+  eq(G.getState().luckyCharms, 0, '즉시 정책: 기존과 동일하게 바로 소비');
+  eq(G.getState().grid[1].level, 7, '즉시 정책: +1 도약 (5+1+1)');
+
+  // 4) 순(純) 정책은 결이 같은 합성에서만
+  const gGold = C.GRAINS.find(x => x.channel === 'gold').id;
+  const gFren = C.GRAINS.find(x => x.channel === 'frenzy').id;
+  const sMix = mk({ bestLevel: 30, runBestLevel: 30, charmPolicy: 'pure',
+    grid: gridFrom([{ level: 5, grain: gGold }, { level: 5, grain: gFren }, null, null, null, null]) });
+  quiet(() => F.tryMerge(0, 1));
+  eq(G.getState().luckyCharms, 1, '순 정책: 혼합 합성에서는 아낀다');
+  const sPure = mk({ bestLevel: 30, runBestLevel: 30, charmPolicy: 'pure',
+    grid: gridFrom([{ level: 5, grain: gGold }, { level: 5, grain: gGold }, null, null, null, null]) });
+  quiet(() => F.tryMerge(0, 1));
+  eq(G.getState().luckyCharms, 0, '순 정책: 결이 같은 손 합성에서 발동');
+
+  // 5) 보유 상한 — 아껴 쓰는 대가 (초과분 소멸)
+  const sCap = mk({ bestLevel: 30, runBestLevel: 30, luckyCharms: C.CHARM_CAP });
+  sCap.stats.totalMerges = 99;
+  quiet(() => F.creditMerges(1)); // 100 경계 → 새 부적 1개
+  eq(G.getState().luckyCharms, C.CHARM_CAP, '상한에서는 새 부적이 쌓이지 않는다 (소멸)');
+  const sRoom = mk({ bestLevel: 30, runBestLevel: 30, luckyCharms: C.CHARM_CAP - 1 });
+  sRoom.stats.totalMerges = 99;
+  quiet(() => F.creditMerges(1));
+  eq(G.getState().luckyCharms, C.CHARM_CAP, '여유가 있으면 정상 획득');
+  ok(C.CHARM_CAP >= 2, '상한은 최소한 한 번은 아낄 수 있는 크기');
+
+  // 6) 검증/복구
+  const sV = withState({ bestLevel: 20, charmPolicy: 'garbage', luckyCharms: 99 });
+  F.validateAndRepairState();
+  eq(G.getState().charmPolicy, 'now', '손상된 정책은 기본값으로 복구');
+  eq(G.getState().luckyCharms, C.CHARM_CAP, '보유량은 상한으로 클램프');
+  const sV2 = withState({ bestLevel: 20, charmPolicy: 'frontier', luckyCharms: -3 });
+  F.validateAndRepairState();
+  eq(G.getState().luckyCharms, 0, '음수 보유량은 0으로');
+  eq(G.getState().charmPolicy, 'frontier', '정상 정책은 보존');
+
+  // 7) 점진 공개 — 첫 부적이 실제로 생기는 100합성부터 (단조)
+  const sR = withState({ bestLevel: 20 });
+  sR.stats.totalMerges = 99;
+  eq(F.getRevealState().charm, false, '100합성 전에는 정책 행 비노출');
+  sR.stats.totalMerges = 100;
+  eq(F.getRevealState().charm, true, '첫 부적 시점에 등장');
+  ok(RAW_HTML.indexOf("['#charm-policy-box', 'charm']") >= 0, '정책 행이 REVEAL_TARGETS에 등록됨');
+
+  // 8) 구조 가드
+  ok(RAW_HTML.indexOf('charmPolicyAllows(getCharmPolicyId(), { level: a.level, bestLevel: state.bestLevel, pureGrain })') >= 0,
+     '소비 지점이 정책을 통과한다 (한 곳뿐)');
+  eq(RAW_HTML.split('charmPolicyAllows(').length - 1, 2, '정의 1 + 소비 지점 1');
+  ok(/const lostCharms = newCharms - gainedCharms;/.test(RAW_HTML), '상한 초과분을 계산한다');
+  ok(/부적이 가득 참/.test(RAW_HTML), '초과 소멸을 플레이어에게 알린다 (대가가 보여야 결정이 성립)');
+  ok(/id="charm-policy-box"/.test(RAW_HTML) && /data-charm="frontier"/.test(RAW_HTML), '정책 UI가 자동화 모달 안에 있다 (새 패널 없음)');
+  ok(/보장 부적의 때/.test(RAW_HTML), '도움말 항목 존재');
+});
+
 group('pickRitualGroup — 진안(陣眼) (Q-Leap 134)', () => {
   // 의식은 '가장 큰 무리'가 자동으로 뽑히고 결과는 최저 인덱스에 앉았다 = 플레이어 결정 0개.
   // 진안은 선택한 표창의 무리를 그 칸에서 터뜨린다. 새 계수는 0 — 결정만 추가된다.

@@ -1875,6 +1875,15 @@
       </div>
       <button id="auto-sell-run" class="auto-sell-run">즉시 1회 실행</button>
     </div>
+    <div class="auto-sell-box" id="charm-policy-box">
+      <div class="auto-sell-title">🔮 보장 부적의 때 <span style="color:#888;font-size:10px;font-weight:400;">(보유 <span id="charm-held">0</span>/3)</span></div>
+      <div class="auto-sell-row" style="gap:4px;">
+        <button class="prio-btn" data-charm="now">🔮 즉시</button>
+        <button class="prio-btn" data-charm="frontier">⚔ 최전선</button>
+        <button class="prio-btn" data-charm="pure">三 순(純)</button>
+      </div>
+      <div style="font-size:10px;color:#8a8a9a;margin-top:4px;" id="charm-policy-desc">다음 합성에 바로 사용 (기존 동작)</div>
+    </div>
     <div class="auto-sell-box">
       <div class="auto-sell-title">🎚 자동 합치기 우선순위</div>
       <div class="auto-sell-row" style="gap:4px;">
@@ -2005,7 +2014,7 @@
 <script>
 'use strict';
 // 릴리즈 버전 — package.json version과 동기 (테스트가 불일치를 잡는다). 커밋 시 함께 범프.
-const GAME_VERSION = '3.84.0';
+const GAME_VERSION = '3.85.0';
 // =============================================================
 // 표창키우기 v2 — 합체 게임
 // Concept: 3×3+ grid, drop shuriken (Lv 1), merge same-level → Lv+1
@@ -2313,6 +2322,7 @@ function defaultState() {
     dailyMergeClaimed: {},
     // Q-Leap 89: 합성 보장 부적 — 100 합성마다 +1 charge, 다음 합성 +1 점프
     luckyCharms: 0,
+    charmPolicy: 'now', // Q-Leap 135: 부적의 때 — 'now' | 'frontier' | 'pure' (설정, 윤회 보존)
     // Q-Leap 91: 윤회 직후 신생 부스트 카운터
     postPrestigeSpawns: 0,
     // v3.78 (PACING B): 이번 런의 실플레이 시간(초) — 깨달음 알찬 런 계수의 입력
@@ -3444,6 +3454,11 @@ function validateAndRepairState() {
     }
     state.constellationIntroShown = !!state.constellationIntroShown;
   state.ritualEyeHintShown = !!state.ritualEyeHintShown; // Q-Leap 134
+  // Q-Leap 135: 부적 정책·보유량 (손상 세이브가 영원히 안 터지는 정책을 심으면 부적이 사장된다)
+  if (!CHARM_POLICIES.some(p => p.id === state.charmPolicy)) { state.charmPolicy = 'now'; repairs++; }
+  if (typeof state.luckyCharms !== 'number' || !isFinite(state.luckyCharms) || state.luckyCharms < 0) { state.luckyCharms = 0; repairs++; }
+  else if (state.luckyCharms > CHARM_CAP) { state.luckyCharms = CHARM_CAP; repairs++; }
+  else if (state.luckyCharms !== Math.floor(state.luckyCharms)) { state.luckyCharms = Math.floor(state.luckyCharms); repairs++; }
   }
   // lifetime stat counters must be finite ≥ 0 — a corrupt NaN here would poison
   // displays (playtime, totals) and accumulation forever.
@@ -3896,9 +3911,20 @@ function creditMerges(count) {
   // Q-Leap 89: one lucky charm per 100-merge boundary crossed.
   const newCharms = Math.floor(after / 100) - Math.floor(before / 100);
   if (newCharms > 0) {
-    state.luckyCharms = (state.luckyCharms || 0) + newCharms;
-    setTimeout(() => toast(`🔮 합성 보장 부적 ×${state.luckyCharms} 획득`), 360);
-    addEvent('lucky', `보장 부적 획득 (총 ×${state.luckyCharms})`);
+    // Q-Leap 135: 보유 상한 — 아껴 쓸수록 부적 1개의 값어치는 오르지만 초과분이 소멸하므로
+    // 무한 비축은 불가능하다 (정책 선택의 반대급부).
+    const heldCharms = state.luckyCharms || 0;
+    const gainedCharms = Math.min(newCharms, Math.max(0, CHARM_CAP - heldCharms));
+    const lostCharms = newCharms - gainedCharms;
+    state.luckyCharms = heldCharms + gainedCharms;
+    if (gainedCharms > 0) {
+      setTimeout(() => toast(`🔮 합성 보장 부적 ×${state.luckyCharms} 획득`), 360);
+      addEvent('lucky', `보장 부적 획득 (총 ×${state.luckyCharms})`);
+    }
+    if (lostCharms > 0) { // 초과분이 조용히 사라지면 정책의 대가가 안 보인다 — 반드시 알린다
+      setTimeout(() => toast(`🔮 부적이 가득 참 (×${CHARM_CAP}) — ${lostCharms}개 소멸`), 420);
+      addEvent('lucky', `보장 부적 초과 소멸 ×${lostCharms}`);
+    }
   }
 }
 // Q-Leap 67: daily first-merge bonus — shared so ritual/pairwise both grant it
@@ -4032,6 +4058,40 @@ function grainChannelMul(pureId, channel) {
 // 결과 표창의 결 = 목적지(to) 표창의 결. 방향이 곧 결정 — 목적지가 결을 잃은 레거시 조각이면 출발지 결을 승계.
 function resolveMergeGrain(from, to) {
   return (to && to.grain) || (from && from.grain) || undefined;
+}
+// ---------- Q-Leap 135: 부적의 때(符籍之時) — 보장 부적을 '언제' 쓸지 고른다 ----------
+// 조사에서 드러난 진짜 결정 공백: 합성 보장 부적(100합성당 1개)은 jump===1인 '바로 다음' 합성에
+// 자동 소비된다. 낮은 레벨 합성이 압도적으로 많으므로 사실상 항상 최저가 합성에서 터진다 —
+// 같은 부적을 Lv30 합성에 쓰면 Lv3보다 2^27배 값진데 배분이 100% 무작위다. 게다가 부적을 '들고
+// 있는 것'은 오늘 구조적으로 불가능하다: 어떤 jump-1 합성이든 먹어치우고 자동합치기는 0.5초마다 돈다.
+// (같은 조사에서 축복 칸도 무작위지만 그쪽은 조각 이동이 무료라 이미 사실상 통제 가능 = 가짜 공백.)
+//
+// 안티-인플레이션: 부적 '개수'는 그대로다(100합성당 1). 방향만 고른다 — 성좌·삼재·진안과 같은
+// 재분배 형식. 반대급부는 CHARM_CAP: 보유 상한을 넘긴 획득은 소멸한다. 정책이 엄격할수록 부적
+// 1개의 값어치는 오르지만 대기가 길어져 초과 소멸 위험이 커진다 — 자기 제한적이다.
+// 기본값 'now'는 오늘 동작과 비트 단위로 동일하고, 상한도 오늘 동작에서는 절대 걸리지 않는다
+// (자동 소비라 쌓일 수가 없다) → 기존 세이브·기존 플레이의 페이싱은 불변.
+const CHARM_CAP = 3;
+const CHARM_POLICIES = [
+  { id: 'now',      icon: '🔮', name: '즉시',   desc: '다음 합성에 바로 사용 (기존 동작)' },
+  { id: 'frontier', icon: '⚔',  name: '최전선', desc: '최고 기록을 새로 쓰는 합성에만 사용' },
+  { id: 'pure',     icon: '三',  name: '순(純)', desc: '결이 같은 손 합성에만 사용' },
+];
+function getCharmPolicyId() {
+  const id = state.charmPolicy || 'now';
+  if (!CHARM_POLICIES.some(p => p.id === id)) return 'now';
+  if (id === 'pure' && !isGrainUnlocked()) return 'now'; // 해금 전 순 정책은 영원히 안 터지는 함정 → 무력화
+  return id;
+}
+function getCharmPolicy() { return CHARM_POLICIES.find(p => p.id === getCharmPolicyId()) || CHARM_POLICIES[0]; }
+// 순수 판정: 이 합성이 정책 조건을 만족하는가. ctx = { level, bestLevel, pureGrain }
+function charmPolicyAllows(policyId, ctx) {
+  const c = ctx || {};
+  switch (policyId) {
+    case 'frontier': return (c.level || 0) + 1 >= (c.bestLevel || 1); // +1이 새 기록을 만드는 지점
+    case 'pure':     return !!c.pureGrain;
+    default:         return true; // 'now'
+  }
 }
 // 순 합성 연출 + 실적 (tryMerge·의식 공용 — 의식은 N-1 합성 상당으로 계상: 의식-패리티 불변식)
 function noteGrainPure(grainId, idx, mergeEquiv) {
@@ -4568,8 +4628,10 @@ function tryMerge(fromIdx, toIdx, isAuto) {
       luckyHandUsed = true;
     }
     // Q-Leap 89: 합성 보장 부적 charge — auto-consume if jump still == 1 (no other boost)
+    // Q-Leap 135: 어느 합성에 쓸지는 이제 정책이 정한다 ('now'는 기존과 비트 단위로 동일)
     let luckyCharmUsed = false;
-    if ((state.luckyCharms || 0) > 0 && jump === 1) {
+    if ((state.luckyCharms || 0) > 0 && jump === 1
+        && charmPolicyAllows(getCharmPolicyId(), { level: a.level, bestLevel: state.bestLevel, pureGrain })) {
       state.luckyCharms -= 1;
       jump += 1;
       luckyCharmUsed = true;
@@ -6685,6 +6747,7 @@ function getRevealState() {
     instant:   b >= 3,                    // 💎 즉시 — 보석 경제 시작
     forge:     isForgeUnlocked(),         // 제련 (Lv 6) — 🔒 노출 대신 등장으로
     grain:     isGrainUnlocked(),         // 삼재의 결 (Lv 7) — 합성 자체에 방향성이 생기는 층
+    charm:     merges >= 100,             // 부적의 때 — 첫 보장 부적이 실제로 생기는 시점 (단조)
     daily:     b >= 3,                    // 도전/요일 배너 + 오늘 허브 — 기본 루프 이후
     shop:      b >= 3,
     codex:     b >= 4,
@@ -6703,7 +6766,7 @@ const REVEAL_TARGETS = [
   ['#merge-all-btn', 'gridTools'], ['#sort-btn', 'gridTools'], ['#compact-btn', 'gridTools'],
   ['#ritual-btn', 'ritual'], ['#frenzy-btn', 'frenzy'],
   ['#instant-spawn-btn', 'instant'], ['.auto-merge-group', 'autoMerge'], ['#forge-btn', 'forge'],
-  ['#next-grain-chip', 'grain'],
+  ['#next-grain-chip', 'grain'], ['#charm-policy-box', 'charm'],
   ['#daily-challenge-banner', 'daily'], ['#weekday-banner', 'daily'],
   ['#quest-btn', 'daily'], ['#shop-btn', 'shop'], ['#codex-btn', 'codex'],
   ['#storage-btn', 'storage'], ['#automation-btn', 'autoMerge'], ['#meditation-btn', 'autoMerge'],
@@ -7572,6 +7635,28 @@ function renderShop() {
   });
 }
 function refreshAutoSellUI() {
+  // Q-Leap 135: 부적 정책 행 — 자동화 모달의 다른 정책들과 같은 렌더 경로
+  const charmHeld = document.getElementById('charm-held');
+  if (charmHeld) charmHeld.textContent = String(state.luckyCharms || 0);
+  const charmDesc = document.getElementById('charm-policy-desc');
+  const activeCharm = getCharmPolicyId();
+  if (charmDesc) {
+    const pol = getCharmPolicy();
+    charmDesc.textContent = (state.charmPolicy === 'pure' && !isGrainUnlocked())
+      ? '순(純) 정책은 삼재의 결 해금 후 작동합니다 — 지금은 즉시로 처리'
+      : pol.desc;
+  }
+  document.querySelectorAll('[data-charm]').forEach(b => {
+    b.classList.toggle('active', b.dataset.charm === activeCharm);
+    b.onclick = () => {
+      getAudio();
+      state.charmPolicy = b.dataset.charm;
+      state.stats.charmPolicySets = (state.stats.charmPolicySets || 0) + 1;
+      sfx('move');
+      refreshAutoSellUI();
+      save();
+    };
+  });
   const tog = document.getElementById('auto-sell-toggle');
   const val = document.getElementById('auto-sell-val');
   if (tog) { tog.textContent = state.autoSellEnabled ? 'ON' : 'OFF'; tog.classList.toggle('on', state.autoSellEnabled); }
@@ -8520,6 +8605,7 @@ const HELP_SECTIONS = {
     { title: '📖 도감', body: '첫 도달한 Lv 영구 기록. 신규 등록 시 <span class="hk">깨달음 +1</span>. 윤회를 거쳐도 보존.' },
     { title: '🔗 인접 시너지', body: '같은 Lv 표창이 4방향 인접 시 <span class="hk">골드 생성 +20%/인접</span> (max +80%). 색상 dot으로 표시.' },
     { title: '✨ 의식 합성', body: '같은 Lv 4방향 연결 그룹 3+ 시 자동 활성화. 발동 시 <span class="hk">한꺼번에 합쳐 큰 점프</span> (3개→+1, 4개→+2 ...). <span class="hk">◎ 진안</span>: 표창을 고르고 누르면 <span class="hk">그 표창이 속한 무리</span>가 발동되고 결과가 <span class="hk">고른 칸에 앉습니다</span> — 큰 무리(골드·전선)와 순(純) 무리(폭주·변종) 중 무엇을 태울지, 결과를 어느 칸에 둘지가 선택입니다. 아무것도 고르지 않으면 가장 큰 무리가 자동 선택 (기존과 동일).' },
+    { title: '🔮 보장 부적의 때', body: '합성 100회마다 <span class="hk">보장 부적</span> 1개 (최대 3개 보유). 부적은 점프가 없는 합성에 자동으로 쓰여 <span class="hk">+1 도약</span>을 보장합니다. <span class="hk">⚙ 자동화</span>에서 <span class="hk">언제 쓸지</span>를 고를 수 있습니다 — 🔮즉시(기존) / ⚔최전선(최고 기록을 새로 쓰는 합성에만) / 三순(純)(결이 같은 손 합성에만). 같은 부적도 높은 Lv 합성에 쓰면 골드가 기하급수로 커지지만, 아껴 두는 동안 새 부적이 상한을 넘으면 소멸합니다 — 값어치와 대기의 저울질입니다.' },
     { title: '三 삼재의 결', body: `Lv ${GRAIN_UNLOCK_LV} 해금. 표창마다 <span class="hk">天(천)·地(지)·人(인)</span> 중 하나의 결이 붙습니다 (칸 왼쪽 표시, 생성 순서는 <span class="hk">회전 — 다음 결 예고</span>). 결이 같은 표창끼리 <span class="hk">손으로</span> 합치면 순(純) 합성: <span class="hk">天 합성 골드 ×2.2 / 地 폭주 충전 ×2.2 / 人 변종 자연발생 ×2.2</span>, 대신 나머지 두 채널은 ×0.35. 결과 표창의 결은 <span class="hk">목적지(나중에 탭한 칸)</span>를 따르므로 방향이 다음 수를 만듭니다. 다른 결끼리의 합성(혼합)은 기존과 완전히 동일 — 무작정 합쳐도 손해가 없고, 결을 읽는 만큼만 이득. 자동합치기·⚡모두·자동 의식은 항상 혼합입니다.` },
     { title: '🌟 콤보', body: '2.5초 안 chain merge 시 콤보 ×N. 콤보당 +20% 골드. 5/10/15/20/30/50 마일스톤 보너스.' },
     { title: '🔺 세트 효과', body: '그리드 구성으로 패시브 발동 (그리드 위 배지 표시): <span class="hk">삼위일체</span>(같은 Lv 3+·골드+15%) / <span class="hk">황금 진형</span>(황금 2+·변종×1.5) / <span class="hk">만재</span>(90%+·폭주충전×2) / <span class="hk">승천</span>(Lv20+ 3개·콤보+1s) / <span class="hk">무지개</span>(황금·별·검은 동시·골드+25%) / <span class="hk">정예 진형</span>(5+ 표창 전부 최고Lv−3↑·생성+10%) / <span class="hk">완전 진형</span>(삼위일체·만재·승천·정예 동시·골드+50%).' },

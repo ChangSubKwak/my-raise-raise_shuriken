@@ -417,6 +417,45 @@ function ok(cond, msg) {
     `진안: 윤곽은 outline만 — 셀 자식 노드 수 불변 (${childParity.before} → ${childParity.after})`);
   await page.evaluate(() => { selectedIdx = -1; renderGrid(); });
 
+  // ================= Q-Leap 135: 부적의 때 =================
+  // 정책 행은 자동화 모달 안에 있다 (새 패널 없음). 신뢰 클릭으로 실제 토글되는지 본다.
+  console.log('Q-Leap 135 부적의 때');
+  await page.evaluate(() => {
+    state.bestLevel = 20; state.runBestLevel = 20; state.charmPolicy = 'now';
+    state.luckyCharms = 2; state.stats.totalMerges = 500;
+    refreshUI();
+  });
+  await clearOverlays(); await page.waitForTimeout(150);
+  // #automation-btn은 ☰ 메뉴 안이라 닫힌 상태에서는 신뢰 클릭 대상이 아니다 — 모달은 기존 헬퍼로 열고,
+  // 정작 검증 대상인 정책 버튼(모달 안, 실제로 보이는 요소)만 신뢰 클릭한다.
+  await $id('automation-btn');
+  await page.waitForTimeout(200);
+  const boxShown = await page.evaluate(() => {
+    const el = document.getElementById('charm-policy-box');
+    return { visible: !!el && getComputedStyle(el).display !== 'none', held: (document.getElementById('charm-held')||{}).textContent };
+  });
+  ok(boxShown.visible, '부적: 100합성 이후 정책 행 노출');
+  ok(boxShown.held === '2', `부적: 보유 수 표시 (${boxShown.held})`);
+  await page.click('#charm-policy-box [data-charm="frontier"]');
+  await page.waitForTimeout(150);
+  const picked = await page.evaluate(() => ({
+    policy: state.charmPolicy,
+    active: document.querySelector('#charm-policy-box [data-charm="frontier"]').classList.contains('active'),
+    desc: (document.getElementById('charm-policy-desc')||{}).textContent,
+  }));
+  ok(picked.policy === 'frontier' && picked.active, '부적: 신뢰 클릭으로 최전선 정책 선택');
+  ok(/최고 기록/.test(picked.desc || ''), `부적: 설명이 갱신된다 — "${picked.desc}"`);
+  // 미해금 상태에서 순 정책은 함정이 되지 않는다 (설명이 폴백을 알린다)
+  const pureFallback = await page.evaluate(() => {
+    state.bestLevel = 3; state.charmPolicy = 'pure'; refreshAutoSellUI();
+    return { effective: getCharmPolicyId(), desc: (document.getElementById('charm-policy-desc')||{}).textContent };
+  });
+  ok(pureFallback.effective === 'now', '부적: 결 미해금이면 순 정책이 즉시로 폴백');
+  ok(/해금/.test(pureFallback.desc || ''), '부적: 폴백 상태를 설명으로 알린다');
+  await page.evaluate(() => { state.bestLevel = 20; state.charmPolicy = 'now'; refreshAutoSellUI(); });
+  await $id('automation-close');
+  await page.waitForTimeout(150);
+
   // ================= console errors =================
   const errs = consoleErrors.filter(e => !/favicon/i.test(e));
   ok(errs.length === 0, `콘솔 에러 0건${errs.length ? ' — ' + errs.slice(0, 3).join(' | ') : ''}`);
