@@ -3811,7 +3811,7 @@ group('삼재의 결 / grain (Q-Leap 133)', () => {
   eq(fused.star, true, '융합 결과는 상위 변종');
   eq(fused.grain, goldGrain, '융합 결과도 결과 칸의 결을 승계');
   // 새로 생겨나는 표창(관문 보상/출석 선물)은 회전을 소비한다
-  eq((RAW_SCRIPT.match(/takeNextGrain\(\)/g) || []).length, 4, '회전 소비 진입점은 정의 1 + 호출 3 (생성·관문·출석)');
+  eq((RAW_SCRIPT.match(/takeNextGrain()/g) || []).length, 5, '회전 소비 진입점은 정의 1 + 호출 4 (생성·관문·출석·격추 보상)');
   ok(/level: c\.level, fireTimer: 0, golden: !!c\.golden, star: !!c\.star, dark: !!c\.dark, grain: c\.grain/.test(RAW_SCRIPT),
      '계승 경로가 결을 명시적으로 승계');
 
@@ -3952,6 +3952,109 @@ group('의식의 축복 +1 도약 (감사 C8 · 사용자 승인)', () => {
   ok(RAW_HTML.indexOf('(ritualBlessed ? 1 : 0)') >= 0, 'newLv에 축복 +1이 들어간다');
   eq(RAW_HTML.split('ritualBlessed').length - 1, 3, '판정 1 + newLv 1 + 소비 블록 1 (중복 계산 없음)');
   ok(RAW_HTML.indexOf('🙏 축복 효과 발동 (+1 도약)') >= 0, '피드백 토스트 — 소멸만 보이던 문제 해소');
+});
+
+group('격추 모드 (Q-Leap 136)', () => {
+  // 사용자 결정으로 전투를 되살렸다. 핵심 계약: 화력은 '그리드에서 파생될 뿐' 새로 성장하지 않고,
+  // 보상 골드는 새 배수가 아니라 플레이어 자신의 패시브 수입률로 환산된다 (자기 스케일링).
+
+  // 1) 해금
+  withState({ bestLevel: C.STRIKE_UNLOCK_LV - 1 });
+  eq(F.isStrikeUnlocked(), false, '해금 레벨 전에는 미해금');
+  withState({ bestLevel: C.STRIKE_UNLOCK_LV });
+  eq(F.isStrikeUnlocked(), true, '해금 경계');
+  eq(F.getRevealState().strike, true, '해금과 동시에 메뉴 버튼 노출');
+  withState({ bestLevel: 3 });
+  eq(F.getRevealState().strike, false, '미해금이면 버튼 자체가 없다');
+
+  // 2) 출격권 — 20분당 1장, 상한 3, 타임스탬프 기반이라 오프라인에도 찬다
+  const NOW = 1000000000000;
+  withState({ bestLevel: 20, strikeTickets: 0, strikeTicketAt: NOW });
+  eq(F.strikeTicketState(NOW).tickets, 0, '방금 소진하면 0장');
+  eq(F.strikeTicketState(NOW + C.STRIKE_TICKET_SEC * 1000 - 1000).tickets, 0, '회복 직전에는 아직 0장');
+  eq(F.strikeTicketState(NOW + C.STRIKE_TICKET_SEC * 1000).tickets, 1, '20분에 1장');
+  eq(F.strikeTicketState(NOW + C.STRIKE_TICKET_SEC * 3000).tickets, 3, '60분에 3장');
+  eq(F.strikeTicketState(NOW + C.STRIKE_TICKET_SEC * 9000).tickets, C.STRIKE_TICKET_MAX, '상한을 넘지 않는다 (무한 파밍 차단)');
+  const st2 = F.strikeTicketState(NOW + C.STRIKE_TICKET_SEC * 1500);
+  ok(st2.remainSec > 0 && st2.remainSec <= C.STRIKE_TICKET_SEC, '남은 시간이 구간 안: ' + Math.round(st2.remainSec) + 's');
+  withState({ bestLevel: 20, strikeTickets: 0, strikeTicketAt: NOW });
+  eq(F.syncStrikeTickets(NOW + C.STRIKE_TICKET_SEC * 2000), 2, '동기화가 읽기 값과 일치 (표시-실제 불일치 방지)');
+  eq(G.getState().strikeTickets, 2, '상태에 반영된다');
+
+  // 3) 화력은 보드에서 파생된다 — 키운 만큼만 강해진다
+  withState({ bestLevel: 20, upgrades: defaultUpgrades(), grid: gridFrom([null, null, null, null, null, null]) });
+  const loEmpty = F.getStrikeLoadout();
+  eq(loEmpty.pieces, 0, '빈 보드');
+  eq(loEmpty.power, 1, '빈 보드의 화력은 최소치');
+  withState({ bestLevel: 20, upgrades: defaultUpgrades(), grid: gridFrom([6, 6, 6, null, null, null]) });
+  const loSmall = F.getStrikeLoadout();
+  withState({ bestLevel: 30, upgrades: defaultUpgrades(), grid: gridFrom([18, 18, 18, null, null, null]) });
+  const loBig = F.getStrikeLoadout();
+  ok(loBig.power > loSmall.power, '높은 보드가 더 강하다: ' + loSmall.power + ' -> ' + loBig.power);
+  ok(loBig.power < loSmall.power * 6, '로그 스케일이라 폭주하지 않는다 (깊이가 화력을 지배하지 않음)');
+  ok(loBig.shotLv > loSmall.shotLv, '최고 레벨이 주포 줄기를 늘린다');
+  ok(loBig.shotLv <= 5, '주포는 5줄기 상한');
+  withState({ bestLevel: 20, upgrades: defaultUpgrades(), grid: gridFrom([{ level: 8, star: true }, { level: 8, star: true }, { level: 8, dark: true }, { level: 8, golden: true }, null, null]) });
+  const loVar = F.getStrikeLoadout();
+  eq(loVar.options, 2, '별 표창 = 옵션기 (상한 2)');
+  eq(loVar.bombs, 2, '검은 표창 1개 = 폭탄 2개');
+  eq(loVar.lives, 4, '황금 표창 보유 시 예비기 +1');
+  withState({ bestLevel: 20, upgrades: defaultUpgrades(), grid: gridFrom([{ level: 8, dark: true }, { level: 8, dark: true }, { level: 8, dark: true }, { level: 8, dark: true }, null, null]) });
+  eq(F.getStrikeLoadout().bombs, 3, '폭탄도 상한 3');
+
+  // 4) 난이도는 화력에 비례해 스케일한다 (보드를 키워도 무의미해지지 않는다)
+  const hpSmall = F.strikeEnemyHp(loSmall, 'boss');
+  const hpBig = F.strikeEnemyHp(loBig, 'boss');
+  ok(hpBig > hpSmall, '강한 보드일수록 보스도 단단하다');
+  ok(F.strikeEnemyHp(loBig, 'boss') > F.strikeEnemyHp(loBig, 'mid'), '보스 > 중형');
+  ok(F.strikeEnemyHp(loBig, 'mid') > F.strikeEnemyHp(loBig, 'basic'), '중형 > 잡몹');
+  const killSmall = hpSmall / F.strikeBulletDamage(loSmall);
+  const killBig = hpBig / F.strikeBulletDamage(loBig);
+  ok(killBig < killSmall, '완전 비례는 아니라 성장 보람이 남는다: ' + killSmall.toFixed(1) + ' -> ' + killBig.toFixed(1) + '발');
+
+  // 5) 웨이브 표
+  eq(F.strikeWaveAt(0).kind, 'basic', '초반은 잡몹');
+  eq(F.strikeWaveAt(31).kind, 'mid', '30초 이후 중형');
+  eq(F.strikeWaveAt(C.STRIKE_BOSS_AT).kind, 'boss', '보스 등장 시점');
+  eq(F.strikeWaveAt(C.STRIKE_BOSS_AT).rate, 0, '보스 구간엔 잡몹 생성 중단');
+  ok(F.strikeWaveAt(20).rate > F.strikeWaveAt(2).rate, '시간이 갈수록 밀도가 오른다');
+  ok(C.STRIKE_BOSS_AT < C.STRIKE_DURATION, '보스가 제한 시간 안에 나온다 (도달 불가 보상 방지)');
+
+  // 6) 보상 — 새 배수가 아니라 '패시브 몇 초치'로 환산된다 (안티-인플레이션의 핵심)
+  withState({ bestLevel: 24, upgrades: defaultUpgrades(), grid: gridFrom([12, 12, 12, 12, null, null]) });
+  const rate = F.getPassiveGoldRate();
+  ok(rate > 0, '전제: 패시브 수입이 있다');
+  const full = F.strikeReward(1.2, F.getStrikeLoadout());
+  const half = F.strikeReward(0.5, F.getStrikeLoadout());
+  eq(F.strikeReward(0, F.getStrikeLoadout()).gold, 0, '성과 0이면 보상 0');
+  approx(full.gold / rate, C.STRIKE_GOLD_SECONDS * 1.2, '만점 보상은 패시브 수입의 정해진 초 수 (상한)', C.STRIKE_GOLD_SECONDS * 0.05);
+  ok(half.gold < full.gold && half.gold > 0, '성과에 비례한다');
+  eq(F.strikeReward(5, F.getStrikeLoadout()).gold, full.gold, '성과비는 1.2에서 잘린다 (상한 고정)');
+  withState({ bestLevel: 40, upgrades: defaultUpgrades(), grid: gridFrom([26, 26, 26, 26, null, null]) });
+  const richRate = F.getPassiveGoldRate();
+  const rich = F.strikeReward(1.0, F.getStrikeLoadout());
+  ok(richRate > rate && rich.gold > full.gold, '깊은 보드에서 보상도 함께 커진다 (수입률 환산)');
+  approx(rich.gold / richRate, C.STRIKE_GOLD_SECONDS, '어느 깊이에서든 같은 초 수 (새 곱연산 항이 아니다)', C.STRIKE_GOLD_SECONDS * 0.05);
+  eq(F.strikeReward(1.2, F.getStrikeLoadout()).gem, 3, '만점은 보석 3');
+  eq(F.strikeReward(0.8, F.getStrikeLoadout()).gem, 2, '고성과 보석 2');
+  eq(F.strikeReward(0.1, F.getStrikeLoadout()).gem, 0, '저성과는 보석 없음');
+  eq(F.strikeReward(0.9, F.getStrikeLoadout()).variant, null, '변종은 만점 초과에서만');
+  eq(F.strikeReward(1.2, F.getStrikeLoadout()).variant, 'golden', '노히트 보스 격추 = 황금 표창');
+
+  // 7) 검증/복구 — 손상 세이브가 무한 출격을 만들지 않는다
+  withState({ bestLevel: 20, strikeTickets: 999, strikeTicketAt: -5 });
+  F.validateAndRepairState();
+  eq(G.getState().strikeTickets, C.STRIKE_TICKET_MAX, '출격권은 상한으로 클램프');
+  eq(G.getState().strikeTicketAt, 0, '음수 타임스탬프 복구');
+  withState({ bestLevel: 20, strikeTickets: 1, strikeTicketAt: Date.now() + 86400000 });
+  F.validateAndRepairState();
+  ok(G.getState().strikeTicketAt <= Date.now() + 60000, '미래 타임스탬프(시계 조작) 차단');
+
+  // 8) 구조 가드
+  ok(RAW_HTML.indexOf('id="strike-canvas"') >= 0, '캔버스 존재');
+  ok(RAW_HTML.indexOf("['#strike-btn', 'strike']") >= 0, '메뉴 버튼이 REVEAL_TARGETS에 등록');
+  ok(RAW_HTML.indexOf('getPassiveGoldRate() * STRIKE_GOLD_SECONDS') >= 0, '보상이 패시브 수입률로 환산된다 (새 배수 금지)');
+  ok(RAW_HTML.indexOf('grain: takeNextGrain()') >= 0, '격추 변종 보상도 결 회전을 소비한다 (생애 규칙)');
 });
 
 group('콤보 배수 상한 (감사 C7 · 사용자 승인)', () => {
