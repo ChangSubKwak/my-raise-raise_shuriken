@@ -2014,7 +2014,7 @@
 <script>
 'use strict';
 // 릴리즈 버전 — package.json version과 동기 (테스트가 불일치를 잡는다). 커밋 시 함께 범프.
-const GAME_VERSION = '3.85.2';
+const GAME_VERSION = '3.86.0';
 // =============================================================
 // 표창키우기 v2 — 합체 게임
 // Concept: 3×3+ grid, drop shuriken (Lv 1), merge same-level → Lv+1
@@ -4748,7 +4748,11 @@ function tryMerge(fromIdx, toIdx, isAuto) {
     state.comboTimer = (isChallenge('comboKeep') ? 5 : 2.5) + (weekdayBonus().comboPlus || 0) + (hasSet('ascension') ? 1 : 0); // Q-Leap 87 + 95
     state.comboTimerMax = state.comboTimer; // Q-Leap 93
     if (state.comboCount > (state.stats.bestCombo || 0)) state.stats.bestCombo = state.comboCount;
-    const comboMult = 1 + (state.comboCount - 1) * 0.2;
+    // 감사 스윕 C7 (사용자 승인, v3.86.0): 생성 간격이 콤보 타이머(2.5s)보다 짧아지는 구간부터
+    // 자동합치기 체인이 영원히 끊기지 않아 배수가 시간에 선형으로 발산했다 — 실측 2시간 방치에서
+    // 콤보 14,470 (배수 ×2,895), 끊김 0회. 상한 100은 COMBO_MILESTONES의 기존 최상단 임계값이라
+    // 새 매직 넘버가 아니며, 콤보 100 미만인 손 플레이 구간은 비트 단위로 불변이다.
+    const comboMult = 1 + (Math.min(state.comboCount, COMBO_MULT_CAP) - 1) * 0.2;
     // Jump bonus on gold reward (skipping tiers yields disproportionate gold)
     const jumpMult = jump === 1 ? 1
                    : jump === 2 ? 2.5
@@ -6514,6 +6518,8 @@ function spawnCellBurst(idx, color, count = 12) {
 }
 
 // Q-Leap 53: combo milestones — periodic rewards as the combo streak rises
+// 콤보 배수 상한 (감사 C7). COMBO_MILESTONES의 최상단 임계값과 같은 값을 쓴다 — 새 상수를 만들지 않기 위해.
+const COMBO_MULT_CAP = 100;
 const COMBO_MILESTONES = {
   5:  { gem: 1, tint: '#ffd966', label: '연쇄 ×5', effect: () => {} },
   10: { gem: 2, tint: '#88ddff', label: '연쇄 ×10 — 행운의 손 +1', effect: () => { state.luckyHandCharges = (state.luckyHandCharges || 0) + 1; } },

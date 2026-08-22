@@ -3909,6 +3909,47 @@ group('findRitualGroups — 의식 그룹 탐색 (커버리지 공백 보강)', 
   eq(new Set(flat).size, flat.length, '한 칸이 두 그룹에 중복 등록되지 않는다 (visited 정확)');
 });
 
+group('콤보 배수 상한 (감사 C7 · 사용자 승인)', () => {
+  // 생성 간격이 콤보 타이머(2.5s)보다 짧아지는 구간부터 자동 체인이 끊기지 않아 배수가
+  // 시간에 선형으로 발산했다 — 실측 2시간 방치에서 콤보 14,470 (배수 ×2,895), 끊김 0회.
+  // 상한 100은 COMBO_MILESTONES의 기존 최상단 임계값이라 새 매직 넘버가 아니다.
+  const REAL = Math.random;
+  const quiet = (fn) => { Math.random = () => 0.999999; try { return fn(); } finally { Math.random = REAL; } };
+  const mergeGoldAt = (combo) => {
+    const s = withState({
+      bestLevel: 30, runBestLevel: 30, codex: {}, gold: 0, upgrades: defaultUpgrades(),
+      dailyQuests: [], lastFirstMergeDate: F.todayString(), luckyCharms: 0, luckyHandCharges: 0,
+      comboCount: combo, comboTimer: 5, comboTimerMax: 5,
+      grid: gridFrom([5, 5, null, null, null, null]),
+    });
+    s.stats = {};
+    for (let lv = 1; lv <= 40; lv++) s.codex[lv] = true;
+    quiet(() => F.tryMerge(0, 1));
+    return G.getState().gold;
+  };
+  // 상한 미만 구간은 비트 단위로 불변 (손 플레이 체감 구간)
+  const g10 = mergeGoldAt(9);   // 합성 후 콤보 10 → ×2.8
+  const g30 = mergeGoldAt(29);  // → ×6.8
+  approx(g30 / g10, 6.8 / 2.8, '콤보 10 대 30 배수비가 공식 그대로 (상한 아래는 불변)', 0.02);
+  // 상한 위는 고정
+  const gCap = mergeGoldAt(C.COMBO_MULT_CAP - 1);       // 정확히 상한
+  const gOver = mergeGoldAt(C.COMBO_MULT_CAP * 50);     // 한참 초과
+  eq(gOver, gCap, '상한을 넘으면 배수가 고정된다 (방치 발산 차단)');
+  const expectedCapMul = 1 + (C.COMBO_MULT_CAP - 1) * 0.2;
+  approx(gCap / g10, expectedCapMul / 2.8, `상한 배수는 ×${expectedCapMul.toFixed(1)}`, 0.02);
+  // 상한 값 자체가 기존 마일스톤과 같은 값이어야 새 매직 넘버가 아니다
+  ok(Object.keys(C.COMBO_MILESTONES || {}).map(Number).includes(C.COMBO_MULT_CAP),
+     `상한(${C.COMBO_MULT_CAP})이 COMBO_MILESTONES의 기존 임계값과 같다`);
+  ok(RAW_HTML.indexOf('Math.min(state.comboCount, COMBO_MULT_CAP)') >= 0, '상한이 comboMult에 배선됨');
+  // 콤보 카운터 자체는 계속 오른다 (마일스톤·캐시아웃·퀘스트가 그 값을 쓴다)
+  const sCnt = withState({ bestLevel: 30, runBestLevel: 30, comboCount: 500, comboTimer: 5,
+    codex: {}, upgrades: defaultUpgrades(), dailyQuests: [], lastFirstMergeDate: F.todayString(),
+    grid: gridFrom([5, 5, null, null, null, null]) });
+  sCnt.stats = {};
+  quiet(() => F.tryMerge(0, 1));
+  ok((G.getState().comboCount || 0) > C.COMBO_MULT_CAP, '상한은 배수만 자르고 콤보 카운트는 그대로 (캐시아웃·마일스톤 보존)');
+});
+
 group('부적의 때 — 보장 부적 정책 (Q-Leap 135)', () => {
   // 부적은 100합성당 1개인데 jump===1인 '바로 다음' 합성이 무조건 먹었다 → 배분 100% 무작위,
   // 들고 있는 것 자체가 불가능. 정책은 개수를 늘리지 않고 '방향'만 고른다 (재분배).
