@@ -3997,10 +3997,19 @@ group('부적의 때 — 보장 부적 정책 (Q-Leap 135)', () => {
   ok(C.CHARM_CAP >= 2, '상한은 최소한 한 번은 아낄 수 있는 크기');
 
   // 6) 검증/복구
-  const sV = withState({ bestLevel: 20, charmPolicy: 'garbage', luckyCharms: 99 });
+  const sV = withState({ bestLevel: 20, charmPolicy: 'garbage', luckyCharms: 7 });
   F.validateAndRepairState();
   eq(G.getState().charmPolicy, 'now', '손상된 정책은 기본값으로 복구');
-  eq(G.getState().luckyCharms, C.CHARM_CAP, '보유량은 상한으로 클램프');
+  // 상한은 '지급'을 규율할 뿐 이미 가진 것을 빼앗지 않는다 (구버전에서 모은 보유분 몰수 방지)
+  eq(G.getState().luckyCharms, 7, '상한을 넘는 기존 보유분은 로드 시 보존된다');
+  withState({ bestLevel: 20, luckyCharms: 1e9 });
+  F.validateAndRepairState();
+  eq(G.getState().luckyCharms, 999, '변조 수준의 값만 잘라낸다 (상한이 아니라 광기 방어)');
+  // 그래도 새 지급은 상한에서 멈춘다 — 초과 보유는 자연히 소진된다
+  const sOver = withState({ bestLevel: 20, luckyCharms: 7 });
+  sOver.stats.totalMerges = 99;
+  F.creditMerges(1);
+  eq(G.getState().luckyCharms, 7, '초과 보유 상태에서는 새 부적이 붙지 않는다');
   const sV2 = withState({ bestLevel: 20, charmPolicy: 'frontier', luckyCharms: -3 });
   F.validateAndRepairState();
   eq(G.getState().luckyCharms, 0, '음수 보유량은 0으로');
@@ -4012,6 +4021,14 @@ group('부적의 때 — 보장 부적 정책 (Q-Leap 135)', () => {
   eq(F.getRevealState().charm, false, '100합성 전에는 정책 행 비노출');
   sR.stats.totalMerges = 100;
   eq(F.getRevealState().charm, true, '첫 부적 시점에 등장');
+  // 이 행은 ⚙ 자동화 모달 안에 있다 — 그 문이 잠긴 상태에서 행만 노출되면 도달 불가 함정이다
+  const sTrap = withState({ bestLevel: 3 });
+  sTrap.stats.totalMerges = 500;
+  eq(F.getRevealState().autoMerge, false, '전제: Lv3에서는 자동화 모달 버튼이 아직 없다');
+  eq(F.getRevealState().charm, false, '문이 잠긴 동안에는 정책 행도 노출하지 않는다 (도달 불가 방지)');
+  const sBoth = withState({ bestLevel: 5 });
+  sBoth.stats.totalMerges = 100;
+  ok(F.getRevealState().charm && F.getRevealState().autoMerge, '두 조건이 모두 서면 함께 노출');
   ok(RAW_HTML.indexOf("['#charm-policy-box', 'charm']") >= 0, '정책 행이 REVEAL_TARGETS에 등록됨');
 
   // 8) 구조 가드

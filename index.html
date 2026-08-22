@@ -2014,7 +2014,7 @@
 <script>
 'use strict';
 // 릴리즈 버전 — package.json version과 동기 (테스트가 불일치를 잡는다). 커밋 시 함께 범프.
-const GAME_VERSION = '3.85.1';
+const GAME_VERSION = '3.85.2';
 // =============================================================
 // 표창키우기 v2 — 합체 게임
 // Concept: 3×3+ grid, drop shuriken (Lv 1), merge same-level → Lv+1
@@ -3456,8 +3456,11 @@ function validateAndRepairState() {
   state.ritualEyeHintShown = !!state.ritualEyeHintShown; // Q-Leap 134
   // Q-Leap 135: 부적 정책·보유량 (손상 세이브가 영원히 안 터지는 정책을 심으면 부적이 사장된다)
   if (!CHARM_POLICIES.some(p => p.id === state.charmPolicy)) { state.charmPolicy = 'now'; repairs++; }
+  // 상한(CHARM_CAP)은 '지급'을 규율할 뿐 이미 가진 것을 빼앗지 않는다 — 구버전에서 정당하게
+  // 모은 보유분을 로드 시 깎으면 자산 몰수다 (자체 실측: 7개 세이브가 3개로 잘렸다).
+  // 검증은 명백한 손상만 고친다. 초과 보유는 새 지급이 막힌 채 자연히 소진된다.
   if (typeof state.luckyCharms !== 'number' || !isFinite(state.luckyCharms) || state.luckyCharms < 0) { state.luckyCharms = 0; repairs++; }
-  else if (state.luckyCharms > CHARM_CAP) { state.luckyCharms = CHARM_CAP; repairs++; }
+  else if (state.luckyCharms > 999) { state.luckyCharms = 999; repairs++; } // 변조 방어 (상한이 아니라 광기 방어)
   else if (state.luckyCharms !== Math.floor(state.luckyCharms)) { state.luckyCharms = Math.floor(state.luckyCharms); repairs++; }
   }
   // lifetime stat counters must be finite ≥ 0 — a corrupt NaN here would poison
@@ -6760,7 +6763,11 @@ function getRevealState() {
     instant:   b >= 3,                    // 💎 즉시 — 보석 경제 시작
     forge:     isForgeUnlocked(),         // 제련 (Lv 6) — 🔒 노출 대신 등장으로
     grain:     isGrainUnlocked(),         // 삼재의 결 (Lv 7) — 합성 자체에 방향성이 생기는 층
-    charm:     merges >= 100,             // 부적의 때 — 첫 보장 부적이 실제로 생기는 시점 (단조)
+    // 부적의 때 — 첫 보장 부적이 생기는 100합성부터. 단, 이 행은 ⚙ 자동화 모달 '안'에 있으므로
+    // 그 문을 여는 #automation-btn의 rung(b>=5)도 함께 만족해야 도달 가능하다. 자체 실측에서
+    // Lv3·500합성 상태가 charm=true / autoMerge=false로 나와 '행은 노출, 문은 잠김'이 성립했다.
+    // 두 조건 모두 단조라 AND도 단조 — 한 번 보인 UI가 사라지지 않는다.
+    charm:     merges >= 100 && b >= 5,
     daily:     b >= 3,                    // 도전/요일 배너 + 오늘 허브 — 기본 루프 이후
     shop:      b >= 3,
     codex:     b >= 4,
