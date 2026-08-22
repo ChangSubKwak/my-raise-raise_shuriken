@@ -2014,7 +2014,7 @@
 <script>
 'use strict';
 // 릴리즈 버전 — package.json version과 동기 (테스트가 불일치를 잡는다). 커밋 시 함께 범프.
-const GAME_VERSION = '3.85.0';
+const GAME_VERSION = '3.85.1';
 // =============================================================
 // 표창키우기 v2 — 합체 게임
 // Concept: 3×3+ grid, drop shuriken (Lv 1), merge same-level → Lv+1
@@ -4072,9 +4072,17 @@ function resolveMergeGrain(from, to) {
 // 기본값 'now'는 오늘 동작과 비트 단위로 동일하고, 상한도 오늘 동작에서는 절대 걸리지 않는다
 // (자동 소비라 쌓일 수가 없다) → 기존 세이브·기존 플레이의 페이싱은 불변.
 const CHARM_CAP = 3;
+// '최전선'의 기준선: 생성 레벨보다 몇 층 위를 노릴 것인가.
+// 실측(60분 sim, 최고Lv22·생성Lv6)에서 손합성 레벨 분포는 생성 레벨 바로 위에 몰리고 한 층마다
+// 절반씩 줄었다 — Lv6:696 · Lv7:286 · Lv10:55 · Lv12:19 · Lv18:1 (총 1383, 부적 공급 13개).
+// 그래서 '기록 기준'(best−K) 임계값은 깊이가 깊어질수록 반드시 기회 0이 된다 (첫 구현의 함정).
+// 생성 레벨 기준이면 분포 모양이 그대로라 어느 깊이에서도 같은 비율이 유지된다:
+//   +4 → 부적 1개당 기회 10회(너무 헐거움) / +6 → 3.5회 / +8 → 1.2회(대부분 소멸=함정)
+// 6을 고른 이유는 '규칙적으로 발동하되 놀면 소멸한다'는 긴장이 살아있는 유일한 구간이기 때문이다.
+const CHARM_FRONTIER_GAP = 6;
 const CHARM_POLICIES = [
   { id: 'now',      icon: '🔮', name: '즉시',   desc: '다음 합성에 바로 사용 (기존 동작)' },
-  { id: 'frontier', icon: '⚔',  name: '최전선', desc: '최고 기록을 새로 쓰는 합성에만 사용' },
+  { id: 'frontier', icon: '⚔',  name: '최전선', desc: '생성 레벨보다 6층 위 합성에만 사용 (값어치 ×수십, 놀면 소멸)' },
   { id: 'pure',     icon: '三',  name: '순(純)', desc: '결이 같은 손 합성에만 사용' },
 ];
 function getCharmPolicyId() {
@@ -4088,7 +4096,12 @@ function getCharmPolicy() { return CHARM_POLICIES.find(p => p.id === getCharmPol
 function charmPolicyAllows(policyId, ctx) {
   const c = ctx || {};
   switch (policyId) {
-    case 'frontier': return (c.level || 0) + 1 >= (c.bestLevel || 1); // +1이 새 기록을 만드는 지점
+    // 자체 실측에서 옛 규칙(level+1 >= bestLevel)은 발동 0회·소멸 10.7개, 전달 가치 정확히 0이었다
+    // — 새 최고 기록을 요구하는데 그건 2^(기록-생성)번의 하위 합성을 기다리는 일이라 영원히 안 온다
+    // (성좌 haste가 스폰 하한에서 0을 내던 함정과 같은 부류). 두 번째 시도인 '보드 최상단 짝'도
+    // 실측에서 평균 Lv 7.1 = 'now'와 동일해 조준이 되지 않았다(최상단 짝은 대개 저레벨이다).
+    // 셋째 규칙만 성립한다: 분포의 앵커인 **생성 레벨** 기준. 어느 깊이에서도 같은 비율로 온다.
+    case 'frontier': return (c.level || 0) >= (c.spawnLv || 1) + CHARM_FRONTIER_GAP;
     case 'pure':     return !!c.pureGrain;
     default:         return true; // 'now'
   }
@@ -4631,7 +4644,7 @@ function tryMerge(fromIdx, toIdx, isAuto) {
     // Q-Leap 135: 어느 합성에 쓸지는 이제 정책이 정한다 ('now'는 기존과 비트 단위로 동일)
     let luckyCharmUsed = false;
     if ((state.luckyCharms || 0) > 0 && jump === 1
-        && charmPolicyAllows(getCharmPolicyId(), { level: a.level, bestLevel: state.bestLevel, pureGrain })) {
+        && charmPolicyAllows(getCharmPolicyId(), { level: a.level, bestLevel: state.bestLevel, spawnLv: getSpawnStartLevel(), pureGrain })) {
       state.luckyCharms -= 1;
       jump += 1;
       luckyCharmUsed = true;
@@ -8605,7 +8618,7 @@ const HELP_SECTIONS = {
     { title: '📖 도감', body: '첫 도달한 Lv 영구 기록. 신규 등록 시 <span class="hk">깨달음 +1</span>. 윤회를 거쳐도 보존.' },
     { title: '🔗 인접 시너지', body: '같은 Lv 표창이 4방향 인접 시 <span class="hk">골드 생성 +20%/인접</span> (max +80%). 색상 dot으로 표시.' },
     { title: '✨ 의식 합성', body: '같은 Lv 4방향 연결 그룹 3+ 시 자동 활성화. 발동 시 <span class="hk">한꺼번에 합쳐 큰 점프</span> (3개→+1, 4개→+2 ...). <span class="hk">◎ 진안</span>: 표창을 고르고 누르면 <span class="hk">그 표창이 속한 무리</span>가 발동되고 결과가 <span class="hk">고른 칸에 앉습니다</span> — 큰 무리(골드·전선)와 순(純) 무리(폭주·변종) 중 무엇을 태울지, 결과를 어느 칸에 둘지가 선택입니다. 아무것도 고르지 않으면 가장 큰 무리가 자동 선택 (기존과 동일).' },
-    { title: '🔮 보장 부적의 때', body: '합성 100회마다 <span class="hk">보장 부적</span> 1개 (최대 3개 보유). 부적은 점프가 없는 합성에 자동으로 쓰여 <span class="hk">+1 도약</span>을 보장합니다. <span class="hk">⚙ 자동화</span>에서 <span class="hk">언제 쓸지</span>를 고를 수 있습니다 — 🔮즉시(기존) / ⚔최전선(최고 기록을 새로 쓰는 합성에만) / 三순(純)(결이 같은 손 합성에만). 같은 부적도 높은 Lv 합성에 쓰면 골드가 기하급수로 커지지만, 아껴 두는 동안 새 부적이 상한을 넘으면 소멸합니다 — 값어치와 대기의 저울질입니다.' },
+    { title: '🔮 보장 부적의 때', body: '합성 100회마다 <span class="hk">보장 부적</span> 1개 (최대 3개 보유). 부적은 점프가 없는 합성에 자동으로 쓰여 <span class="hk">+1 도약</span>을 보장합니다. <span class="hk">⚙ 자동화</span>에서 <span class="hk">언제 쓸지</span>를 고를 수 있습니다 — 🔮즉시(기존) / ⚔최전선(생성 레벨 +6층 이상 합성에만) / 三순(純)(결이 같은 손 합성에만). 같은 부적도 높은 Lv 합성에 쓰면 골드가 기하급수로 커지지만, 아껴 두는 동안 새 부적이 상한을 넘으면 소멸합니다 — 값어치와 대기의 저울질입니다.' },
     { title: '三 삼재의 결', body: `Lv ${GRAIN_UNLOCK_LV} 해금. 표창마다 <span class="hk">天(천)·地(지)·人(인)</span> 중 하나의 결이 붙습니다 (칸 왼쪽 표시, 생성 순서는 <span class="hk">회전 — 다음 결 예고</span>). 결이 같은 표창끼리 <span class="hk">손으로</span> 합치면 순(純) 합성: <span class="hk">天 합성 골드 ×2.2 / 地 폭주 충전 ×2.2 / 人 변종 자연발생 ×2.2</span>, 대신 나머지 두 채널은 ×0.35. 결과 표창의 결은 <span class="hk">목적지(나중에 탭한 칸)</span>를 따르므로 방향이 다음 수를 만듭니다. 다른 결끼리의 합성(혼합)은 기존과 완전히 동일 — 무작정 합쳐도 손해가 없고, 결을 읽는 만큼만 이득. 자동합치기·⚡모두·자동 의식은 항상 혼합입니다.` },
     { title: '🌟 콤보', body: '2.5초 안 chain merge 시 콤보 ×N. 콤보당 +20% 골드. 5/10/15/20/30/50 마일스톤 보너스.' },
     { title: '🔺 세트 효과', body: '그리드 구성으로 패시브 발동 (그리드 위 배지 표시): <span class="hk">삼위일체</span>(같은 Lv 3+·골드+15%) / <span class="hk">황금 진형</span>(황금 2+·변종×1.5) / <span class="hk">만재</span>(90%+·폭주충전×2) / <span class="hk">승천</span>(Lv20+ 3개·콤보+1s) / <span class="hk">무지개</span>(황금·별·검은 동시·골드+25%) / <span class="hk">정예 진형</span>(5+ 표창 전부 최고Lv−3↑·생성+10%) / <span class="hk">완전 진형</span>(삼위일체·만재·승천·정예 동시·골드+50%).' },

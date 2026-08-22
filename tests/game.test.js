@@ -3919,15 +3919,22 @@ group('부적의 때 — 보장 부적 정책 (Q-Leap 135)', () => {
   eq(C.CHARM_POLICIES.length, 3, '정책 3종');
   eq(C.CHARM_POLICIES.map(p => p.id).join(','), 'now,frontier,pure', '정책 id 순서');
   eq(F.charmPolicyAllows('now', { level: 2, bestLevel: 40 }), true, '즉시: 아무 합성이나');
-  eq(F.charmPolicyAllows('frontier', { level: 2, bestLevel: 40 }), false, '최전선: 낮은 합성은 아낀다');
-  eq(F.charmPolicyAllows('frontier', { level: 40, bestLevel: 40 }), true, '최전선: 기록과 같은 층에서 발동 (+1이 새 기록)');
-  eq(F.charmPolicyAllows('frontier', { level: 39, bestLevel: 40 }), true, '최전선: Lv39 합성도 발동 — 부적 +1이 Lv41을 만들어 기록을 새로 쓴다');
-  eq(F.charmPolicyAllows('frontier', { level: 38, bestLevel: 40 }), false, '최전선: 부적을 써도 기록에 못 미치면 아낀다 (38+1+1 = 40, 동률)');
-  eq(F.charmPolicyAllows('frontier', { level: 1, bestLevel: 1 }), true, '최전선: 초반(기록 1)에는 사실상 즉시와 같다');
+  // 최전선은 '기록'이 아니라 '생성 레벨 + GAP' 기준이다. 기록 기준은 깊이가 깊어질수록 기회가
+  // 0이 되어(합성 분포가 생성 레벨 바로 위에 몰리고 한 층마다 절반) 부적이 통째로 소멸했다 —
+  // 자체 실측에서 60분 발동 0회·소멸 10.7개였고, 그 함정을 이 표가 고정한다.
+  const GAP = C.CHARM_FRONTIER_GAP;
+  eq(F.charmPolicyAllows('frontier', { level: 2, spawnLv: 6, bestLevel: 40 }), false, '최전선: 생성 레벨 근처 합성은 아낀다');
+  eq(F.charmPolicyAllows('frontier', { level: 6 + GAP, spawnLv: 6, bestLevel: 40 }), true, '최전선: 생성 +GAP 층에서 발동');
+  eq(F.charmPolicyAllows('frontier', { level: 6 + GAP - 1, spawnLv: 6, bestLevel: 40 }), false, '최전선: 한 층 모자라면 아낀다');
+  eq(F.charmPolicyAllows('frontier', { level: 40, spawnLv: 6, bestLevel: 40 }), true, '최전선: 훨씬 높은 합성은 당연히 발동');
+  // 자기 스케일링: 생성 레벨이 오르면 기준선도 함께 오른다 (기록 기준이었다면 여기서 굳어버린다)
+  eq(F.charmPolicyAllows('frontier', { level: 12, spawnLv: 12, bestLevel: 60 }), false, '생성 Lv12 플레이어에게 Lv12 합성은 최전선이 아니다');
+  eq(F.charmPolicyAllows('frontier', { level: 12 + GAP, spawnLv: 12, bestLevel: 60 }), true, '같은 플레이어의 생성 +GAP 층은 최전선');
+  ok(GAP >= 4 && GAP <= 8, `기준선 GAP은 실측 구간 안 (부적 1개당 기회 1.2~10회 사이): ${GAP}`);
   eq(F.charmPolicyAllows('pure', { level: 9, bestLevel: 40, pureGrain: 'cheon' }), true, '순: 결이 같은 합성');
   eq(F.charmPolicyAllows('pure', { level: 9, bestLevel: 40, pureGrain: null }), false, '순: 혼합 합성은 아낀다');
   eq(F.charmPolicyAllows('bogus', { level: 1, bestLevel: 99 }), true, '알 수 없는 정책은 즉시로 취급 (부적 사장 방지)');
-  eq(F.charmPolicyAllows('frontier', {}), true, '빈 ctx도 안전 (0+1 >= 1)');
+  eq(F.charmPolicyAllows('frontier', {}), false, '빈 ctx는 발동하지 않는다 (0 >= 1+GAP 불성립) — 안전 실패');
 
   // 2) 해금 게이트 — 순 정책은 결 해금 전엔 무력화 (영원히 안 터지는 함정 차단)
   withState({ bestLevel: 3, charmPolicy: 'pure' });
@@ -4008,7 +4015,7 @@ group('부적의 때 — 보장 부적 정책 (Q-Leap 135)', () => {
   ok(RAW_HTML.indexOf("['#charm-policy-box', 'charm']") >= 0, '정책 행이 REVEAL_TARGETS에 등록됨');
 
   // 8) 구조 가드
-  ok(RAW_HTML.indexOf('charmPolicyAllows(getCharmPolicyId(), { level: a.level, bestLevel: state.bestLevel, pureGrain })') >= 0,
+  ok(RAW_HTML.indexOf('charmPolicyAllows(getCharmPolicyId(), { level: a.level, bestLevel: state.bestLevel, spawnLv: getSpawnStartLevel(), pureGrain })') >= 0,
      '소비 지점이 정책을 통과한다 (한 곳뿐)');
   eq(RAW_HTML.split('charmPolicyAllows(').length - 1, 2, '정의 1 + 소비 지점 1');
   ok(/const lostCharms = newCharms - gainedCharms;/.test(RAW_HTML), '상한 초과분을 계산한다');

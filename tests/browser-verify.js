@@ -444,7 +444,7 @@ function ok(cond, msg) {
     desc: (document.getElementById('charm-policy-desc')||{}).textContent,
   }));
   ok(picked.policy === 'frontier' && picked.active, '부적: 신뢰 클릭으로 최전선 정책 선택');
-  ok(/최고 기록/.test(picked.desc || ''), `부적: 설명이 갱신된다 — "${picked.desc}"`);
+  ok(/생성 레벨/.test(picked.desc || ''), `부적: 설명이 갱신된다 — "${picked.desc}"`);
   // 미해금 상태에서 순 정책은 함정이 되지 않는다 (설명이 폴백을 알린다)
   const pureFallback = await page.evaluate(() => {
     state.bestLevel = 3; state.charmPolicy = 'pure'; refreshAutoSellUI();
