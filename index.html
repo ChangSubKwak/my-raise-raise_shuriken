@@ -367,6 +367,13 @@
   .strike-row b { color: #eaf0ff; }
   .strike-sep { height: 1px; background: #2a3550; margin: 6px 0; }
   .strike-note { font-size: 10px; color: #7f8db0; margin-top: 8px; line-height: 1.5; }
+  .strike-ships { display: flex; gap: 4px; margin: 8px 0 4px; }
+  .strike-ships .ship-btn {
+    flex: 1; padding: 7px 3px; border-radius: 8px; cursor: pointer; font-size: 10px; font-weight: 800;
+    background: #1b2136; border: 1px solid #3d4a72; color: #93a3c8; font-family: inherit;
+  }
+  .strike-ships .ship-btn.active { background: linear-gradient(180deg, #4a6ab0, #26365e); color: #fff; border-color: #7fa0ff; }
+  .strike-ships .ship-btn:active { transform: scale(0.95); }
   .strike-btns { display: flex; gap: 6px; margin-top: 10px; }
   .strike-btns button {
     flex: 1; padding: 9px 6px; border-radius: 9px; cursor: pointer;
@@ -2058,7 +2065,7 @@
 <script>
 'use strict';
 // 릴리즈 버전 — package.json version과 동기 (테스트가 불일치를 잡는다). 커밋 시 함께 범프.
-const GAME_VERSION = '3.88.0';
+const GAME_VERSION = '3.89.0';
 // =============================================================
 // 표창키우기 v2 — 합체 게임
 // Concept: 3×3+ grid, drop shuriken (Lv 1), merge same-level → Lv+1
@@ -2368,6 +2375,7 @@ function defaultState() {
     luckyCharms: 0,
     charmPolicy: 'now',
     // Q-Leap 136: 격추 모드 — 출격권(최대 3, 20분당 1장 회복). 타임스탬프 기반이라 오프라인에도 찬다.
+    strikeShip: 'rapid', // Q-Leap 136.1: 기체 선택 (설정 — 윤회 보존)
     strikeTickets: 3,
     strikeTicketAt: 0, // Q-Leap 135: 부적의 때 — 'now' | 'frontier' | 'pure' (설정, 윤회 보존)
     // Q-Leap 91: 윤회 직후 신생 부스트 카운터
@@ -3513,6 +3521,7 @@ function validateAndRepairState() {
     state.constellationIntroShown = !!state.constellationIntroShown;
   state.ritualEyeHintShown = !!state.ritualEyeHintShown; // Q-Leap 134
   // Q-Leap 136: 출격권 — 손상 세이브가 무한 출격을 만들지 않도록 상한/정수/타임스탬프를 고정
+  if (!STRIKE_SHIPS.some(x => x.id === state.strikeShip)) { state.strikeShip = STRIKE_SHIPS[0].id; repairs++; } // Q-Leap 136.1
   if (typeof state.strikeTickets !== 'number' || !isFinite(state.strikeTickets) || state.strikeTickets < 0) { state.strikeTickets = 0; repairs++; }
   else if (state.strikeTickets > STRIKE_TICKET_MAX) { state.strikeTickets = STRIKE_TICKET_MAX; repairs++; }
   else if (state.strikeTickets !== Math.floor(state.strikeTickets)) { state.strikeTickets = Math.floor(state.strikeTickets); repairs++; }
@@ -4214,6 +4223,77 @@ function syncStrikeTickets(nowMs) {
   return st.tickets;
 }
 
+// ---------- Q-Leap 136.1: 기체 선택 + 보스 패턴 ----------
+// 스트라이커즈 1945의 정체성 둘을 가져온다 — (1) 기체마다 다른 사격 성격, (2) 외울 수 있는 보스 패턴.
+// 둘 다 '순수 함수'로 두어 하네스에서 수치를 고정한다 (캔버스 안에 묻으면 테스트가 못 잡는다).
+//
+// 기체는 수평 트레이드오프다 — 어느 것도 상위 호환이 아니다. 곱해서 비교하면:
+//   속사 = 연사 1/0.62 × 위력 0.65 = 초당 1.05  · 잡몹 처리와 회피 중 사격 유지에 강함
+//   관통 = 연사 1.0  × 위력 0.90 × 줄기 −1     · 겹친 적/보스에 강함 (관통은 줄기 손실을 메운다)
+//   중장 = 연사 1/1.65 × 위력 1.70 = 초당 1.03 · 초당 화력은 같고 예비기 +1, 대신 탄 밀도가 낮아
+//                                                 회피 중 딜 로스가 크다
+// 초당 화력을 셋 다 1.0 근처로 맞췄으므로 지배 픽이 없고, 차이는 '어디에 쓰이느냐'로만 남는다.
+const STRIKE_SHIPS = [
+  { id: 'rapid',  icon: '⚡', name: '속사(速射)', desc: '연사 ×1.6 · 위력 ×0.65 — 탄막이 촘촘해 잡몹 처리에 강함',
+    fireMul: 0.62, dmgMul: 0.65, streamDelta: 0, lifeDelta: 0, pierce: 1 },
+  { id: 'pierce', icon: '🗡', name: '관통(貫通)', desc: '탄이 3체 관통 · 위력 ×1.6 · 줄기 −1 — 겹친 적과 보스에 강함',
+    fireMul: 1.0,  dmgMul: 1.6,  streamDelta: -1, lifeDelta: 0, pierce: 3 },
+  { id: 'heavy',  icon: '🛡', name: '중장(重裝)', desc: '위력 ×1.7 · 연사 ×0.6 · 예비기 +1 — 한 방과 생존',
+    fireMul: 1.65, dmgMul: 1.7,  streamDelta: 0, lifeDelta: 1, pierce: 1 },
+];
+function getStrikeShip() {
+  return STRIKE_SHIPS.find(s => s.id === state.strikeShip) || STRIKE_SHIPS[0];
+}
+// 보스 유형 — 출격 횟수로 '회전'한다. 무작위가 아니라 회전이라 외울 수 있고(스트라이커즈의 핵심),
+// 출격 화면에서 다음 보스를 미리 알려줄 수 있다 (삼재의 결이 다음 결을 예고하는 것과 같은 문법).
+const STRIKE_BOSS_TYPES = [
+  { id: 'spiral', icon: '🌀', name: '나선', tip: '탄이 소용돌이로 퍼집니다 — 회전 반대로 파고드세요' },
+  { id: 'aimed',  icon: '🎯', name: '조준', tip: '조준 3연사 — 쏘는 순간 옆으로 흘리세요' },
+  { id: 'wall',   icon: '🧱', name: '탄막벽', tip: '한 곳만 뚫린 벽이 내려옵니다 — 틈을 미리 잡으세요' },
+];
+function strikeBossType(sorties) {
+  const n = Math.max(0, Math.floor(sorties || 0));
+  return STRIKE_BOSS_TYPES[n % STRIKE_BOSS_TYPES.length];
+}
+// 보스 사격 — 유형·체력비·발사 횟수로 '이번에 쏠 탄'을 결정한다. 순수 함수.
+// 반환: { gap: 다음 발사까지 초, bullets: [{ang, sp}] }  (ang은 라디안, 아래가 +Math.PI/2)
+// aim은 플레이어 방향(라디안) — 조준형만 쓴다.
+function strikeBossFire(typeId, hpRatio, shot, aim) {
+  const hard = hpRatio <= 0.5; // 2페이즈: 전 유형이 조여든다
+  const n = Math.max(0, Math.floor(shot || 0));
+  const down = Math.PI / 2;
+  const out = [];
+  if (typeId === 'aimed') {
+    const a = typeof aim === 'number' ? aim : down;
+    const spread = hard ? 0.30 : 0.22;
+    for (let i = -1; i <= 1; i++) out.push({ ang: a + i * spread, sp: hard ? 200 : 175 });
+    if (hard) { // 2페이즈엔 좌우 견제탄이 붙는다
+      out.push({ ang: down - 0.9, sp: 150 });
+      out.push({ ang: down + 0.9, sp: 150 });
+    }
+    return { gap: hard ? 0.62 : 0.95, bullets: out };
+  }
+  if (typeId === 'wall') {
+    const cols = hard ? 11 : 9;
+    const gapCol = n % cols; // 틈이 한 칸씩 이동한다 — 예측 가능해야 '외우는 패턴'이 된다
+    for (let i = 0; i < cols; i++) {
+      if (i === gapCol) continue;
+      if (hard && i === (gapCol + Math.floor(cols / 2)) % cols) continue; // 2페이즈엔 틈이 둘이지만 더 자주 온다
+      const off = (i / (cols - 1) - 0.5) * 1.5;
+      out.push({ ang: down + off * 0.42, sp: hard ? 165 : 140 });
+    }
+    return { gap: hard ? 0.85 : 1.25, bullets: out };
+  }
+  // spiral (기본)
+  const arms = hard ? 3 : 2;
+  const step = 0.44;
+  for (let a = 0; a < arms; a++) {
+    const ang = n * step + (a / arms) * Math.PI * 2;
+    out.push({ ang, sp: hard ? 155 : 135 });
+  }
+  return { gap: hard ? 0.11 : 0.16, bullets: out };
+}
+
 // 그리드 → 기체 제원. 순수 함수 (state.grid만 읽는다).
 //  · power  : 보드 전체의 레벨 가중 합을 로그 스케일로 — 깊이가 두 배여도 화력은 완만히 오른다
 //  · shotLv : 탄 줄기 수 (1~5). 최고 레벨 조각이 기준 — '한 방 큰 표창'이 곧 주포
@@ -4232,13 +4312,18 @@ function getStrikeLoadout() {
     if (c.golden) golden++;
   }
   const power = sum > 0 ? 1 + Math.log2(1 + sum) * 0.6 : 1;
-  const shotLv = Math.max(1, Math.min(5, 1 + Math.floor(top / 6)));
+  const baseShot = Math.max(1, Math.min(5, 1 + Math.floor(top / 6)));
+  // Q-Leap 136.1: 기체가 제원을 변형한다 — 화력의 '총량'이 아니라 '성격'을 바꾼다
+  const ship = getStrikeShip();
   return {
     power: Math.round(power * 100) / 100,
-    shotLv,
+    shotLv: Math.max(1, Math.min(5, baseShot + ship.streamDelta)),
     options: Math.min(2, star),
     bombs: Math.min(3, 1 + dark),
-    lives: Math.min(4, 3 + (golden > 0 ? 1 : 0)),
+    lives: Math.min(5, 3 + (golden > 0 ? 1 : 0) + ship.lifeDelta),
+    fireGap: Math.round(0.11 * ship.fireMul * 1000) / 1000,
+    pierce: ship.pierce,
+    shipId: ship.id,
     pieces: count,
     top,
   };
@@ -4250,7 +4335,8 @@ function strikeEnemyHp(loadout, kind) {
   return Math.max(1, Math.round(base * Math.pow(Math.max(1, loadout.power), 0.85)));
 }
 function strikeBulletDamage(loadout) {
-  return Math.max(1, Math.round(loadout.power * (1 + (loadout.shotLv - 1) * 0.35)));
+  const shipMul = (STRIKE_SHIPS.find(x => x.id === loadout.shipId) || STRIKE_SHIPS[0]).dmgMul;
+  return Math.max(1, Math.round(loadout.power * (1 + (loadout.shotLv - 1) * 0.35) * shipMul));
 }
 // 웨이브 표 — 시간(초)에 따라 무엇이 나오는지. 순수 함수라 테스트로 고정된다.
 function strikeWaveAt(t) {
@@ -4289,6 +4375,8 @@ function strikeClose() {
 function renderStrikeIntro() {
   const lo = getStrikeLoadout();
   const st = strikeTicketState();
+  const cur = getStrikeShip();
+  const bt = strikeBossType(state.stats.strikeSorties || 0);
   const box = document.getElementById('strike-intro');
   if (!box) return;
   const mm = Math.floor(st.remainSec / 60), ss = Math.floor(st.remainSec % 60);
@@ -4297,11 +4385,30 @@ function renderStrikeIntro() {
     + `<div class="strike-row"><span>다음 충전</span><b>${st.tickets >= STRIKE_TICKET_MAX ? '가득참' : `${mm}:${String(ss).padStart(2, '0')}`}</b></div>`
     + `<div class="strike-sep"></div>`
     + `<div class="strike-row"><span>화력 (보드 파생)</span><b style="color:#88ddff">×${lo.power}</b></div>`
-    + `<div class="strike-row"><span>주포</span><b>${lo.shotLv}줄기 (최고 Lv ${lo.top})</b></div>`
+    + `<div class="strike-row"><span>주포</span><b>${lo.shotLv}줄기${lo.pierce > 1 ? ` · ${lo.pierce}체 관통` : ''} (최고 Lv ${lo.top})</b></div>`
+    + `<div class="strike-row"><span>연사</span><b>${(1 / lo.fireGap).toFixed(1)}발/초</b></div>`
     + `<div class="strike-row"><span>옵션기 ★</span><b>${lo.options}기</b></div>`
     + `<div class="strike-row"><span>폭탄 🌑</span><b>${lo.bombs}개</b></div>`
     + `<div class="strike-row"><span>기체 ✦</span><b>${lo.lives}대</b></div>`
+    + `<div class="strike-sep"></div>`
+    + `<div class="strike-row"><span>다음 보스</span><b>${bt.icon} ${bt.name}</b></div>`
+    + `<div class="strike-note">${bt.tip}</div>`
+    + `<div class="strike-ships">` + STRIKE_SHIPS.map(sh =>
+        `<button class="ship-btn${sh.id === cur.id ? ' active' : ''}" data-ship="${sh.id}">${sh.icon} ${sh.name.split('(')[0]}</button>`).join('') + `</div>`
+    + `<div class="strike-note">${cur.desc}</div>`
     + `<div class="strike-note">그리드를 키울수록 강해집니다 — 별은 옵션기, 검은 표창은 폭탄, 황금은 예비기.</div>`;
+  // 기체 버튼 배선. 셀렉터는 반드시 컨테이너로 좁힌다 — 감사 C0에서 클래스 공유로
+  // 자동 합치기 우선순위가 파괴된 전례가 있다 (부트 리스너가 같은 클래스를 잡았다).
+  box.querySelectorAll('.strike-ships [data-ship]').forEach(btn => {
+    btn.onclick = () => {
+      getAudio();
+      state.strikeShip = btn.dataset.ship;
+      state.stats.strikeShipSets = (state.stats.strikeShipSets || 0) + 1;
+      sfx('move');
+      renderStrikeIntro();
+      save();
+    };
+  });
   const btn = document.getElementById('strike-launch');
   if (btn) {
     btn.disabled = st.tickets <= 0;
@@ -4335,6 +4442,7 @@ function strikeLaunch() {
     shots: [], foes: [], ebul: [], parts: [], stars: [],
     spawnAcc: 0, boss: null, kills: 0, dmg: 0, bossDmg: 0, shake: 0,
     dmgTaken: 0, ended: false,
+    bossType: strikeBossType(state.stats.strikeSorties || 0),
   };
   for (let i = 0; i < 60; i++) _strike.stars.push({ x: Math.random() * W, y: Math.random() * H, v: 20 + Math.random() * 80, s: Math.random() < 0.2 ? 2 : 1 });
   strikeBindInput(cv);
@@ -4388,7 +4496,7 @@ function strikeStep(dt, W, H) {
   for (const st of S.stars) { st.y += st.v * dt; if (st.y > H) { st.y = -2; st.x = Math.random() * W; } }
   // 자동 사격
   S.fireAcc = (S.fireAcc || 0) + dt;
-  const fireGap = 0.11;
+  const fireGap = S.lo.fireGap || 0.11; // 기체별 연사 (Q-Leap 136.1)
   if (S.fireAcc >= fireGap) {
     S.fireAcc = 0;
     const n = S.lo.shotLv;
@@ -4416,7 +4524,7 @@ function strikeStep(dt, W, H) {
     }
   } else if (!S.boss) {
     S.boss = { x: W / 2, y: -60, vx: 70, hp: strikeEnemyHp(S.lo, 'boss'), max: strikeEnemyHp(S.lo, 'boss'), fire: 1, phase: 0, r: 34 };
-    toast('⚠ 보스 출현');
+    toast(`⚠ ${S.bossType.icon} ${S.bossType.name} 출현 — ${S.bossType.tip}`);
     sfx('mergeGold');
   }
   // 아군 탄
@@ -4441,20 +4549,12 @@ function strikeStep(dt, W, H) {
     b.fire -= dt;
     if (b.fire <= 0 && b.y >= 60) {
       b.phase++;
-      const hpRatio = b.hp / b.max;
-      if (hpRatio > 0.5) { // 1페이즈: 부채꼴
-        b.fire = 1.15;
-        for (let i = -3; i <= 3; i++) {
-          const ang = Math.PI / 2 + i * 0.19;
-          S.ebul.push({ x: b.x, y: b.y + 20, vx: Math.cos(ang) * 165, vy: Math.sin(ang) * 165, r: 4 });
-        }
-      } else { // 2페이즈: 회전 방사 (스트라이커즈식 압박)
-        b.fire = 0.55;
-        const base = b.phase * 0.42;
-        for (let i = 0; i < 9; i++) {
-          const ang = base + (i / 9) * Math.PI * 2;
-          S.ebul.push({ x: b.x, y: b.y + 10, vx: Math.cos(ang) * 135, vy: Math.sin(ang) * 135, r: 4 });
-        }
+      // Q-Leap 136.1: 무엇을 쏠지는 순수 함수가 정한다 (하네스로 수치 고정 · 캔버스는 뿌리기만)
+      const aim = Math.atan2(S.py - b.y, S.px - b.x);
+      const shot = strikeBossFire(S.bossType.id, b.hp / b.max, b.phase, aim);
+      b.fire = shot.gap;
+      for (const q of shot.bullets) {
+        S.ebul.push({ x: b.x, y: b.y + 14, vx: Math.cos(q.ang) * q.sp, vy: Math.sin(q.ang) * q.sp, r: 4 });
       }
       sfxQuiet();
     }
@@ -4468,9 +4568,11 @@ function strikeStep(dt, W, H) {
     for (const f of S.foes) {
       if (f.hp <= 0) continue;
       if (Math.abs(b.x - f.x) < f.r && Math.abs(b.y - f.y) < f.r) {
-        f.hp -= b.dmg; S.dmg += b.dmg; b.dead = true;
+        f.hp -= b.dmg; S.dmg += b.dmg;
+        b.hits = (b.hits || 0) + 1;
+        if (b.hits >= (S.lo.pierce || 1)) b.dead = true; // 관통 기체는 여러 체를 뚫는다
         S.parts.push({ x: b.x, y: b.y, vx: 0, vy: -40, life: 0.15, c: '#ffffff' });
-        break;
+        if (b.dead) break;
       }
     }
     if (!b.dead && S.boss && Math.abs(b.x - S.boss.x) < S.boss.r && Math.abs(b.y - S.boss.y) < S.boss.r) {
@@ -9161,7 +9263,7 @@ const HELP_SECTIONS = {
     { title: '📖 도감', body: '첫 도달한 Lv 영구 기록. 신규 등록 시 <span class="hk">깨달음 +1</span>. 윤회를 거쳐도 보존.' },
     { title: '🔗 인접 시너지', body: '같은 Lv 표창이 4방향 인접 시 <span class="hk">골드 생성 +20%/인접</span> (max +80%). 색상 dot으로 표시.' },
     { title: '✨ 의식 합성', body: '같은 Lv 4방향 연결 그룹 3+ 시 자동 활성화. 발동 시 <span class="hk">한꺼번에 합쳐 큰 점프</span> (3개→+1, 4개→+2 ...). <span class="hk">◎ 진안</span>: 표창을 고르고 누르면 <span class="hk">그 표창이 속한 무리</span>가 발동되고 결과가 <span class="hk">고른 칸에 앉습니다</span> — 큰 무리(골드·전선)와 순(純) 무리(폭주·변종) 중 무엇을 태울지, 결과를 어느 칸에 둘지가 선택입니다. 아무것도 고르지 않으면 가장 큰 무리가 자동 선택 (기존과 동일).' },
-    { title: '✈ 격추 모드', body: 'Lv 12 해금. <span class="hk">☰ → ✈ 격추</span>로 60초 종스크롤 출격. <span class="hk">그리드에 키워둔 표창이 그대로 화력</span>입니다 — 최고 Lv이 주포 줄기, ★별은 옵션기, 🌑검은은 폭탄, ✦황금은 예비기. 드래그로 회피하고 사격은 자동, 38초에 보스가 나옵니다. <span class="hk">출격권</span>은 최대 3장이며 20분마다 1장 회복(자리비움 중에도 참). 보상 골드는 <span class="hk">지금 패시브 수입의 90초치</span>를 상한으로 성과에 비례하므로, 보드를 키우면 보상도 함께 커집니다. 노히트로 보스를 잡으면 황금 표창이 나옵니다.' },
+    { title: '✈ 격추 모드', body: 'Lv 12 해금. <span class="hk">☰ → ✈ 격추</span>로 60초 종스크롤 출격. <span class="hk">그리드에 키워둔 표창이 그대로 화력</span>입니다 — 최고 Lv이 주포 줄기, ★별은 옵션기, 🌑검은은 폭탄, ✦황금은 예비기. 드래그로 회피하고 사격은 자동, 38초에 보스가 나옵니다. <span class="hk">기체</span>는 출격 화면에서 고릅니다 — ⚡속사(연사 ×1.6·위력 ×0.65) / 🗡관통(3체 관통·위력 ×1.6·줄기 −1) / 🛡중장(위력 ×1.7·연사 ×0.6·예비기 +1). 셋의 초당 화력은 비슷하고 <span class="hk">쓰임새만 다릅니다</span>. 보스는 🌀나선·🎯조준·🧱탄막벽이 <span class="hk">출격마다 순서대로 돌아가</span> 미리 알 수 있고, 체력 절반부터 2페이즈로 조여듭니다. <span class="hk">출격권</span>은 최대 3장이며 20분마다 1장 회복(자리비움 중에도 참). 보상 골드는 <span class="hk">지금 패시브 수입의 90초치</span>를 상한으로 성과에 비례하므로, 보드를 키우면 보상도 함께 커집니다. 노히트로 보스를 잡으면 황금 표창이 나옵니다.' },
     { title: '🔮 보장 부적의 때', body: '합성 100회마다 <span class="hk">보장 부적</span> 1개 (최대 3개 보유). 부적은 점프가 없는 합성에 자동으로 쓰여 <span class="hk">+1 도약</span>을 보장합니다. <span class="hk">⚙ 자동화</span>에서 <span class="hk">언제 쓸지</span>를 고를 수 있습니다 — 🔮즉시(기존) / ⚔최전선(생성 레벨 +6층 이상 합성에만) / 三순(純)(결이 같은 손 합성에만). 같은 부적도 높은 Lv 합성에 쓰면 골드가 기하급수로 커지지만, 아껴 두는 동안 새 부적이 상한을 넘으면 소멸합니다 — 값어치와 대기의 저울질입니다.' },
     { title: '三 삼재의 결', body: `Lv ${GRAIN_UNLOCK_LV} 해금. 표창마다 <span class="hk">天(천)·地(지)·人(인)</span> 중 하나의 결이 붙습니다 (칸 왼쪽 표시, 생성 순서는 <span class="hk">회전 — 다음 결 예고</span>). 결이 같은 표창끼리 <span class="hk">손으로</span> 합치면 순(純) 합성: <span class="hk">天 합성 골드 ×2.2 / 地 폭주 충전 ×2.2 / 人 변종 자연발생 ×2.2</span>, 대신 나머지 두 채널은 ×0.35. 결과 표창의 결은 <span class="hk">목적지(나중에 탭한 칸)</span>를 따르므로 방향이 다음 수를 만듭니다. 다른 결끼리의 합성(혼합)은 기존과 완전히 동일 — 무작정 합쳐도 손해가 없고, 결을 읽는 만큼만 이득. 자동합치기·⚡모두·자동 의식은 항상 혼합입니다.` },
     { title: '🌟 콤보', body: '2.5초 안 chain merge 시 콤보 ×N. 콤보당 +20% 골드. 5/10/15/20/30/50 마일스톤 보너스.' },

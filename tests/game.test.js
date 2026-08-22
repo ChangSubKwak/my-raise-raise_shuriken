@@ -3954,6 +3954,89 @@ group('의식의 축복 +1 도약 (감사 C8 · 사용자 승인)', () => {
   ok(RAW_HTML.indexOf('🙏 축복 효과 발동 (+1 도약)') >= 0, '피드백 토스트 — 소멸만 보이던 문제 해소');
 });
 
+group('격추 — 기체 선택 · 보스 패턴 (Q-Leap 136.1)', () => {
+  // 스트라이커즈의 정체성 둘: 기체마다 다른 사격 성격, 외울 수 있는 보스 패턴.
+  // 둘 다 순수 함수라 여기서 수치를 고정한다 (캔버스에 묻히면 회귀를 못 잡는다).
+
+  // 1) 기체는 수평 트레이드오프 — 초당 화력이 서로 비슷해야 지배 픽이 없다
+  eq(C.STRIKE_SHIPS.length, 3, '기체 3종');
+  const board = () => withState({ bestLevel: 30, upgrades: defaultUpgrades(), grid: gridFrom([18, 18, 18, 18, null, null]) });
+  const dps = {};
+  for (const sh of C.STRIKE_SHIPS) {
+    const st = board(); st.strikeShip = sh.id;
+    const lo = F.getStrikeLoadout();
+    eq(lo.shipId, sh.id, sh.name + ': 제원에 기체가 반영된다');
+    ok(lo.fireGap > 0, sh.name + ': 연사 간격이 양수');
+    dps[sh.id] = F.strikeBulletDamage(lo) * lo.shotLv / lo.fireGap;
+  }
+  const vals = Object.keys(dps).map(k => dps[k]);
+  const lo_ = Math.min.apply(null, vals), hi_ = Math.max.apply(null, vals);
+  ok(hi_ / lo_ < 1.6, '기체 간 초당 화력 격차가 1.6배 미만 — 지배 픽 없음 (' + vals.map(v => Math.round(v)).join(' / ') + ')');
+
+  // 각 기체의 성격이 실제로 다르다
+  const get = (id) => { const st = board(); st.strikeShip = id; return F.getStrikeLoadout(); };
+  const rapid = get('rapid'), pierce = get('pierce'), heavy = get('heavy');
+  ok(rapid.fireGap < heavy.fireGap, '속사가 중장보다 빠르게 쏜다');
+  ok(F.strikeBulletDamage(heavy) > F.strikeBulletDamage(rapid), '중장이 한 발 위력이 세다');
+  ok(pierce.pierce >= 3, '관통 기체는 3체 이상 관통');
+  ok(pierce.shotLv < rapid.shotLv, '관통은 줄기를 하나 잃는다');
+  ok(heavy.lives > rapid.lives, '중장은 예비기가 하나 많다');
+  ok(rapid.lives >= 3 && heavy.lives <= 5, '기체 수는 상식 범위');
+
+  // 손상된 기체 id는 기본값으로
+  const sBad = withState({ bestLevel: 20, strikeShip: 'nope' });
+  F.validateAndRepairState();
+  eq(G.getState().strikeShip, C.STRIKE_SHIPS[0].id, '알 수 없는 기체 id는 복구된다');
+
+  // 2) 보스 유형은 '회전'한다 — 무작위가 아니라 예고 가능해야 외울 수 있다
+  eq(C.STRIKE_BOSS_TYPES.length, 3, '보스 3종');
+  eq(F.strikeBossType(0).id, C.STRIKE_BOSS_TYPES[0].id, '출격 0회차');
+  eq(F.strikeBossType(1).id, C.STRIKE_BOSS_TYPES[1].id, '출격 1회차');
+  eq(F.strikeBossType(3).id, C.STRIKE_BOSS_TYPES[0].id, '3회차에 한 바퀴 돌아온다');
+  eq(F.strikeBossType(-5).id, C.STRIKE_BOSS_TYPES[0].id, '음수도 안전');
+  eq(F.strikeBossType(2.7).id, C.STRIKE_BOSS_TYPES[2].id, '소수도 안전');
+  for (const bt of C.STRIKE_BOSS_TYPES) ok(bt.tip && bt.tip.length > 4, bt.name + ': 공략 힌트가 있다');
+
+  // 3) 보스 패턴 — 유형마다 다르고, 2페이즈에서 조여든다
+  for (const bt of C.STRIKE_BOSS_TYPES) {
+    const p1 = F.strikeBossFire(bt.id, 0.9, 3, Math.PI / 2);
+    const p2 = F.strikeBossFire(bt.id, 0.3, 3, Math.PI / 2);
+    ok(p1.bullets.length > 0, bt.name + ': 1페이즈에 탄을 쏜다');
+    ok(p2.bullets.length > 0, bt.name + ': 2페이즈에도 쏜다');
+    ok(p1.gap > 0 && p2.gap > 0, bt.name + ': 발사 간격이 양수');
+    ok(p2.gap <= p1.gap, bt.name + ': 2페이즈가 더 자주 쏜다 (압박 상승)');
+    for (const q of p1.bullets.concat(p2.bullets)) {
+      ok(isFinite(q.ang) && isFinite(q.sp) && q.sp > 0, bt.name + ': 탄 벡터가 유한하고 속도가 양수');
+    }
+  }
+  // 유형별 성격이 실제로 다르다
+  const aim = 1.2;
+  const aimed1 = F.strikeBossFire('aimed', 0.9, 1, aim);
+  ok(aimed1.bullets.some(q => Math.abs(q.ang - aim) < 0.001), '조준형은 플레이어 방향으로 쏜다');
+  const aimed2 = F.strikeBossFire('aimed', 0.9, 1, aim + 1);
+  ok(!aimed2.bullets.some(q => Math.abs(q.ang - aim) < 0.001), '조준 방향이 바뀌면 탄 방향도 바뀐다');
+  const spiralA = F.strikeBossFire('spiral', 0.9, 1, aim);
+  const spiralB = F.strikeBossFire('spiral', 0.9, 2, aim);
+  ok(Math.abs(spiralA.bullets[0].ang - spiralB.bullets[0].ang) > 0.1, '나선은 발사마다 각도가 돈다');
+  const spiralC = F.strikeBossFire('spiral', 0.9, 1, aim + 2);
+  eq(spiralC.bullets[0].ang, spiralA.bullets[0].ang, '나선은 플레이어 위치와 무관 (조준형과 성격이 다르다)');
+  const wall1 = F.strikeBossFire('wall', 0.9, 0, aim);
+  const wall2 = F.strikeBossFire('wall', 0.9, 1, aim);
+  ok(wall1.bullets.length >= 6, '탄막벽은 여러 발을 한 번에');
+  const angs1 = wall1.bullets.map(q => q.ang.toFixed(3)).join(',');
+  const angs2 = wall2.bullets.map(q => q.ang.toFixed(3)).join(',');
+  ok(angs1 !== angs2, '벽의 틈이 발사마다 이동한다 (외울 수 있는 규칙)');
+  const wallHard = F.strikeBossFire('wall', 0.3, 0, aim);
+  ok(wallHard.gap < wall1.gap, '2페이즈 벽이 더 자주 온다');
+
+  // 4) 구조 가드
+  ok(RAW_HTML.indexOf('strikeBossFire(S.bossType.id') >= 0, '엔진이 패턴을 순수 함수에 위임한다');
+  ok(RAW_HTML.indexOf("box.querySelectorAll('.strike-ships [data-ship]')") >= 0,
+     '기체 버튼 셀렉터가 컨테이너로 좁혀져 있다 (감사 C0의 클래스 공유 사고 재발 방지)');
+  ok(RAW_HTML.indexOf('S.lo.pierce || 1') >= 0, '관통이 엔진에 배선됨');
+  ok(RAW_HTML.indexOf('S.lo.fireGap || 0.11') >= 0, '기체별 연사가 엔진에 배선됨');
+});
+
 group('격추 모드 (Q-Leap 136)', () => {
   // 사용자 결정으로 전투를 되살렸다. 핵심 계약: 화력은 '그리드에서 파생될 뿐' 새로 성장하지 않고,
   // 보상 골드는 새 배수가 아니라 플레이어 자신의 패시브 수입률로 환산된다 (자기 스케일링).
