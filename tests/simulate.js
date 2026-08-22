@@ -48,13 +48,25 @@ function findGrainSteeredPair(F, S) {
 }
 
 function runSim(mergeEvery, policy) {
+  const AFK = policy === 'afk'; // 감사 C7: 무인 방치 — 손 개입 0, 자동화만
   const G = loadGame();
   const F = G.fns, C = G.consts;
   G.setState(G.defaultState());
+  if (policy === 'afk') {
+    // 감사 C7의 시나리오는 '포화 상태 그리드를 방치'다 — 빈 세이브에서 시작하면 8시간에 합성 29회뿐이라
+    // 콤보 성장 자체가 측정되지 않는다. 중반 플레이어가 자동화를 켜고 자리를 뜬 상태를 만든다.
+    const st = G.getState();
+    st.autoMergeUnlocked = true; st.autoMerge = true; st.autoRitualEnabled = true;
+    st.bestLevel = 20; st.runBestLevel = 20; st.prestigeCount = 3;
+    Object.assign(st.upgrades, { maxShuriken: 12, spawnRate: 14, spawnBatch: 2, goldMul: 12, spawnLevel: 5, firerate: 10, baseDmg: 10, luckChance: 6 });
+    st.grid = new Array(F.getGridSize()).fill(null);
+    for (let i = 0; i < st.grid.length; i++) st.grid[i] = { id: 9000 + i, level: 6 + (i % 3), fireTimer: 0, grain: ['cheon','ji','in'][i % 3] };
+  }
   const S = () => G.getState();
   const reached = {};
   let prestiges = 0;
   let handMerges = 0, pureMerges = 0;
+  let peakCombo = 0, mergeGold = 0, prevGold = 0, comboBreaks = 0;
   const dt = 0.5;
   const end = HOURS * 3600;
   let t = 0, sinceAct = 0;
@@ -86,6 +98,19 @@ function runSim(mergeEvery, policy) {
   while (t < end) {
     F.update(dt);
     t += dt; sinceAct += dt;
+    if (AFK) {
+      // 방치 관측: 콤보 정점과 합성 골드 비중만 기록한다 (개입 없음)
+      const cc = S().comboCount || 0;
+      if (cc > peakCombo) peakCombo = cc;
+      if (cc === 0 && peakCombo > 0) comboBreaks++;
+      const g = S().gold;
+      if (g > prevGold) mergeGold += 0; // 골드 증가분은 패시브와 섞여 분리 불가 — 아래 stats로 대체
+      prevGold = g;
+      const b = S().bestLevel;
+      for (const m of MILESTONES) if (!reached[m] && b >= m) reached[m] = t;
+      if (reached[60]) break;
+      continue;
+    }
     if (sinceAct >= mergeEvery) {
       sinceAct = 0;
       for (let i = 0; i < 6; i++) { // 개입 버스트: 손 합성 최대 6회
@@ -130,7 +155,9 @@ function runSim(mergeEvery, policy) {
     for (const m of MILESTONES) if (!reached[m] && b >= m) reached[m] = t;
     if (reached[60]) break;
   }
-  return { reached, prestiges, finalLv: S().bestLevel, pureRate: handMerges ? pureMerges / handMerges : 0 };
+  return { reached, prestiges, finalLv: S().bestLevel, pureRate: handMerges ? pureMerges / handMerges : 0,
+           peakCombo, comboBreaks, totalMerges: (S().stats || {}).totalMerges || 0,
+           mergeGoldStat: (S().stats || {}).totalGoldEarned || 0, gold: S().gold };
 }
 
 function median3(mergeEvery, policy) {
@@ -143,6 +170,8 @@ function median3(mergeEvery, policy) {
   return {
     med, prestiges: runs.map(r => r.prestiges), finalLv: runs.map(r => r.finalLv),
     pureRate: runs.reduce((a, r) => a + r.pureRate, 0) / runs.length,
+    peakCombo: runs.map(r => r.peakCombo || 0), comboBreaks: runs.map(r => r.comboBreaks || 0),
+    totalMerges: runs.map(r => r.totalMerges || 0),
   };
 }
 
@@ -154,6 +183,8 @@ const casual = median3(15);
 const grain = median3(2, 'grain');
 // Q-Leap 134: 진안 프로파일 — 의식의 무리·결과 칸을 손으로 고르는 상한 (PACING 규칙 전후 비교용)
 const aim = median3(2, 'aim');
+// 감사 C7: 무인 방치 프로파일 — 콤보가 끊기지 않는 구간을 측정한다 (승인 대기 중인 상한 판단 근거)
+const afk = median3(0, 'afk');
 console.log('\n  Lv    active(2s개입)  casual(15s개입)   구간 배율(active)');
 let prev = null;
 for (const m of MILESTONES) {
@@ -172,5 +203,9 @@ for (const m of MILESTONES) {
   console.log(`  ${String(m).padStart(2)}    ${fmtT(active.med[m])}        ${fmtT(grain.med[m])}        ${fmtT(aim.med[m])}`);
 }
 console.log(`  진안 종료 Lv: ${aim.finalLv.join('/')} · 윤회 ${aim.prestiges.join('/')}`);
+console.log('');
+console.log('  방치(AFK) 프로파일 — 손 개입 0 · 자동합치기+자동 의식만 (감사 C7 커버리지)');
+console.log(`   콤보 정점: ${afk.peakCombo.join(' / ')}  ·  콤보 끊김 횟수: ${afk.comboBreaks.join(' / ')}`);
+console.log(`   총 합성: ${afk.totalMerges.join(' / ')}  ·  종료 Lv: ${afk.finalLv.join('/')}`);
 console.log(`  순 합성률: blind ${(active.pureRate * 100).toFixed(1)}% → 결-인지 ${(grain.pureRate * 100).toFixed(1)}%`);
 console.log(`  종료 시 Lv: 결-인지 ${grain.finalLv.join('/')} · 윤회 ${grain.prestiges.join('/')}`);
